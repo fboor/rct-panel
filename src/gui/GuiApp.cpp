@@ -13,7 +13,8 @@
 // answers the respective OIDs.
 //
 // Pages: 1 Energiefluss, 2 Heute (day summary), 3 Info, 4 Verlauf (24 h
-// power graph; one sample every 5 minutes, PV A+B and S0 as separate series).
+// power graph; one sample every 5 minutes, PV A+B and S0 as separate series),
+// 5 Geraet (device info polled every 10 s).
 //
 // Layout:
 //   +-----------------------------+  <- status bar (title / link badge)
@@ -24,6 +25,8 @@
 //   +------+------+------+--------+  <- nav bar (left | home | right)
 //
 // SPDX-License-Identifier: MIT
+#include <time.h>
+
 #include "GuiApp.h"
 
 #include "../config/Configuration.h"
@@ -61,7 +64,8 @@ enum PageId {
   PAGE_OVERVIEW = 0,
   PAGE_ENERGY,
   PAGE_INFO,
-  PAGE_GRAPH, // 24 h power history
+  PAGE_GRAPH,  // 24 h power history
+  PAGE_DEVICE, // device info (Gerät)
   PAGE_COUNT,
 };
 
@@ -121,6 +125,21 @@ enum EnLabel {
 enum GhLabel {
   GH_TITLE = 0,
   GH_LABEL_COUNT,
+};
+
+// Device info (Gerät) page label indices.
+enum DevLabel {
+  DEV_NAME = 0, // device name
+  DEV_SW,       // control software version
+  DEV_CORE,     // core temperature
+  DEV_BTEMP,    // battery temperature
+  DEV_HTEMP,    // heat sink temperature
+  DEV_CALIB,    // next battery calibration
+  DEV_CYCLES,   // charge/discharge cycles
+  DEV_FREQ,     // grid frequency L1
+  DEV_SOH,      // battery state of health
+  DEV_ISLAND,   // island (grid-separated) mode
+  DEV_LABEL_COUNT,
 };
 
 // --- 24 h power history ----------------------------------------------------
@@ -388,6 +407,31 @@ static void pageBuildInfo(AppPage *p) {
     lv_obj_align(p->labels[i], LV_ALIGN_TOP_LEFT, 24, 24 + i * 28);
   }
   p->labelCount = INF_LABEL_COUNT;
+}
+
+// Device info page (portal "Gerätedetails"): name / software version /
+// temperatures / next calibration / cycles / grid frequency / SOH / island
+// mode. The panel font only covers ASCII, so German umlauts are written as
+// "ue/ae/oe" (a custom font with umlauts is a possible future nice-to-have).
+static void pageBuildDevice(AppPage *p) {
+  lv_obj_t *root = p->root;
+  const char *rows[DEV_LABEL_COUNT] = {
+      "Name:          --",
+      "Software:      --",
+      "Kern:          --",
+      "Batterie:      --",
+      "Kuehlkoerper:  --",
+      "Kalibrierung:  --",
+      "Zyklen:        --",
+      "Netzfrequenz:  -- Hz",
+      "SOH:           --",
+      "Inselbetrieb:  --",
+  };
+  for (int i = 0; i < DEV_LABEL_COUNT; i++) {
+    p->labels[i] = makeLabel(root, rows[i], &lv_font_montserrat_16, COL_TEXT);
+    lv_obj_align(p->labels[i], LV_ALIGN_TOP_LEFT, 24, 24 + i * 28);
+  }
+  p->labelCount = DEV_LABEL_COUNT;
 }
 
 // Recompute the chart Y range from the stored history ring (kW = W / 1000 on
@@ -735,6 +779,54 @@ static void refreshCb(lv_timer_t *t) {
             s.batteryPower / 1000.0f, s.batteryCurrent, s.batteryVoltage);
   }
 
+  AppPage &dev = s_pages[PAGE_DEVICE];
+  if (dev.labels[DEV_NAME]) {
+    const char *dash = "--";
+    setText(dev.labels[DEV_NAME], "Name:          %s",
+            s.deviceName[0] ? s.deviceName : dash);
+    setText(dev.labels[DEV_SW], "Software:      %s",
+            s.firmwareVersion[0] ? s.firmwareVersion : dash);
+    if (s.haveData) {
+      setText(dev.labels[DEV_CORE], "Kern:          %.1f °C", s.coreTemp);
+      setText(dev.labels[DEV_BTEMP], "Batterie:      %.1f °C", s.batteryTemp);
+      setText(dev.labels[DEV_HTEMP], "Kuehlkoerper:  %.1f °C", s.heatSinkTemp);
+
+      // Next calibration: the inverter reports a Unix timestamp; turn it
+      // into a date plus a day countdown once SNTP has a valid wall clock.
+      if (s.nextCalibTs) {
+        const time_t calib = (time_t)s.nextCalibTs;
+        struct tm tmv;
+        localtime_r(&calib, &tmv);
+        char date[16];
+        strftime(date, sizeof(date), "%d.%m.%Y", &tmv);
+        const time_t nowT = time(nullptr);
+        if (nowT > 1000000000) { // synced (epoch after 2001-09-09)
+          const long days = (long)((calib - nowT) / 86400);
+          if (days < 0) {
+            setText(dev.labels[DEV_CALIB],
+                    "Kalibrierung:  %s (ueberfaellig)", date);
+          } else if (days == 0) {
+            setText(dev.labels[DEV_CALIB], "Kalibrierung:  %s (heute)", date);
+          } else {
+            setText(dev.labels[DEV_CALIB], "Kalibrierung:  %s (in %ld Tagen)",
+                    date, days);
+          }
+        } else {
+          setText(dev.labels[DEV_CALIB], "Kalibrierung:  %s", date);
+        }
+      } else {
+        setText(dev.labels[DEV_CALIB], "Kalibrierung:  --");
+      }
+
+      setText(dev.labels[DEV_CYCLES], "Zyklen:        %.0f", s.batteryCycles);
+      setText(dev.labels[DEV_FREQ], "Netzfrequenz:  %.2f Hz",
+              s.gridFrequency[0]);
+      setText(dev.labels[DEV_SOH], "SOH:           %.1f %%", s.batterySoh);
+      setText(dev.labels[DEV_ISLAND], "Inselbetrieb:  %s",
+              s.islandMode ? "ja" : "nein");
+    }
+  }
+
   // --- 24 h history: one sample every 5 minutes while running ---
   if (s_chart && s.haveData) {
     uint32_t now = millis();
@@ -820,9 +912,10 @@ void guiStartApp() {
 
   // Pages.
   static const char *titles[PAGE_COUNT] = {"Energiefluss", "Heute", "Info",
-                                          "Verlauf"};
+                                          "Verlauf", "Geraet"};
   void (*builders[PAGE_COUNT])(AppPage *) = {pageBuildOverview, pageBuildEnergy,
-                                             pageBuildInfo, pageBuildGraph};
+                                             pageBuildInfo, pageBuildGraph,
+                                             pageBuildDevice};
   for (int i = 0; i < PAGE_COUNT; i++) {
     s_pages[i].title = titles[i];
     s_pages[i].labelCount = 0;

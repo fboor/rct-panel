@@ -26,6 +26,7 @@
 
 #define RCT_RX_TIMEOUT_MS 2000    // per-frame receive window
 #define RCT_CYCLE_TIMEOUT_MS 4000 // total per-poll collection budget
+#define RCT_INFO_POLL_MS 10000    // device info group poll cadence
 
 static WiFiClient rctClient;
 
@@ -79,10 +80,10 @@ static bool rctSendRead(uint32_t oid) {
 }
 
 // Incremental receive state machine. De-escaped bytes accumulate in rctRxBuf
-// starting with the 0x2b start token. 64 bytes fit the largest frames the
-// device can send on a shared connection (other clients' WRITEs and string
-// payloads can exceed the 13 bytes of a grid value).
-#define RCT_RX_BUF_SIZE 64
+// starting with the 0x2b start token. 128 bytes comfortably fit the largest
+// frames we request (device name / version strings) plus other clients'
+// chatter on the shared bus.
+#define RCT_RX_BUF_SIZE 128
 static uint8_t rctRxBuf[RCT_RX_BUF_SIZE];
 static size_t rctRxLen = 0;
 static bool rctRxEscaping = false;
@@ -206,6 +207,17 @@ static float rctDecodeFloat(const uint8_t *p) {
   return f;
 }
 
+// Decode a big-endian integer payload. The response width depends on the
+// object's storage type: FLOAT/INT32/UINT32 reply with 4 bytes, UINT16 (e.g.
+// prim_sm.island_flag) with 2 bytes.
+static uint32_t rctDecodeInt(const uint8_t *p, size_t n) {
+  uint32_t v = 0;
+  for (size_t i = 0; i < n && i < 4; i++) {
+    v = (v << 8) | p[i];
+  }
+  return v;
+}
+
 // ---------------------------------------------------------------------------
 // Values we track. Slot order groups contiguous slices so the publish step
 // can memcpy whole arrays.
@@ -237,6 +249,18 @@ enum RCT_SLOT {
   RCT_SLOT_ELOADDAY, // energy.e_load_day       household day [Wh]
   RCT_SLOT_EFEEDDAY, // energy.e_grid_feed_day  feed-in day [Wh]
   RCT_SLOT_EGRIDLOADDAY, // energy.e_grid_load_day grid draw day [Wh]
+  // Device info group: name / software version / temperatures / calibration
+  // date / cycles / SOH / island flag. RCT_SLOT_DEVNAME also marks the
+  // boundary between the fast and the info poll groups.
+  RCT_SLOT_DEVNAME, // android_description        device name (STRING)
+  RCT_SLOT_SVN,     // svnversion                 control software version (STRING)
+  RCT_SLOT_CORET,   // db.core_temp               core temperature [°C]
+  RCT_SLOT_BTEMP,   // battery.temperature        battery temperature [°C]
+  RCT_SLOT_HTEMP,   // db.temp1                   heat sink temperature [°C]
+  RCT_SLOT_CALIB,   // power_mng.bat_next_calib_date  next calibration [unix s]
+  RCT_SLOT_CYCLES,  // battery.cycles             charge/discharge cycles
+  RCT_SLOT_SOH,     // battery.soh                state of health [%]
+  RCT_SLOT_ISLAND,  // prim_sm.island_flag        island mode flag (UINT16)
   RCT_NUM_SLOTS
 };
 
@@ -268,6 +292,15 @@ static const uint32_t rctOids[RCT_NUM_SLOTS] = {
     0x2F3C1D7D, // household day energy (Wh)
     0x3C87C4F5, // day energy grid feed-in (Wh)
     0x867DEF7D, // day energy grid load (Wh)
+    0xEBC62737, // device name (string)
+    0xDDD1C2D0, // control software version (string)
+    0xC24E85D0, // core temperature (°C)
+    0x902AFAFB, // battery temperature (°C)
+    0xF79D41D9, // heat sink temperature (°C)
+    0xB6623608, // next battery calibration (unix time)
+    0xC0DF2978, // battery cycles
+    0x381B8BF9, // battery SOH (%)
+    0x3623D82A, // island mode flag
 };
 
 static int rctSlotForOid(uint32_t oid) {
@@ -277,6 +310,43 @@ static int rctSlotForOid(uint32_t oid) {
     }
   }
   return -1;
+}
+
+// How each tracked object is decoded. The first RCT_SLOT_DEVNAME slots are
+// all plain FLOAT grid/phase values; the slow device-info group is a mix.
+enum RCT_DTYPE : uint8_t { RCT_DT_FLOAT = 0, RCT_DT_INT, RCT_DT_STRING };
+
+static uint8_t rctTypeOf(int slot) {
+  if (slot < RCT_SLOT_DEVNAME) {
+    return RCT_DT_FLOAT;
+  }
+  static const uint8_t t[RCT_NUM_SLOTS - RCT_SLOT_DEVNAME] = {
+      RCT_DT_STRING, // RCT_SLOT_DEVNAME
+      RCT_DT_STRING, // RCT_SLOT_SVN
+      RCT_DT_FLOAT,  // RCT_SLOT_CORET
+      RCT_DT_FLOAT,  // RCT_SLOT_BTEMP
+      RCT_DT_FLOAT,  // RCT_SLOT_HTEMP
+      RCT_DT_INT,    // RCT_SLOT_CALIB  (UINT32)
+      RCT_DT_INT,    // RCT_SLOT_CYCLES (INT32)
+      RCT_DT_FLOAT,  // RCT_SLOT_SOH
+      RCT_DT_INT,    // RCT_SLOT_ISLAND (UINT16)
+  };
+  return t[slot - RCT_SLOT_DEVNAME];
+}
+
+// String responses are NUL-terminated ASCII blobs; mirror rctclient's decode
+// (cut at the first NUL) and truncate to the snapshot buffer.
+#define RCT_STR_MAX 48
+static char rctDevName[RCT_STR_MAX] = {0};
+static char rctFwVersion[RCT_STR_MAX] = {0};
+
+static void rctDecodeString(const uint8_t *p, size_t n, char *dst) {
+  size_t c = 0;
+  while (c < n && c < RCT_STR_MAX - 1 && p[c] != 0x00) {
+    dst[c] = (char)p[c];
+    c++;
+  }
+  dst[c] = '\0';
 }
 
 // The official RCT Power app sends this frame once after connecting to switch
@@ -317,24 +387,43 @@ void rctParse() {
     rctSendExtension();
   }
 
-  // Ask for every value we track.
+  // Ask for every value we track. The device-info group runs on its own
+  // cadence (RCT_INFO_POLL_MS) so the two groups can be tuned independently
+  // without changing the fast group's bus share.
+  static uint32_t lastInfoPoll = 0;
+  const uint32_t nowMs = millis();
+  const bool pollInfo = (int32_t)(nowMs - lastInfoPoll) >=
+                        (int32_t)RCT_INFO_POLL_MS;
   for (int i = 0; i < RCT_NUM_SLOTS; i++) {
+    if (i >= RCT_SLOT_DEVNAME && !pollInfo) {
+      continue;
+    }
     rctSendRead(rctOids[i]);
   }
+  if (pollInfo) {
+    lastInfoPoll = nowMs;
+  }
 
-  // Consume the stream for this poll; keep last-good values per slot.
+  // Consume the stream for this poll; keep last-good values per slot. The
+  // fast group gates the receive window; info responses are consumed
+  // opportunistically whenever they arrive during the same window.
   static float rctCur[RCT_NUM_SLOTS];
+  static uint32_t rctRaw[RCT_NUM_SLOTS]; // exact ints (calib ts, island ...)
+  static uint32_t infoSeen = 0;          // slow slots that answered once
+  static bool infoLogged = false;        // one-time bring-up log
   uint32_t freshMask = 0;
-  const uint32_t allSlots = (1u << RCT_NUM_SLOTS) - 1;
+  const uint32_t fastSlots = (uint32_t)RCT_SLOT_DEVNAME;
+  const uint32_t allFast = (1u << fastSlots) - 1;
   unsigned long deadline = millis() + RCT_CYCLE_TIMEOUT_MS;
   bool streamQuiet = false;
-  while (freshMask != allSlots && !streamQuiet &&
+  while (freshMask != allFast && !streamQuiet &&
          (int32_t)(millis() - deadline) < 0) {
     uint8_t command = 0;
-    uint8_t payload[64];
+    uint8_t payload[128];
     size_t payloadLen = 0;
     uint32_t respOid = 0;
-    int rc = rctReceiveFrame(command, respOid, payload, sizeof(payload), payloadLen);
+    int rc = rctReceiveFrame(command, respOid, payload, sizeof(payload),
+                             payloadLen);
     if (rc == RCT_RX_TIMEOUT) {
       if (!rctClient.connected()) {
         rctClient.stop();
@@ -346,16 +435,35 @@ void rctParse() {
     if (rc == RCT_RX_CRC) {
       continue;
     }
-    if (command == 0x05 && payloadLen == 4) {
+    if (command == 0x05) {
       int slot = rctSlotForOid(respOid);
       if (slot >= 0) {
-        rctCur[slot] = rctDecodeFloat(payload);
-        freshMask |= (1u << slot);
+        switch (rctTypeOf(slot)) {
+          case RCT_DT_STRING:
+            rctDecodeString(payload, payloadLen,
+                            slot == RCT_SLOT_DEVNAME ? rctDevName
+                                                     : rctFwVersion);
+            break;
+          case RCT_DT_INT:
+            rctRaw[slot] = rctDecodeInt(payload, payloadLen);
+            rctCur[slot] = (float)rctRaw[slot];
+            break;
+          default:
+            if (payloadLen == 4) {
+              rctCur[slot] = rctDecodeFloat(payload);
+            }
+            break;
+        }
         rctState.haveData = true;
         if (slot == RCT_SLOT_SOC) {
           rctState.haveBattery = true; // SOC only answers on battery devices
         }
         rctState.lastUpdateMs = millis();
+        if (slot >= RCT_SLOT_DEVNAME) {
+          infoSeen |= (1u << (slot - RCT_SLOT_DEVNAME));
+        } else {
+          freshMask |= (1u << slot);
+        }
       }
     }
   }
@@ -390,6 +498,31 @@ void rctParse() {
   rctState.dayFeedInWh = rctCur[RCT_SLOT_EFEEDDAY];
   rctState.dayLoadWh = rctCur[RCT_SLOT_ELOADDAY];
   rctState.dayGridLoadWh = rctCur[RCT_SLOT_EGRIDLOADDAY];
+
+  strlcpy(rctState.deviceName, rctDevName, sizeof(rctState.deviceName));
+  strlcpy(rctState.firmwareVersion, rctFwVersion,
+          sizeof(rctState.firmwareVersion));
+  rctState.coreTemp = rctCur[RCT_SLOT_CORET];
+  rctState.batteryTemp = rctCur[RCT_SLOT_BTEMP];
+  rctState.heatSinkTemp = rctCur[RCT_SLOT_HTEMP];
+  rctState.nextCalibTs = rctRaw[RCT_SLOT_CALIB];
+  rctState.batteryCycles = rctCur[RCT_SLOT_CYCLES];
+  rctState.batterySoh = rctCur[RCT_SLOT_SOH];
+  rctState.islandMode = rctRaw[RCT_SLOT_ISLAND] != 0;
+
+  // One-time bring-up log once the whole slow group has answered.
+  if (!infoLogged && infoSeen ==
+                         ((1u << (RCT_NUM_SLOTS - RCT_SLOT_DEVNAME)) - 1u)) {
+    infoLogged = true;
+    Serial.printf("RCT info: \"%s\" | SW %s | core %.1f C | bat %.1f C | "
+                  "heat %.1f C | calib %lu | cycles %.0f | SOH %.1f %% | "
+                  "island %u\n",
+                  rctState.deviceName, rctState.firmwareVersion,
+                  rctState.coreTemp, rctState.batteryTemp,
+                  rctState.heatSinkTemp,
+                  (unsigned long)rctState.nextCalibTs, rctState.batteryCycles,
+                  rctState.batterySoh, (unsigned)rctState.islandMode);
+  }
 
   int freshCount = 0;
   for (uint32_t m = freshMask; m; m &= m - 1) {

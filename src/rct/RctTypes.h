@@ -28,6 +28,18 @@ struct RctSnapshot {
   float batteryVoltage; // battery.voltage [V]
   float batteryPower;   // g_sync.p_acc_lp [W]; positive = charging
 
+  // Device info (page "Gerät"). Kept as its own group so it can be tuned
+  // independently (currently polled on the same cadence as the fast values).
+  char deviceName[40];      // android_description          device name
+  char firmwareVersion[24]; // svnversion                   control software version
+  float coreTemp;           // db.core_temp                 core temperature [°C]
+  float batteryTemp;        // battery.temperature          battery temperature [°C]
+  float heatSinkTemp;       // db.temp1                     heat sink temperature [°C]
+  uint32_t nextCalibTs;     // power_mng.bat_next_calib_date next calibration [unix s]
+  float batteryCycles;      // battery.cycles               charge/discharge cycles
+  float batterySoh;         // battery.soh                  state of health [%]
+  bool islandMode;          // prim_sm.island_flag != 0     island (grid-separated) mode
+
   bool haveData;      // any value ever received from the device
   bool haveBattery;   // battery.soc ever answered (device has a battery)
   bool connected;     // TCP link up right now

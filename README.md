@@ -26,6 +26,14 @@ device over TCP (RCT "Serial Communication Protocol", default port 8899).
   - **Info** — link state, host, port, last data, uptime, per-phase grid
     power (L1/L2/L3), PV total, household load, battery SOC/power/current/
     voltage.
+  - **Geraet** — device info: name, control software version, core / battery /
+    heat-sink temperatures, next battery calibration (date + day countdown
+    once the time is synced), battery cycles, grid frequency, battery SOH and
+    island ("Inselbetrieb") mode.
+- **Data rate:** all live values are re-read from the inverter every 10 s (the
+  device-info group above on the same 10 s cadence); the display redraws at
+  1 Hz from the last-known-good values, and the Verlauf graph stores one
+  sample every 5 minutes.
 - **Provisioning:** first boot (or no saved Wi-Fi) starts the **RCT-Panel**
   access point with a captive-portal web page at `http://192.168.4.1` where
   the Wi-Fi credentials and the **RCT host / port** are entered. Settings are
@@ -58,7 +66,7 @@ during the portal window (or erase NVS with `pio run -e esp32-s3 -t erase`).
 
 ```
 src/
-  main.cpp              wiring: init, loop (LVGL tick + 5 s RCT poll)
+  main.cpp              wiring: init, loop (LVGL tick + 10 s RCT poll)
   config/               settings, NVS, WiFiManager portal (rct_host/rct_port)
   rct/                  RCT Power TCP client (ported from Energy2Shelly_ESP)
   display/              ST7701 + esp_lcd RGB driver, GT911 touch, pin map
@@ -111,6 +119,13 @@ then the live pages.
 - The S0 meter (`io_board.s0_external_power`) is merged into the PV total when
   present; confirm whether the household load phases already include it for
   your installation (the portal adds a separate "+EXT." node in that case).
+- **Device-info decode** (Geraet page): `power_mng.bat_next_calib_date` is
+  treated as a Unix timestamp (as in the HA integration) and
+  `prim_sm.island_flag` as nonzero = island mode; both should be cross-checked
+  against the live device, along with the temperatures / SOH / cycles readings.
+- German labels are written without umlauts (ue/ae/oe transliteration) because
+  the built-in Montserrat font has no umlauts; a custom subset font could
+  render them natively.
 - Exact RCT Power device model — OIDs that never answer (e.g. battery values
   on an inverter without a battery) simply stay `--`.
 - PCLK/porch values may need tuning for the specific panel revision.

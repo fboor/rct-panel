@@ -9,7 +9,7 @@
 #include "gui/GuiApp.h"
 #include "rct/RctClient.h"
 
-#define RCT_POLL_MS 5000
+#define RCT_POLL_MS 10000
 
 void setup() {
   Serial.begin(115200);
@@ -25,6 +25,11 @@ void setup() {
   // WiFi + config portal (blocking; shows the RCT-Panel AP on first boot).
   guiSetSplashText("WiFi setup ...");
   setupConfigPortal();
+
+  // Wall clock for the "next calibration" countdown on the Gerät page.
+  // Non-blocking; the time becomes valid a few seconds after WiFi is up.
+  configTzTime("CET-1CEST,M3.5.0,M10.5.0/3", "pool.ntp.org",
+               "de.pool.ntp.org");
 
   guiSetSplashText("Connecting to RCT ...");
   guiStartApp();
