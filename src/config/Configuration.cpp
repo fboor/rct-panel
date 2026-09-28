@@ -29,6 +29,12 @@ static Preferences prefs;
 static WiFiManager wm; // must outlive setup(): non-blocking portal is pumped from loop()
 static bool shouldSaveConfig = false;
 static bool portalSaved = false; // set when the user submits the portal form
+// After a save the provisioning AP stays up briefly (portalClosePending) so
+// the browser reliably receives the "Saved!" reply before the radio switches
+// over to the configured network.
+static bool portalClosePending = false;
+static uint32_t portalCloseDeadline = 0;
+static const uint32_t PORTAL_CONFIRM_MS = 3000;
 static bool ready = false; // provisioning finished, link usable
 
 // Persisted Wi-Fi credentials, captured on every successful connect so boot
@@ -92,6 +98,18 @@ static void startProvisioningAp() {
   // the radio fully awake while the panel is acting as the provisioning AP.
   WiFi.setSleep(false);
   wm.startConfigPortal("RCT-Panel");
+  // WiFiManager disables the station interface when the portal starts while
+  // not connected (_disableSTAConn), leaving the radio in AP-only mode. A
+  // portal save then re-enables STA inside the library's save processing - a
+  // full mode flap that has dropped the browser's connection before it could
+  // finish reading the "Saved!" reply. Keep the radio in AP_STA with the
+  // station interface enabled but idle: the save then leaves the radio alone
+  // (no mode change, no flap) and the reply is delivered reliably. The
+  // station is reconfigured for the target network during the save hand-off.
+  WiFi.setAutoReconnect(false); // no stray station re-association while provisioning
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.enableSTA(true);
+  WiFi.disconnect(false, false); // drop any stale link, keep the AP up
   phase = WIFI_PORTAL;
 }
 
@@ -164,6 +182,18 @@ void networkSetup() {
   // Even without connect-on-save, one process() call after a save still polls
   // for a connect result; bound it tightly (0 would fall back to a 60 s wait).
   wm.setSaveConnectTimeout(1);
+  // Explain the save hand-off on every portal page so the disappearing AP is
+  // not mistaken for a failure.
+  wm.setCustomHeadElement(
+      "<script>document.addEventListener('DOMContentLoaded',function(){"
+      "var n=document.createElement('p');"
+      "n.style.cssText='background:#fff3cd;border:1px solid #ffe08a;"
+      "border-radius:6px;padding:8px;margin:10px 0;font-size:13px;"
+      "line-height:1.4';"
+      "n.textContent='Save: the panel switches to the entered network and this "
+      "RCT-Panel access point then disappears. To provision again, boot with "
+      "the Wi-Fi unreachable (or erase NVS).';"
+      "document.body.prepend(n);});</script>");
 
   if (wifi_ssid[0]) {
     // Background connect to the credentials from a previous session; the GUI
@@ -217,18 +247,38 @@ bool networkUpdate() {
         return true;
       }
       // Save-only portal: a save returns WL_IDLE from process() and fires
-      // saveConfigCallback(). The submitted credentials are already persisted
-      // into the esp-wifi profile by the library; take over with our own
-      // background connect so the GUI keeps running, and a wrong password just
-      // re-opens the portal after the connect budget expires.
+      // saveConfigCallback(). Take over with our own background connect so the
+      // GUI keeps running, and a wrong password just re-opens the portal after
+      // the connect budget expires.
       if (portalSaved) {
         portalSaved = false;
-        wm.stopConfigPortal();
-        Serial.println(F("WiFi: portal save received, connecting ..."));
+        // Capture the submitted credentials now (the Wi-Fi driver is up and
+        // the library already configured the station with them), so the
+        // hand-off never depends on the chip's NVS profile.
         String ssid = wm.getWiFiSSID();
-        WiFi.mode(WIFI_STA);
         if (ssid.length() > 0) {
-          WiFi.begin(ssid.c_str(), wm.getWiFiPass().c_str());
+          strncpy(wifi_ssid, ssid.c_str(), sizeof(wifi_ssid) - 1);
+          wifi_ssid[sizeof(wifi_ssid) - 1] = '\0';
+          String pass = wm.getWiFiPass();
+          strncpy(wifi_pass, pass.c_str(), sizeof(wifi_pass) - 1);
+          wifi_pass[sizeof(wifi_pass) - 1] = '\0';
+        }
+        // Keep the provisioning AP up a moment longer so the browser reliably
+        // receives and renders the "Saved!" reply before the radio switches
+        // over to the configured network.
+        portalClosePending = true;
+        portalCloseDeadline = millis() + PORTAL_CONFIRM_MS;
+        Serial.println(F("WiFi: portal save received, switching networks ..."));
+      }
+      if (portalClosePending &&
+          (int32_t)(millis() - portalCloseDeadline) >= 0) {
+        portalClosePending = false;
+        wm.stopConfigPortal();
+        Serial.println(F("WiFi: connecting to saved network ..."));
+        WiFi.setAutoReconnect(true); // normal operation
+        WiFi.mode(WIFI_STA);
+        if (wifi_ssid[0]) {
+          WiFi.begin(wifi_ssid, wifi_pass);
         } else {
           WiFi.begin(); // profile-based fallback
         }
