@@ -66,6 +66,12 @@ bool touchInit() {
 
 void touchReadCb(lv_indev_t *indev, lv_indev_data_t *data) {
   (void)indev;
+  if (!s_addr) { // controller not found / Wire not up: report released
+    data->point.x = 0;
+    data->point.y = 0;
+    data->state = LV_INDEV_STATE_RELEASED;
+    return;
+  }
   uint8_t status = 0;
   if (gt911Read(GT911_REG_STATUS, &status, 1) && (status & 0x01)) {
     uint8_t pt[6] = {0}; // track id + x(lo,hi) + y(lo,hi) + size

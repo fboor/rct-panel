@@ -27,6 +27,10 @@
 #define RCT_RX_TIMEOUT_MS 2000    // per-frame receive window
 #define RCT_CYCLE_TIMEOUT_MS 4000 // total per-poll collection budget
 #define RCT_INFO_POLL_MS 10000    // device info group poll cadence
+// Bounded connect() so an unreachable host can not freeze the UI task for
+// long; offline reconnects are throttled independently of the poll cadence.
+#define RCT_CONNECT_TIMEOUT_MS 2000
+#define RCT_CONNECT_RETRY_MS 30000
 
 static WiFiClient rctClient;
 
@@ -372,19 +376,37 @@ RctSnapshot rctState = {};
 // Public poll entry point (mirrors parseRCT in the ported project).
 void rctParse() {
   if (!rctClient.connected()) {
-    int port = atol(rct_port);
-    if (port <= 0) {
-      port = 8899;
-    }
-    Serial.printf("RCT: connecting to %s:%d ...\n", rct_host, port);
-    if (!rctClient.connect(rct_host, port)) {
-      Serial.println("RCT: connect failed");
+    // No link: skip the attempt so the UI (same task) is never frozen by a
+    // blocking connect. "not connected" is signaled through rctState.
+    if (WiFi.status() != WL_CONNECTED) {
       rctState.connected = false;
       return;
     }
-    rctState.connected = true;
-    delay(20);
-    rctSendExtension();
+
+    // Retrying an unreachable host with a bounded timeout stalls the UI for
+    // up to RCT_CONNECT_TIMEOUT_MS on this task, so keep the retry cadence
+    // long; live polls only happen while the socket is up.
+    static uint32_t lastAtt = 0;
+    const uint32_t nowAtt = millis();
+    if ((int32_t)(nowAtt - lastAtt) >= (int32_t)RCT_CONNECT_RETRY_MS) {
+      lastAtt = nowAtt;
+      int port = atol(rct_port);
+      if (port <= 0) {
+        port = 8899;
+      }
+      Serial.printf("RCT: connecting to %s:%d ...\n", rct_host, port);
+      if (!rctClient.connect(rct_host, port, RCT_CONNECT_TIMEOUT_MS)) {
+        Serial.println("RCT: connect failed");
+        rctState.connected = false;
+        return;
+      }
+      rctState.connected = true;
+      delay(20);
+      rctSendExtension();
+    } else {
+      rctState.connected = false;
+      return;
+    }
   }
 
   // Ask for every value we track. The device-info group runs on its own

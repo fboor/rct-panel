@@ -1,5 +1,11 @@
 // Configuration: settings storage + WiFiManager captive-portal provisioning.
 //
+// Wi-Fi is brought up non-blocking so the LVGL/GUI keeps running while the
+// panel either (a) reconnects to the saved network in the background or
+// (b) serves the "RCT-Panel" provisioning access point + captive portal
+// web page at 192.168.4.1. Follows the WiFiManager NonBlocking example
+// pattern (config portal non-blocking + process() pumped from loop()).
+//
 // Ported/adapted from the Energy2Shelly_ESP project
 // (https://github.com/) - Apache License 2.0. See NOTICE.
 #ifndef CONFIGURATION_H
@@ -17,12 +23,20 @@ void readConfig();
 // Persist current settings to NVS.
 void saveConfig();
 
-// Bring up Wi-Fi. On first boot (no saved credentials) this starts the
-// "RCT-Panel" access point + captive portal web page at 192.168.4.1 where the
-// RTC host/port are entered. Blocks until connected or the portal timed out.
-void setupConfigPortal();
+// One-time boot setup: loads settings and starts the Wi-Fi state machine.
+// Never blocks: with saved credentials it starts a background connect
+// attempt; without them (or when the saved network stays unreachable) it
+// serves the "RCT-Panel" provisioning access point instead.
+void networkSetup();
 
-// Lightweight periodic reconnect attempt when the link dropped.
+// Pump the Wi-Fi state machine (background connection or captive portal
+// web server). Call on every loop(). Returns true once a usable Wi-Fi
+// link is up and provisioning housekeeping is done; afterwards the portal
+// is stopped and wifiReconnectLoop() takes over.
+bool networkUpdate();
+
+// Lightweight periodic reconnect attempts after the link dropped
+// post-provisioning. No-op while provisioning (the portal owns the radio).
 void wifiReconnectLoop();
 
 #endif // CONFIGURATION_H

@@ -33,11 +33,16 @@ device over TCP (RCT "Serial Communication Protocol", default port 8899).
 - **Data rate:** all live values are re-read from the inverter every 10 s (the
   device-info group above on the same 10 s cadence); the display redraws at
   1 Hz from the last-known-good values, and the Verlauf graph stores one
-  sample every 5 minutes.
-- **Provisioning:** first boot (or no saved Wi-Fi) starts the **RCT-Panel**
-  access point with a captive-portal web page at `http://192.168.4.1` where
-  the Wi-Fi credentials and the **RCT host / port** are entered. Settings are
-  kept in NVS.
+  sample every 5 minutes. When the inverter is unreachable the panel keeps
+  rendering (badge `no data`, Info page `offline`) and retries the connection
+  every 30 s with a bounded 2 s connect timeout, so the UI never stalls.
+- **Provisioning (non-blocking):** the GUI keeps running while the panel
+  connects to the saved network in the background. Without saved credentials —
+  or when the saved network stays unreachable for ~15 s — it serves the
+  **RCT-Panel** access point with a captive-portal web page at
+  `http://192.168.4.1` where the Wi-Fi credentials and the **RCT host / port**
+  are entered. The AP stays up until the panel is configured. Settings and the
+  captured Wi-Fi credentials are kept in NVS.
 - **Hardware:** ST7701S via 3-wire 9-bit SPI (init) + ESP32-S3 parallel RGB
   (pixels, esp_lcd LCD_CAM), GT911 on I²C `0x5D` (polled; RST/INT not wired).
 
@@ -59,15 +64,26 @@ The custom board definition lives in `boards/`, partitions in `partitions/`.
 | RCT device IP / hostname | `rct_host` | `192.168.0.1` |
 | RCT TCP port | `rct_port` | `8899` |
 
-To reconfigure: with the device booted, reset it **and hold the BOOT button**
-during the portal window (or erase NVS with `pio run -e esp32-s3 -t erase`).
+To reconfigure: opening the panel's web portal again is easy — power it up with
+no reachable network (or wipe NVS with `pio run -e esp32-s3 -t erase`) and it
+serves the `RCT-Panel` AP. Connecting to the saved network is always tried
+first in the background, so no manual action is needed on normal boots.
+
+> **Upgrading from older builds:** panels flashed with a build older than the
+> non-blocking provisioning change did not reliably persist the Wi-Fi
+> credentials (the WiFiManager NVS layout was never populated on first connect),
+> so a one-time manual provisioning may be required. The current build captures
+> the credentials into its own NVS on the first successful connect and is fully
+> self-contained from then on.
 
 ## Source layout
 
 ```
 src/
-  main.cpp              wiring: init, loop (LVGL tick + 10 s RCT poll)
-  config/               settings, NVS, WiFiManager portal (rct_host/rct_port)
+  main.cpp              wiring: init, loop (LVGL tick, non-blocking Wi-Fi
+                        provisioning pump, 10 s RCT poll)
+  config/               settings, NVS, non-blocking WiFiManager provisioning
+                        AP (saved Wi-Fi + rct_host/rct_port)
   rct/                  RCT Power TCP client (ported from Energy2Shelly_ESP)
   display/              ST7701 + esp_lcd RGB driver, GT911 touch, pin map
   gui/                  LVGL pages + left/home/right navigation
@@ -107,8 +123,33 @@ Bring-up checklist (in priority order) once you have hardware:
 4. **RCT link:** set host/port in the portal; watch the `RCT: grid ...`
    lines on serial (grid, load, PV, battery values).
 
-The OLED-less boot sequence shows splash text while WiFiManager provisions,
-then the live pages.
+Boot sequence (serial 115200): the GUI comes up immediately; a healthy boot
+looks like
+
+```
+RCT Power Panel boot
+LCD: display ready
+WiFi: trying saved profile ...        # or "trying saved network '<ssid>' ..."
+Touch: GT911 found at 0x5D
+WiFi: connected, RSSI -5x dBm, RCT host '...' port '8899'
+WiFi: ip 192.168.1.228, gw ..., dns ...
+RCT: grid ... load ...               # live values every 10 s
+```
+
+When no saved network is reachable (first boot, moved to a different network,
+or NVS erased) the `WiFi: starting 'RCT-Panel' provisioning access point ...`
+line appears and the GUI keeps rendering while the portal web page stays
+available at `http://192.168.4.1`.
+
+Known hardware quirks encountered during bring-up:
+
+- The board has **octal PSRAM**; `memory_type: "qio_opi"` is required in
+  `boards/guition-esp32-s3-4848s040.json` — the default quad setting fails
+  the PSRAM self-test on this 4848S040.
+- `lv_init()` must run before any other LVGL call (it resets the TLSF heap
+  allocator; calling it late crashes with `esp_heap_caps` errors).
+- `touchInit()` must run before `lv_indev_create()`, otherwise the wire/touch
+  tasks deadlock on the I²C lock ("could not acquire lock").
 
 ## Roadmap / open questions
 

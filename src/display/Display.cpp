@@ -125,6 +125,10 @@ static void lcdFlushCb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_ma
 }
 
 bool displayInit() {
+  // LVGL must be initialized before any lv_* API (first use is
+  // lv_display_create() below); lv_init() is safe to call repeatedly.
+  lv_init();
+
   // Backlight on (active high).
   pinMode(PIN_LCD_BL, OUTPUT);
   digitalWrite(PIN_LCD_BL, HIGH);

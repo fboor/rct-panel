@@ -957,7 +957,9 @@ void guiStartApp() {
   lv_obj_set_size(bHome, 140, NAV_H - 12);
   lv_obj_set_size(bRight, 140, NAV_H - 12);
 
-  // Touch input device (GT911 -> LVGL pointer).
+  // Touch input device (GT911 -> LVGL pointer). Wire must be set up before
+  // the read callback starts polling; failure only disables touch.
+  touchInit();
   lv_indev_t *indev = lv_indev_create();
   lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
   lv_indev_set_read_cb(indev, touchReadCb);
