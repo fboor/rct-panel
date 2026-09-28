@@ -28,6 +28,7 @@ char rct_port[6] = "8899";
 static Preferences prefs;
 static WiFiManager wm; // must outlive setup(): non-blocking portal is pumped from loop()
 static bool shouldSaveConfig = false;
+static bool portalSaved = false; // set when the user submits the portal form
 static bool ready = false; // provisioning finished, link usable
 
 // Persisted Wi-Fi credentials, captured on every successful connect so boot
@@ -43,7 +44,10 @@ static WifiPhase phase = WIFI_CONNECTING;
 static const uint32_t CONNECT_BUDGET_MS = 15000; // give up saved network after this
 static uint32_t connectDeadline = 0;
 
-static void saveConfigCallback() { shouldSaveConfig = true; }
+static void saveConfigCallback() {
+  shouldSaveConfig = true; // finishWifiUp() persists host/port + captured credentials
+  portalSaved = true;      // networkUpdate() hands off to the background connect
+}
 
 static WiFiManagerParameter section_rct("<hr><h3>RCT Power options</h3>");
 static WiFiManagerParameter p_rct_host("rct_host",
@@ -145,6 +149,21 @@ void networkSetup() {
   // captive portal web server from networkUpdate()/loop() instead.
   wm.setConfigPortalBlocking(false);
   wm.setConfigPortalTimeout(0); // AP stays up until configured; we close it ourselves
+  // Bound the portal's connect-on-save: with the library default (_connectTimeout
+  // = 0) a save runs Arduino's 60 s waitForConnectResult() while the loop is
+  // blocked inside process() - the portal and LCD freeze and the client times
+  // out. 8 s covers a normal association + DHCP on a reachable network.
+  wm.setConnectTimeout(8);
+  // Save-only provisioning: the portal must not churn the radio by connecting
+  // to the submitted network itself - that kicks the client off the AP and has
+  // left the S3 softAP in a degraded (beaconing but unjoinable) state after a
+  // failed save. Saving here only persists the submitted credentials into the
+  // esp-wifi profile; saveConfigCallback() then hands control to our
+  // non-blocking background connect in networkUpdate().
+  wm.setSaveConnect(false);
+  // Even without connect-on-save, one process() call after a save still polls
+  // for a connect result; bound it tightly (0 would fall back to a 60 s wait).
+  wm.setSaveConnectTimeout(1);
 
   if (wifi_ssid[0]) {
     // Background connect to the credentials from a previous session; the GUI
@@ -189,12 +208,32 @@ bool networkUpdate() {
         }
         return false;
       }
-      // Pumps DNS/HTTP + the connect-after-save flow. Returns true once the
-      // station is up, i.e. the user configured the Wi-Fi.
+      // Pumps DNS/HTTP + the post-save flow. Returns true once the station is
+      // up, i.e. the user configured the Wi-Fi (only reachable in connect-on-
+      // save mode; we use save-only, so this stays false).
       if (wm.process()) {
         wm.stopConfigPortal();
         finishWifiUp();
         return true;
+      }
+      // Save-only portal: a save returns WL_IDLE from process() and fires
+      // saveConfigCallback(). The submitted credentials are already persisted
+      // into the esp-wifi profile by the library; take over with our own
+      // background connect so the GUI keeps running, and a wrong password just
+      // re-opens the portal after the connect budget expires.
+      if (portalSaved) {
+        portalSaved = false;
+        wm.stopConfigPortal();
+        Serial.println(F("WiFi: portal save received, connecting ..."));
+        String ssid = wm.getWiFiSSID();
+        WiFi.mode(WIFI_STA);
+        if (ssid.length() > 0) {
+          WiFi.begin(ssid.c_str(), wm.getWiFiPass().c_str());
+        } else {
+          WiFi.begin(); // profile-based fallback
+        }
+        phase = WIFI_CONNECTING;
+        connectDeadline = millis() + CONNECT_BUDGET_MS;
       }
       return false;
 

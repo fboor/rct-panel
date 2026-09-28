@@ -43,6 +43,10 @@ device over TCP (RCT "Serial Communication Protocol", default port 8899).
   `http://192.168.4.1` where the Wi-Fi credentials and the **RCT host / port**
   are entered. The AP stays up until the panel is configured. Settings and the
   captured Wi-Fi credentials are kept in NVS.
+- **Save-only provisioning:** submitting the portal form never breaks the AP or
+  blocks the loop — the credentials are stored and the network is joined in the
+  background; if the network is unreachable (wrong password, no reply) the
+  portal simply re-opens after ~15 s so it can be corrected.
 - **Hardware:** ST7701S via 3-wire 9-bit SPI (init) + ESP32-S3 parallel RGB
   (pixels, esp_lcd LCD_CAM), GT911 on I²C `0x5D` (polled; RST/INT not wired).
 
