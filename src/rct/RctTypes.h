@@ -1,0 +1,39 @@
+// Shared RCT Power data snapshot consumed by the GUI.
+#ifndef RCT_TYPES_H
+#define RCT_TYPES_H
+
+#include <Arduino.h>
+
+// Latest known-good values from the RCT Power device, one entry per meter
+// slot. Values keep their last good reading until refreshed (a partially
+// responsive device must not blank the panel).
+struct RctSnapshot {
+  float gridPower[3];     // g_sync.p_ac_sc[0..2]      grid power per phase [W]
+  float gridVoltage[3];   // rb485.u_l_grid[0..2]      grid voltage per phase [V]
+  float gridFrequency[3]; // rb485.f_grid[0..2]        grid frequency per phase [Hz]
+  float feedInEnergyWh;   // energy.e_grid_feed_total  [Wh] (already Wh)
+  float loadEnergyWh;     // energy.e_grid_load_total  [Wh] (already Wh)
+
+  // Current-day totals (portal "Übersicht"/"Energiestatistiken", Heute).
+  float dayPvWh;        // energy.e_dc_day[0]+[1]      generated today [Wh]
+  float dayFeedInWh;    // energy.e_grid_feed_day      fed into the grid [Wh]
+  float dayLoadWh;      // energy.e_load_day           household load [Wh]
+  float dayGridLoadWh;  // energy.e_grid_load_day      drawn from grid [Wh]
+
+  float loadPower[3];   // g_sync.p_ac_load[0..2]      household load per phase [W]
+  float pvPower[2];     // dc_conv.dc_conv_struct[i].p_dc_lp  solar gen A/B [W]
+  float s0Power;        // io_board.s0_external_power         S0 meter [W], 0 while absent
+  float batterySoc;     // battery.soc     [%]
+  float batteryCurrent; // battery.current [A]
+  float batteryVoltage; // battery.voltage [V]
+  float batteryPower;   // g_sync.p_acc_lp [W]; positive = charging
+
+  bool haveData;      // any value ever received from the device
+  bool haveBattery;   // battery.soc ever answered (device has a battery)
+  bool connected;     // TCP link up right now
+  uint32_t lastUpdateMs; // timestamp of last received frame
+};
+
+extern RctSnapshot rctState;
+
+#endif // RCT_TYPES_H
