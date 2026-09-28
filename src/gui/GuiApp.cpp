@@ -12,6 +12,9 @@
 // g_sync.p_acc_lp (positive = charging). Nodes stay "-" until the device
 // answers the respective OIDs.
 //
+// Pages: 1 Energiefluss, 2 Heute (day summary), 3 Info, 4 Verlauf (24 h
+// power graph; one sample every 5 minutes, PV A+B and S0 as separate series).
+//
 // Layout:
 //   +-----------------------------+  <- status bar (title / link badge)
 //   |       PV     [haus]   NETZ   |
@@ -58,6 +61,7 @@ enum PageId {
   PAGE_OVERVIEW = 0,
   PAGE_ENERGY,
   PAGE_INFO,
+  PAGE_GRAPH, // 24 h power history
   PAGE_COUNT,
 };
 
@@ -112,6 +116,32 @@ enum EnLabel {
   EN_EVB_VAL, EN_EVB_LBL,     // Eigenverbrauch (%)
   EN_LABEL_COUNT,
 };
+
+// 24 h history (graph) page label indices.
+enum GhLabel {
+  GH_TITLE = 0,
+  GH_LABEL_COUNT,
+};
+
+// --- 24 h power history ----------------------------------------------------
+// One sample every 5 minutes while the device is running; the ring buffer
+// holds 288 samples (= exactly 24 h). Values are W, mirrored as float for the
+// Y autoscale and fed to the LVGL chart as int32. S0 is kept as its own series
+// (not merged into the PV A+B total), mirroring the portal's separate "+EXT."
+// node. Battery/grid may be negative (discharge / feed-in).
+static const int HIST_POINTS = 288;              // 288 * 5 min = 24 h
+static const int HIST_SERIES = 5;                // grid, house, PV, S0, battery
+static const uint32_t HIST_INTERVAL_MS = 300000; // 5 min
+static const uint32_t kHistColor[HIST_SERIES] = {0xCA0C0F, 0xA45EE5, 0x3EC97A,
+                                                 0x2E93E5, 0xF0A202};
+static const char *const kHistName[HIST_SERIES] = {"Netz", "Haus", "PV", "S0",
+                                                   "Bat"};
+static lv_obj_t *s_chart = nullptr;
+static lv_chart_series_t *s_chartSer[HIST_SERIES] = {nullptr};
+static float s_hist[HIST_POINTS * HIST_SERIES] = {0.0f}; // packed [pt][ser]
+static int s_histCount = 0; // samples stored so far
+static int s_histNext = 0;  // next write slot (ring cursor)
+static uint32_t s_lastHistMs = 0; // time of the last stored sample
 
 struct AppPage {
   const char *title;
@@ -358,6 +388,95 @@ static void pageBuildInfo(AppPage *p) {
     lv_obj_align(p->labels[i], LV_ALIGN_TOP_LEFT, 24, 24 + i * 28);
   }
   p->labelCount = INF_LABEL_COUNT;
+}
+
+// Recompute the chart Y range from the stored history ring (kW = W / 1000 on
+// the axis is implied by the legend; the range itself stays in W).
+static void updateChartRange() {
+  float loW = 0.0f, hiW = 0.0f;
+  bool first = true;
+  int start = (s_histNext - s_histCount + HIST_POINTS) % HIST_POINTS;
+  for (int p = 0; p < s_histCount; p++) {
+    const float *row = &s_hist[((start + p) % HIST_POINTS) * HIST_SERIES];
+    for (int i = 0; i < HIST_SERIES; i++) {
+      float v = row[i];
+      if (first) {
+        loW = hiW = v;
+        first = false;
+      } else if (v < loW) {
+        loW = v;
+      } else if (v > hiW) {
+        hiW = v;
+      }
+    }
+  }
+  // Always keep the zero line visible.
+  loW = loW < 0.0f ? loW : 0.0f;
+  hiW = hiW > 0.0f ? hiW : 0.0f;
+
+  float span = hiW - loW;
+  float step = span < 2000.0f  ? 250.0f
+               : span < 4000.0f  ? 500.0f
+               : span < 10000.0f ? 1000.0f
+                                 : 2000.0f;
+  loW = floorf(loW / step) * step;
+  hiW = ceilf(hiW / step) * step;
+  if (hiW - loW < step) hiW = loW + step;
+
+  lv_chart_set_axis_range(s_chart, LV_CHART_AXIS_PRIMARY_Y, (int32_t)loW,
+                          (int32_t)hiW);
+}
+
+// Graph page: all power values of the last 24 hours (legend above, chart
+// below). One sample lands every 5 minutes in refreshCb.
+static void pageBuildGraph(AppPage *p) {
+  lv_obj_t *root = p->root;
+  p->labels[GH_TITLE] =
+      makeLabel(root, "24 h Verlauf", &lv_font_montserrat_16, COL_MUTED);
+  lv_obj_set_pos(p->labels[GH_TITLE], 20, 8);
+
+  // Legend: small color dot + series name.
+  for (int i = 0; i < HIST_SERIES; i++) {
+    lv_obj_t *dot = lv_obj_create(root);
+    lv_obj_set_size(dot, 10, 10);
+    lv_obj_set_pos(dot, 20 + i * 90, 32);
+    lv_obj_set_style_bg_color(dot, lv_color_hex(kHistColor[i]), 0);
+    lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_border_width(dot, 0, 0);
+    lv_obj_set_style_shadow_width(dot, 0, 0);
+    lv_obj_t *nm =
+        makeLabel(root, kHistName[i], &lv_font_montserrat_14, COL_TEXT);
+    lv_obj_set_pos(nm, 34 + i * 90, 29);
+  }
+
+  // Chart. Points are seeded with LV_CHART_POINT_NONE so nothing is drawn
+  // until real 5-minute samples arrive (no fake zero history after boot).
+  s_chart = lv_chart_create(root);
+  lv_obj_set_pos(s_chart, 12, 52);
+  lv_obj_set_size(s_chart, 456, 298);
+  lv_obj_set_style_bg_color(s_chart, COL_CARD, 0);
+  lv_obj_set_style_radius(s_chart, 10, 0);
+  lv_obj_set_style_border_width(s_chart, 1, 0);
+  lv_obj_set_style_border_color(s_chart, COL_BORDER, 0);
+  lv_obj_set_style_pad_all(s_chart, 10, 0);
+  lv_obj_set_style_line_width(s_chart, 1, LV_PART_MAIN); // divider grid
+  lv_obj_set_style_line_color(s_chart, COL_BORDER, LV_PART_MAIN);
+  lv_obj_set_style_line_width(s_chart, 2, LV_PART_ITEMS); // series stroke
+  // No point markers (dots only draw when the indicator size is nonzero).
+  lv_obj_set_style_width(s_chart, 0, LV_PART_INDICATOR);
+  lv_obj_set_style_height(s_chart, 0, LV_PART_INDICATOR);
+
+  lv_chart_set_type(s_chart, LV_CHART_TYPE_LINE);
+  lv_chart_set_point_count(s_chart, HIST_POINTS);
+  lv_chart_set_update_mode(s_chart, LV_CHART_UPDATE_MODE_SHIFT);
+  lv_chart_set_div_line_count(s_chart, 4, 5);
+  lv_chart_set_axis_range(s_chart, LV_CHART_AXIS_PRIMARY_Y, 0, 3000);
+  for (int i = 0; i < HIST_SERIES; i++) {
+    s_chartSer[i] = lv_chart_add_series(s_chart, lv_color_hex(kHistColor[i]),
+                                        LV_CHART_AXIS_PRIMARY_Y);
+    lv_chart_set_all_values(s_chart, s_chartSer[i], LV_CHART_POINT_NONE);
+  }
+  p->labelCount = GH_LABEL_COUNT;
 }
 
 // ---------------------------------------------------------------------------
@@ -615,6 +734,28 @@ static void refreshCb(lv_timer_t *t) {
     setText(inf.labels[INF_BAT], "Bat:       %5.3f kW %+5.1f A %4.1f V",
             s.batteryPower / 1000.0f, s.batteryCurrent, s.batteryVoltage);
   }
+
+  // --- 24 h history: one sample every 5 minutes while running ---
+  if (s_chart && s.haveData) {
+    uint32_t now = millis();
+    if (s_lastHistMs == 0 || now - s_lastHistMs >= HIST_INTERVAL_MS) {
+      s_lastHistMs = now;
+      float v[HIST_SERIES] = {0.0f};
+      v[0] = s.gridPower[0] + s.gridPower[1] + s.gridPower[2]; // Netz
+      v[1] = s.loadPower[0] + s.loadPower[1] + s.loadPower[2]; // Haus
+      v[2] = s.pvPower[0] + s.pvPower[1];                      // PV A+B
+      v[3] = s.s0Power;                                        // S0 (own series)
+      v[4] = s.batteryPower;                                   // Bat
+      float *dst = &s_hist[s_histNext * HIST_SERIES];
+      for (int i = 0; i < HIST_SERIES; i++) {
+        dst[i] = v[i];
+        lv_chart_set_next_value(s_chart, s_chartSer[i], (int32_t)v[i]);
+      }
+      s_histNext = (s_histNext + 1) % HIST_POINTS;
+      if (s_histCount < HIST_POINTS) s_histCount++;
+      updateChartRange();
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -678,9 +819,10 @@ void guiStartApp() {
   lv_obj_set_style_pad_bottom(content, 0, 0);
 
   // Pages.
-  static const char *titles[PAGE_COUNT] = {"Energiefluss", "Heute", "Info"};
+  static const char *titles[PAGE_COUNT] = {"Energiefluss", "Heute", "Info",
+                                          "Verlauf"};
   void (*builders[PAGE_COUNT])(AppPage *) = {pageBuildOverview, pageBuildEnergy,
-                                             pageBuildInfo};
+                                             pageBuildInfo, pageBuildGraph};
   for (int i = 0; i < PAGE_COUNT; i++) {
     s_pages[i].title = titles[i];
     s_pages[i].labelCount = 0;

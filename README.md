@@ -14,7 +14,15 @@ device over TCP (RCT "Serial Communication Protocol", default port 8899).
     Erzeugung/Verbrauch/Netz/Batterie status table. PV power uses solar
     generators A+B plus the S0 meter; the household node uses the Power
     Sensor load phases.
-  - **Energy** — consumption / feed-in counters (kWh).
+  - **Heute** — current-day summaries in the style of the portal's
+    *Übersicht* and *Energiestatistiken*: Erzeugt / Eigenverbrauch / Eingespeist
+    (kWh), Verbrauch / Bezug, plus Autarkie and Eigenverbrauch in %. Autarkie
+    is derived as 1 − grid draw / household load of the day.
+  - **Verlauf** — line graph of the last 24 hours of power (netz, haus, PV,
+    S0, batterie) in kW. A data point is stored every 5 minutes while the
+    device runs (288 entries = 24 h). PV A+B and the S0 meter are plotted as
+    separate series, matching the portal's separate "+EXT." node; the Y axis
+    autoscales and the history lives in RAM (resets on reboot).
   - **Info** — link state, host, port, last data, uptime, per-phase grid
     power (L1/L2/L3), PV total, household load, battery SOC/power/current/
     voltage.
