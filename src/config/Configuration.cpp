@@ -84,6 +84,9 @@ void saveConfig() {
 // WiFiManager portal web server is kept running by networkUpdate()).
 static void startProvisioningAp() {
   Serial.println(F("WiFi: starting 'RCT-Panel' provisioning access point ..."));
+  // Modem sleep can make the ESP32-S3 softAP drop beacons/associations; keep
+  // the radio fully awake while the panel is acting as the provisioning AP.
+  WiFi.setSleep(false);
   wm.startConfigPortal("RCT-Panel");
   phase = WIFI_PORTAL;
 }
@@ -137,24 +140,26 @@ void networkSetup() {
   wm.addParameter(&section_rct);
   wm.addParameter(&p_rct_host);
   wm.addParameter(&p_rct_port);
+  // Portals must stay cooperative with the GUI loop instead of running
+  // WiFiManager's internal blocking loop (the library default): we pump the
+  // captive portal web server from networkUpdate()/loop() instead.
+  wm.setConfigPortalBlocking(false);
   wm.setConfigPortalTimeout(0); // AP stays up until configured; we close it ourselves
 
-  String savedSsid = String(wifi_ssid);
-  if (savedSsid.length() > 0) {
-    // Background connect to the credentials from a previous session.
-    Serial.printf("WiFi: trying saved network '%s' ...\n", savedSsid.c_str());
+  if (wifi_ssid[0]) {
+    // Background connect to the credentials from a previous session; the GUI
+    // keeps running while this is in progress (polled from networkUpdate()).
+    Serial.printf("WiFi: trying saved network '%s' ...\n", wifi_ssid);
+    WiFi.setSleep(false); // keep the radio responsive for both STA and the AP
     WiFi.mode(WIFI_STA);
     WiFi.begin(wifi_ssid, wifi_pass);
     phase = WIFI_CONNECTING;
   } else {
-    // No stored credentials of our own: fall back to the esp_wifi NVS profile
-    // (boards provisioned by older builds / the reference project still have
-    // one). WiFi.begin() without arguments connects with that profile; the
-    // successful network is captured into our own storage by finishWifiUp().
-    Serial.println(F("WiFi: trying saved profile ..."));
-    WiFi.mode(WIFI_STA);
-    WiFi.begin();
-    phase = WIFI_CONNECTING;
+    // No credentials of our own yet (fresh board, NVS wiped, or credentials
+    // never captured): serve the provisioning AP right away instead of poking
+    // the chip's own NVS profile, whose contents are unreliable before the
+    // Wi-Fi driver has been initialized (and have been observed as garbage).
+    startProvisioningAp();
   }
   connectDeadline = millis() + CONNECT_BUDGET_MS;
 }
