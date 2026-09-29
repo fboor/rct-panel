@@ -58,6 +58,16 @@
 #define STATUS_H 44
 #define CONTENT_H (480 - STATUS_H - NAV_H)
 
+// Y of the page heading inside a page root. Every page uses this one value
+// (placed centrally at page creation, see guiInit), so the heading sits at the
+// same spot on all seven pages.
+#define HEAD_Y 8
+
+// First row y on the "Info" / "Gerät" list pages, below the heading.
+#define ROW_Y0 40
+// Row pitch there. 12 rows must fit in CONTENT_H: 40 + 11*26 + 20 = 346 < 364.
+#define ROW_PITCH 26
+
 // ---------------------------------------------------------------------------
 // Palette (from the RCT Portal Energiefluss: white nodes, red active flows)
 // ---------------------------------------------------------------------------
@@ -142,8 +152,7 @@ enum InfoLabel {
 // boxes (Erzeugt / Eigenverbrauch / Eingespeist) and "Energiestatistiken"
 // (Autarkie / Eigenverbrauch). Value and caption share alternating slots.
 enum EnLabel {
-  EN_TITLE = 0,
-  EN_GEN_VAL, EN_GEN_LBL,     // Erzeugt (kWh)
+  EN_GEN_VAL = 0, EN_GEN_LBL, // Erzeugt (kWh)
   EN_SELF_VAL, EN_SELF_LBL,   // Eigenverbrauch from PV (kWh)
   EN_FEED_VAL, EN_FEED_LBL,   // Eingespeist (kWh)
   EN_VERB_VAL, EN_VERB_LBL,   // Verbrauch / household (kWh)
@@ -180,9 +189,9 @@ static lv_obj_t *s_ebarFill[ENERGY_ROWS] = {nullptr}; // bar fills, resized live
 static lv_obj_t *s_ebarBtn[ENERGY_PERIODS] = {nullptr};
 static int s_energyPeriod = 0; // selected period, 0 = Tag
 
-// 24 h history (graph) page label indices.
+// 24 h history (graph) page label indices. The page heading is not one of
+// them: it is created centrally for every page (see guiInit).
 enum GhLabel {
-  GH_TITLE = 0,
   GH_LABEL_COUNT,
 };
 
@@ -203,8 +212,7 @@ enum DevLabel {
 
 // Service page label indices.
 enum SvLabel {
-  SV_TITLE = 0,
-  SV_BAT_STATUS, // decoded battery status (white)
+  SV_BAT_STATUS = 0, // decoded battery status (white, font 16)
   SV_BAT_RAW,    // raw bitfield hex (muted)
   SV_FLT_LIST,   // decoded faults, one per line
   SV_SD,         // SD history log status
@@ -399,7 +407,7 @@ static const int EB_BAR_X = 20;
 static const int EB_BAR_W = 440;
 static const int EB_BAR_H = 16;
 static const int EB_LABEL_GAP = 24; // label line (20 px) + 4 px air to the bar
-static const int EB_ROW0_Y = 56;   // first label line
+static const int EB_ROW0_Y = 82;   // first label line (below heading + selector)
 static const int EB_ROW_H = 62;     // label (20) + gap (4) + bar (16) + air (22)
 
 // "< 1000 kWh" prints as "12,4 kWh", above that in MWh ("1,23 MWh"). The
@@ -598,11 +606,12 @@ static void pageBuildOverview(AppPage *p) {
 static void pageBuildEnergy(AppPage *p) {
   lv_obj_t *root = p->root;
 
-  // Period selector: Tag | Monat | Jahr | Gesamt.
+  // Period selector: Tag | Monat | Jahr | Gesamt. Starts below the page
+  // heading (y=8..28), which took the top row this page used before.
   for (int i = 0; i < ENERGY_PERIODS; i++) {
     lv_obj_t *btn = lv_button_create(root);
     lv_obj_set_size(btn, 108, 34);
-    lv_obj_set_pos(btn, 12 + i * 114, 8);
+    lv_obj_set_pos(btn, 12 + i * 114, 34);
     lv_obj_set_style_bg_color(btn, COL_CARD, 0);
     lv_obj_set_style_bg_color(btn, COL_ACCENT, LV_STATE_PRESSED);
     lv_obj_set_style_radius(btn, 8, 0);
@@ -663,8 +672,6 @@ static void pageBuildEnergy(AppPage *p) {
 // Eigenverbrauch percentage gauges). All energy values are scaled ÷1000 → kWh.
 static void pageBuildHeute(AppPage *p) {
   lv_obj_t *root = p->root;
-  p->labels[EN_TITLE] = makeLabel(root, "Heute", &lv_font_montserrat_16_uml, COL_MUTED);
-  lv_obj_set_pos(p->labels[EN_TITLE], 20, 10);
 
   struct {
     int x, y, w, h;
@@ -701,9 +708,9 @@ static const int ROW_VAL_X = 156;
 static void makeRow(AppPage *p, lv_obj_t *root, int i, const char *name,
                     const char *value) {
   lv_obj_t *n = makeLabel(root, name, &lv_font_montserrat_16_uml, COL_TEXT);
-  lv_obj_align(n, LV_ALIGN_TOP_LEFT, 24, 24 + i * 28);
+  lv_obj_align(n, LV_ALIGN_TOP_LEFT, 24, ROW_Y0 + i * ROW_PITCH);
   p->labels[i] = makeLabel(root, value, &lv_font_montserrat_16_uml, COL_TEXT);
-  lv_obj_align(p->labels[i], LV_ALIGN_TOP_LEFT, ROW_VAL_X, 24 + i * 28);
+  lv_obj_align(p->labels[i], LV_ALIGN_TOP_LEFT, ROW_VAL_X, ROW_Y0 + i * ROW_PITCH);
 }
 
 static void pageBuildInfo(AppPage *p) {
@@ -947,10 +954,6 @@ static void serviceSetupCb(lv_event_t *e) {
 static void pageBuildService(AppPage *p) {
   lv_obj_t *root = p->root;
 
-  p->labels[SV_TITLE] =
-      makeLabel(root, "Service", &lv_font_montserrat_16_uml, COL_MUTED);
-  lv_obj_set_pos(p->labels[SV_TITLE], 20, 8);
-
   auto sectionHead = [&](const char *text, lv_coord_t y) {
     lv_obj_t *h = makeLabel(root, text, &lv_font_montserrat_14_uml, COL_MUTED);
     lv_obj_set_pos(h, 20, y);
@@ -978,7 +981,7 @@ static void pageBuildService(AppPage *p) {
   // --- Battery status (decoded from battery.bat_status) ---
   sectionHead("Batterie-Status", 36);
   p->labels[SV_BAT_STATUS] =
-      makeLabel(root, "--", &lv_font_montserrat_20_uml, COL_TEXT);
+      makeLabel(root, "--", &lv_font_montserrat_16_uml, COL_TEXT);
   lv_obj_set_pos(p->labels[SV_BAT_STATUS], 20, 58);
   p->labels[SV_BAT_RAW] =
       makeLabel(root, "", &lv_font_montserrat_14_uml, COL_MUTED);
@@ -1041,9 +1044,6 @@ static void updateChartRange() {
 // below). One sample lands every 5 minutes in refreshCb.
 static void pageBuildGraph(AppPage *p) {
   lv_obj_t *root = p->root;
-  p->labels[GH_TITLE] =
-      makeLabel(root, "24 h Verlauf", &lv_font_montserrat_16_uml, COL_MUTED);
-  lv_obj_set_pos(p->labels[GH_TITLE], 20, 8);
 
   // Legend: small color dot + series name, packed left to right. The names
   // differ a lot in width ("Verbrauch" is 77 px, "PV" only 20), so a fixed 90 px
@@ -1661,9 +1661,10 @@ void guiStartApp() {
   lv_obj_set_style_pad_top(content, 0, 0);
   lv_obj_set_style_pad_bottom(content, 0, 0);
 
-  // Pages.
+  // Pages. One heading per page, drawn centrally at HEAD_Y (see below).
   static const char *titles[PAGE_COUNT] = {"Energiefluss", "Energie", "Heute",
-                                          "Info", "Verlauf", "Gerät", "Service"};
+                                          "24 h Verlauf", "Info", "Gerät",
+                                          "Service"};
   void (*builders[PAGE_COUNT])(AppPage *) = {
       pageBuildOverview, pageBuildEnergy, pageBuildHeute, pageBuildGraph,
       pageBuildInfo, pageBuildDevice, pageBuildService};
@@ -1679,6 +1680,12 @@ void guiStartApp() {
     for (int k = 0; k < MAX_PAGE_LABELS; k++) {
       s_pages[i].labels[k] = nullptr;
     }
+    // Page heading: every page gets the same one at the top left, in the same
+    // white and font as the "RCT Power Panel" text in the title bar. Created
+    // here rather than per page so the seven pages cannot drift apart again.
+    lv_obj_t *head = makeLabel(s_pages[i].root, titles[i],
+                              &lv_font_montserrat_16_uml, COL_TEXT);
+    lv_obj_set_pos(head, 20, HEAD_Y);
     builders[i](&s_pages[i]);
   }
 
