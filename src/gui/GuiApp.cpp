@@ -22,8 +22,8 @@
 //
 // Pages: 1 Energiefluss, 2 Energie (accumulated energies per period as bars,
 // selectable Tag/Monat/Jahr/Gesamt), 3 Heute (day summary), 4 Info, 5 Verlauf
-// (24 h power graph; one sample every 5 minutes, PV A+B and S0 as separate
-// series), 6 Gerät (device info polled every 10 s), 7 Service.
+// (24 h power graph; one sample every 5 minutes, PV A+B and the S0 meter as
+// separate series), 6 Gerät (device info polled every 10 s), 7 Service.
 //
 // Layout:
 //   +-----------------------------+  <- status bar (title / link badge)
@@ -215,13 +215,14 @@ enum SvLabel {
 // (not merged into the PV A+B total), mirroring the portal's separate "+EXT."
 // node. Battery/grid may be negative (discharge / feed-in).
 static const int HIST_POINTS = 288;              // 288 * 5 min = 24 h
-static const int HIST_SERIES = 5;                // grid, house, PV, S0, battery
+static const int HIST_SERIES = 5;                // grid, house, PV, EXT, battery
 static const uint32_t HIST_INTERVAL_MS = 300000; // 5 min
 static const uint32_t HIST_SEED_WINDOW_MS = 60000; // boot grace without a card
 static const uint32_t kHistColor[HIST_SERIES] = {0xCA0C0F, 0xA45EE5, 0x3EC97A,
                                                  0x2E93E5, 0xF0A202};
-static const char *const kHistName[HIST_SERIES] = {"Netz", "Haus", "PV", "S0",
-                                                   "Bat"};
+static const char *const kHistName[HIST_SERIES] = {"Netz", "Verbrauch", "PV",
+                                                   "EXT", "Batterie"};
+static const int LEGEND_GAP = 24; // space between two legend entries
 static lv_obj_t *s_chart = nullptr;
 static lv_chart_series_t *s_chartSer[HIST_SERIES] = {nullptr};
 static float s_hist[HIST_POINTS * HIST_SERIES] = {0.0f}; // packed [pt][ser]
@@ -274,6 +275,24 @@ static void setText(lv_obj_t *label, const char *fmt, ...) {
   va_start(ap, fmt);
   vsnprintf(buf, sizeof(buf), fmt, ap);
   va_end(ap);
+  lv_label_set_text(label, buf);
+}
+
+// Same, but for rows that print numbers: the decimal separator is a comma, as
+// on the Energie page and in the portal. snprintf always writes a point, so it
+// is swapped afterwards. Never use this for text rows - a date like
+// "29.09.2026" would come out as "29,09,2026".
+static void setNum(lv_obj_t *label, const char *fmt, ...) {
+  char buf[64];
+  va_list ap;
+  va_start(ap, fmt);
+  vsnprintf(buf, sizeof(buf), fmt, ap);
+  va_end(ap);
+  for (char *q = buf; *q; q++) {
+    if (*q == '.') {
+      *q = ',';
+    }
+  }
   lv_label_set_text(label, buf);
 }
 
@@ -667,42 +686,54 @@ static void pageBuildHeute(AppPage *p) {
   p->labelCount = EN_LABEL_COUNT;
 }
 
+// Info and device pages share one row layout: a fixed row name on the left and
+// a value column at ROW_VAL_X. Name and value are separate labels, so the
+// values start at the same x no matter how long they are. One padded string per
+// row did align them, but right-aligned - and a negative battery power would
+// have shifted its own unit by one character.
+static const int ROW_VAL_X = 156;
+
+// Add one "name / value" row. Only the value label is stored in the page: the
+// names never change.
+static void makeRow(AppPage *p, lv_obj_t *root, int i, const char *name,
+                    const char *value) {
+  lv_obj_t *n = makeLabel(root, name, &lv_font_montserrat_16_uml, COL_TEXT);
+  lv_obj_align(n, LV_ALIGN_TOP_LEFT, 24, 24 + i * 28);
+  p->labels[i] = makeLabel(root, value, &lv_font_montserrat_16_uml, COL_TEXT);
+  lv_obj_align(p->labels[i], LV_ALIGN_TOP_LEFT, ROW_VAL_X, 24 + i * 28);
+}
+
 static void pageBuildInfo(AppPage *p) {
-  lv_obj_t *root = p->root;
-  const char *rows[INF_LABEL_COUNT] = {
-      "RCT host:  --", "RCT port:  --", "Link:      --", "Last data: --",
-      "Uptime:    --", "Netz L1:   -- kW", "Netz L2:   -- kW", "Netz L3:   -- kW",
-      "PV:        -- kW", "Haus:      -- kW", "Bat SOC:   --",
-      "Bat:       --",
+  static const char *const names[INF_LABEL_COUNT] = {
+      "RCT host:", "RCT port:", "Link:",     "Last data:",
+      "Uptime:",   "Netz L1:",  "Netz L2:",  "Netz L3:",
+      "PV:",       "Verbrauch:", "Batterie SOC:", "Batterie:",
+  };
+  static const char *const values[INF_LABEL_COUNT] = {
+      "--", "--", "--", "-- s", "-- s", "-- kW", "-- kW", "-- kW",
+      "-- kW", "-- kW", "-- %", "--",
   };
   for (int i = 0; i < INF_LABEL_COUNT; i++) {
-    p->labels[i] = makeLabel(root, rows[i], &lv_font_montserrat_16_uml, COL_TEXT);
-    lv_obj_align(p->labels[i], LV_ALIGN_TOP_LEFT, 24, 24 + i * 28);
+    makeRow(p, p->root, i, names[i], values[i]);
   }
   p->labelCount = INF_LABEL_COUNT;
 }
 
 // Device info page (portal "Gerätedetails"): name / software version /
 // temperatures / next calibration / cycles / grid frequency / SOH / island
-// mode. The panel font only covers ASCII, so German umlauts are written as
-// "ue/ae/oe" (a custom font with umlauts is a possible future nice-to-have).
+// mode. Same two-column row layout as the Info page.
 static void pageBuildDevice(AppPage *p) {
-  lv_obj_t *root = p->root;
-  const char *rows[DEV_LABEL_COUNT] = {
-      "Name:          --",
-      "Software:      --",
-      "Kern:          --",
-      "Batterie:      --",
-      "Kühlkörper:  --",
-      "Kalibrierung:  --",
-      "Zyklen:        --",
-      "Netzfrequenz:  -- Hz",
-      "SOH:           --",
-      "Inselbetrieb:  --",
+  static const char *const names[DEV_LABEL_COUNT] = {
+      "Name:",      "Software:",  "Kern:",       "Batterie:",
+      "Kühlkörper:", "Kalibrierung:", "Zyklen:",  "Netzfrequenz:",
+      "SOH:",       "Inselbetrieb:",
+  };
+  static const char *const values[DEV_LABEL_COUNT] = {
+      "--", "--", "-- °C", "-- °C", "-- °C", "--",
+      "--", "-- Hz", "-- %", "--",
   };
   for (int i = 0; i < DEV_LABEL_COUNT; i++) {
-    p->labels[i] = makeLabel(root, rows[i], &lv_font_montserrat_16_uml, COL_TEXT);
-    lv_obj_align(p->labels[i], LV_ALIGN_TOP_LEFT, 24, 24 + i * 28);
+    makeRow(p, p->root, i, names[i], values[i]);
   }
   p->labelCount = DEV_LABEL_COUNT;
 }
@@ -1011,18 +1042,24 @@ static void pageBuildGraph(AppPage *p) {
       makeLabel(root, "24 h Verlauf", &lv_font_montserrat_16_uml, COL_MUTED);
   lv_obj_set_pos(p->labels[GH_TITLE], 20, 8);
 
-  // Legend: small color dot + series name.
+  // Legend: small color dot + series name, packed left to right. The names
+  // differ a lot in width ("Verbrauch" is 77 px, "PV" only 20), so a fixed 90 px
+  // pitch ran "Verbrauch" into the next dot by a pixel. A cursor keeps the
+  // entries apart for whatever the names are.
+  int lx = 20;
   for (int i = 0; i < HIST_SERIES; i++) {
     lv_obj_t *dot = lv_obj_create(root);
     lv_obj_set_size(dot, 10, 10);
-    lv_obj_set_pos(dot, 20 + i * 90, 32);
+    lv_obj_set_pos(dot, lx, 32);
     lv_obj_set_style_bg_color(dot, lv_color_hex(kHistColor[i]), 0);
     lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_border_width(dot, 0, 0);
     lv_obj_set_style_shadow_width(dot, 0, 0);
     lv_obj_t *nm =
         makeLabel(root, kHistName[i], &lv_font_montserrat_14_uml, COL_TEXT);
-    lv_obj_set_pos(nm, 34 + i * 90, 29);
+    lv_obj_set_pos(nm, lx + 14, 29);
+    lv_obj_update_layout(nm);
+    lx += 14 + lv_obj_get_width(nm) + LEGEND_GAP;
   }
 
   // Chart. Points are seeded with LV_CHART_POINT_NONE so nothing is drawn
@@ -1397,36 +1434,38 @@ static void refreshCb(lv_timer_t *t) {
 
   AppPage &inf = s_pages[PAGE_INFO];
   if (inf.labels[INF_HOST]) {
-    setText(inf.labels[INF_HOST], "RCT host:  %s", rct_host);
-    setText(inf.labels[INF_PORT], "RCT port:  %s", rct_port);
-    setText(inf.labels[INF_LINK], "Link:      %s",
+    setText(inf.labels[INF_HOST], "%s", rct_host);
+    setText(inf.labels[INF_PORT], "%s", rct_port);
+    setText(inf.labels[INF_LINK], "%s",
             s.connected ? "connected" : "offline");
-    setText(inf.labels[INF_LAST], "Last data: %lu s ago",
+    setText(inf.labels[INF_LAST], "%lu s ago",
             s.lastUpdateMs ? (millis() - s.lastUpdateMs) / 1000 : 0UL);
-    setText(inf.labels[INF_UPTIME], "Uptime:    %lu s", millis() / 1000);
-    setText(inf.labels[INF_L1], "Netz L1:   %6.3f kW", s.gridPower[0] / 1000.0f);
-    setText(inf.labels[INF_L2], "Netz L2:   %6.3f kW", s.gridPower[1] / 1000.0f);
-    setText(inf.labels[INF_L3], "Netz L3:   %6.3f kW", s.gridPower[2] / 1000.0f);
+    setText(inf.labels[INF_UPTIME], "%lu s", millis() / 1000);
+    setNum(inf.labels[INF_L1], "%.3f kW", s.gridPower[0] / 1000.0f);
+    setNum(inf.labels[INF_L2], "%.3f kW", s.gridPower[1] / 1000.0f);
+    setNum(inf.labels[INF_L3], "%.3f kW", s.gridPower[2] / 1000.0f);
     float pvTotal = s.pvPower[0] + s.pvPower[1] + s.s0Power;
     float house = s.loadPower[0] + s.loadPower[1] + s.loadPower[2];
-    setText(inf.labels[INF_PV], "PV:        %6.3f kW", pvTotal / 1000.0f);
-    setText(inf.labels[INF_HOUSE], "Haus:      %6.3f kW", house / 1000.0f);
-    setText(inf.labels[INF_SOC], "Bat SOC:   %.0f %%", s.batterySoc);
-    setText(inf.labels[INF_BAT], "Bat:       %5.3f kW %+5.1f A %4.1f V",
-            s.batteryPower / 1000.0f, s.batteryCurrent, s.batteryVoltage);
+    setNum(inf.labels[INF_PV], "%.3f kW", pvTotal / 1000.0f);
+    setNum(inf.labels[INF_HOUSE], "%.3f kW", house / 1000.0f);
+    setNum(inf.labels[INF_SOC], "%.0f %%", s.batterySoc);
+    // %+ keeps the sign column stable, so A and V stay put when the battery
+    // switches between charging and discharging.
+    setNum(inf.labels[INF_BAT], "%+.3f kW  %.1f A  %.1f V",
+           s.batteryPower / 1000.0f, s.batteryCurrent, s.batteryVoltage);
   }
 
   AppPage &dev = s_pages[PAGE_DEVICE];
   if (dev.labels[DEV_NAME]) {
     const char *dash = "--";
-    setText(dev.labels[DEV_NAME], "Name:          %s",
+    setText(dev.labels[DEV_NAME], "%s",
             s.deviceName[0] ? s.deviceName : dash);
-    setText(dev.labels[DEV_SW], "Software:      %s",
+    setText(dev.labels[DEV_SW], "%s",
             s.firmwareVersion[0] ? s.firmwareVersion : dash);
     if (s.haveData) {
-      setText(dev.labels[DEV_CORE], "Kern:          %.1f °C", s.coreTemp);
-      setText(dev.labels[DEV_BTEMP], "Batterie:      %.1f °C", s.batteryTemp);
-      setText(dev.labels[DEV_HTEMP], "Kühlkörper:  %.1f °C", s.heatSinkTemp);
+      setNum(dev.labels[DEV_CORE], "%.1f °C", s.coreTemp);
+      setNum(dev.labels[DEV_BTEMP], "%.1f °C", s.batteryTemp);
+      setNum(dev.labels[DEV_HTEMP], "%.1f °C", s.heatSinkTemp);
 
       // Next calibration: the inverter reports a Unix timestamp; turn it
       // into a date plus a day countdown once SNTP has a valid wall clock.
@@ -1440,27 +1479,23 @@ static void refreshCb(lv_timer_t *t) {
         if (nowT > 1000000000) { // synced (epoch after 2001-09-09)
           const long days = (long)((calib - nowT) / 86400);
           if (days < 0) {
-            setText(dev.labels[DEV_CALIB],
-                    "Kalibrierung:  %s (überfällig)", date);
+            setText(dev.labels[DEV_CALIB], "%s (überfällig)", date);
           } else if (days == 0) {
-            setText(dev.labels[DEV_CALIB], "Kalibrierung:  %s (heute)", date);
+            setText(dev.labels[DEV_CALIB], "%s (heute)", date);
           } else {
-            setText(dev.labels[DEV_CALIB], "Kalibrierung:  %s (in %ld Tagen)",
-                    date, days);
+            setText(dev.labels[DEV_CALIB], "%s (in %ld Tagen)", date, days);
           }
         } else {
-          setText(dev.labels[DEV_CALIB], "Kalibrierung:  %s", date);
+          setText(dev.labels[DEV_CALIB], "%s", date);
         }
       } else {
-        setText(dev.labels[DEV_CALIB], "Kalibrierung:  --");
+        setText(dev.labels[DEV_CALIB], "--");
       }
 
-      setText(dev.labels[DEV_CYCLES], "Zyklen:        %.0f", s.batteryCycles);
-      setText(dev.labels[DEV_FREQ], "Netzfrequenz:  %.2f Hz",
-              s.gridFrequency[0]);
-      setText(dev.labels[DEV_SOH], "SOH:           %.1f %%", s.batterySoh);
-      setText(dev.labels[DEV_ISLAND], "Inselbetrieb:  %s",
-              s.islandMode ? "ja" : "nein");
+      setNum(dev.labels[DEV_CYCLES], "%.0f", s.batteryCycles);
+      setNum(dev.labels[DEV_FREQ], "%.2f Hz", s.gridFrequency[0]);
+      setNum(dev.labels[DEV_SOH], "%.1f %%", s.batterySoh);
+      setText(dev.labels[DEV_ISLAND], "%s", s.islandMode ? "ja" : "nein");
     }
   }
 
