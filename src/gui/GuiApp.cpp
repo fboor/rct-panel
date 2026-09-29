@@ -193,6 +193,7 @@ static int s_energyPeriod = 0; // selected period, 0 = Tag
 // 24 h history (graph) page label indices. The page heading is not one of
 // them: it is created centrally for every page (see guiInit).
 enum GhLabel {
+  GH_GAPS = 0, // summary of missing samples in the 24 h window
   GH_LABEL_COUNT,
 };
 
@@ -238,15 +239,20 @@ static const int LEGEND_GAP = 24; // space between two legend entries
 static lv_obj_t *s_chart = nullptr;
 static lv_chart_series_t *s_chartSer[HIST_SERIES] = {nullptr};
 static float s_hist[HIST_POINTS * HIST_SERIES] = {0.0f}; // packed [pt][ser]
-static int s_histCount = 0; // samples stored so far
+static uint32_t s_histTs[HIST_POINTS] = {0};   // unix s per slot, 0 = unknown
+static uint8_t s_histOk[HIST_POINTS] = {0};    // 1 = measured, 0 = gap marker
+static int s_histCount = 0; // slots stored so far (measured + gap markers)
 static int s_histNext = 0;  // next write slot (ring cursor)
 static uint32_t s_lastHistMs = 0; // time of the last stored sample
+static uint32_t s_lastHistTs = 0; // unix s of the last stored sample
 static bool s_histSeeded = false; // history seeded once from the SD log
 static uint32_t s_histSeedStartMs = 0; // boot time used for the no-card grace
+static int s_gapCount = 0;          // gaps in the current 24 h window
+static uint32_t s_gapSeconds = 0;   // total time missing from them
 
 // Defined below refreshCb (which calls it): ring + chart share one writer so
 // restored rows and live samples land in identical state.
-static void histPush(const float v[HIST_SERIES]);
+static void histPush(const float v[HIST_SERIES], uint32_t ts);
 
 struct AppPage {
   const char *title;
@@ -1046,7 +1052,9 @@ static void updateChartRange() {
   bool first = true;
   int start = (s_histNext - s_histCount + HIST_POINTS) % HIST_POINTS;
   for (int p = 0; p < s_histCount; p++) {
-    const float *row = &s_hist[((start + p) % HIST_POINTS) * HIST_SERIES];
+    const int slot = (start + p) % HIST_POINTS;
+    if (!s_histOk[slot]) continue; // gap marker, nothing was measured
+    const float *row = &s_hist[slot * HIST_SERIES];
     for (int i = 0; i < HIST_SERIES; i++) {
       float v = row[i];
       if (first) {
@@ -1105,7 +1113,9 @@ static void pageBuildGraph(AppPage *p) {
   // until real 5-minute samples arrive (no fake zero history after boot).
   s_chart = lv_chart_create(root);
   lv_obj_set_pos(s_chart, 12, 52);
-  lv_obj_set_size(s_chart, 456, 298);
+  // 52 + 280 = 332, leaving room for the gap summary below it inside
+  // CONTENT_H (364) - a 14 px font needs ~18 px including its descenders.
+  lv_obj_set_size(s_chart, 456, 280);
   lv_obj_set_style_bg_color(s_chart, COL_CARD, 0);
   lv_obj_set_style_radius(s_chart, 10, 0);
   lv_obj_set_style_border_width(s_chart, 1, 0);
@@ -1128,6 +1138,15 @@ static void pageBuildGraph(AppPage *p) {
                                         LV_CHART_AXIS_PRIMARY_Y);
     lv_chart_set_all_values(s_chart, s_chartSer[i], LV_CHART_POINT_NONE);
   }
+  // --- Gap summary ---
+  // The chart itself shows where the recording broke (the stroke is interrupted).
+  // This line says how much is missing, because a break in a line chart is easy
+  // to read as "the value dipped" if nobody states that no value was measured.
+  p->labels[GH_GAPS] =
+      makeLabel(root, "", &lv_font_montserrat_14_uml, COL_MUTED);
+  lv_obj_set_pos(p->labels[GH_GAPS], 20, 358);
+  lv_obj_set_width(p->labels[GH_GAPS], 440);
+
   p->labelCount = GH_LABEL_COUNT;
 }
 
@@ -1595,6 +1614,24 @@ static void refreshCb(lv_timer_t *t) {
     lv_label_set_text(sv.labels[SV_SD], sdStatusText());
   }
 
+  // --- 24 h history: gap summary ---
+  if (s_chart) {
+    AppPage &gp = s_pages[PAGE_GRAPH];
+    if (s_gapCount == 0) {
+      setText(gp.labels[GH_GAPS], "");
+    } else {
+      char g[64];
+      if (s_gapCount == 1) {
+        snprintf(g, sizeof(g), "1 Lücke, %lu min ohne Messwerte",
+                 (unsigned long)((s_gapSeconds + 30) / 60));
+      } else {
+        snprintf(g, sizeof(g), "%d Lücken, %lu min ohne Messwerte", s_gapCount,
+                 (unsigned long)((s_gapSeconds + 30) / 60));
+      }
+      setText(gp.labels[GH_GAPS], "%s", g);
+    }
+  }
+
   // --- 24 h history: seed once from the SD log, then one sample per 5 min ---
   if (s_chart) {
     if (!s_histSeeded) {
@@ -1623,10 +1660,16 @@ static void refreshCb(lv_timer_t *t) {
           s_histSeeded = true; // (re)mounts later are ignored on purpose
           if (n > 0) {
             for (int r = 0; r < n; r++) {
-              histPush(seed[r].v);
+              histPush(seed[r].v, seed[r].ts);
             }
             updateChartRange();
-            Serial.printf("hist: %d samples restored from SD log\n", n);
+            if (s_gapCount > 0) {
+              Serial.printf("hist: %d samples restored from SD log, %d gap(s) "
+                            "totalling %lu s of missing data\n",
+                            n, s_gapCount, (unsigned long)s_gapSeconds);
+            } else {
+              Serial.printf("hist: %d samples restored from SD log\n", n);
+            }
           }
           s_lastHistMs = millis(); // first live sample at the next interval
         } else if (n == -1) {
@@ -1649,7 +1692,11 @@ static void refreshCb(lv_timer_t *t) {
         v[2] = s.pvPower[0] + s.pvPower[1];                      // PV A+B
         v[3] = s.s0Power;                                        // S0
         v[4] = s.batteryPower;                                   // Bat
-        histPush(v);
+        // Wall clock if it is up, else 0. A 0 timestamp disables gap detection
+        // for this sample rather than inventing a time: before SNTP there is
+        // nothing to compare against, and millis() restarts every boot anyway.
+        const time_t nowT = time(nullptr);
+        histPush(v, nowT > 1000000000 ? (uint32_t)nowT : 0u);
         updateChartRange();
       }
     }
@@ -1659,7 +1706,45 @@ static void refreshCb(lv_timer_t *t) {
 // Store one sample in the ring and feed the chart. Ring cursor and the
 // chart's per-series cursor advance in lockstep, so replaying restored rows
 // through this same call keeps both views identical to a live recording.
-static void histPush(const float v[HIST_SERIES]) {
+// The sample interval is a design constant, but what actually arrives is not:
+// the panel can be off, the SD card can be out, the device can stay silent for
+// minutes. Those are the gaps this detects, and they are drawn rather than
+// hidden - a line interpolated across three missing samples invents data that
+// was never measured, which is exactly the failure a history view must not
+// have. A gap marker is an empty chart point (LV_CHART_POINT_NONE), so the
+// stroke breaks and the reader sees where the recording stopped.
+static void histPush(const float v[HIST_SERIES], uint32_t ts) {
+  // Gap markers are the unmeasured slots between the previous sample and this
+  // one. The threshold absorbs a sample landing a few seconds late, and the
+  // missing count is the elapsed time expressed in sample intervals, rounded.
+  if (s_lastHistTs != 0 && ts != 0 && ts > s_lastHistTs) {
+    const uint32_t dt = ts - s_lastHistTs;
+    const uint32_t kIntervalSec = HIST_INTERVAL_MS / 1000;
+    if (dt > kIntervalSec + kIntervalSec / 2) {
+      int missing = (int)((dt + kIntervalSec / 2) / kIntervalSec) - 1;
+      if (missing > 0) {
+        // Bound the markers: a card out for a week would otherwise spend the
+        // whole ring on markers and evict every real sample in it.
+        if (missing > HIST_POINTS) missing = HIST_POINTS;
+        for (int m = 0; m < missing; m++) {
+          for (int i = 0; i < HIST_SERIES; i++) {
+            if (s_chart) {
+              lv_chart_set_next_value(s_chart, s_chartSer[i],
+                                      LV_CHART_POINT_NONE);
+            }
+          }
+          s_hist[s_histNext * HIST_SERIES] = 0.0f; // placeholder, unread
+          s_histOk[s_histNext] = 0;
+          s_histTs[s_histNext] = 0;
+          s_histNext = (s_histNext + 1) % HIST_POINTS;
+          if (s_histCount < HIST_POINTS) s_histCount++;
+        }
+        s_gapCount++;
+        s_gapSeconds += (uint32_t)missing * kIntervalSec;
+      }
+    }
+  }
+
   float *dst = &s_hist[s_histNext * HIST_SERIES];
   for (int i = 0; i < HIST_SERIES; i++) {
     dst[i] = v[i];
@@ -1667,8 +1752,11 @@ static void histPush(const float v[HIST_SERIES]) {
       lv_chart_set_next_value(s_chart, s_chartSer[i], (int32_t)v[i]);
     }
   }
+  s_histOk[s_histNext] = 1;
+  s_histTs[s_histNext] = ts;
   s_histNext = (s_histNext + 1) % HIST_POINTS;
   if (s_histCount < HIST_POINTS) s_histCount++;
+  if (ts != 0) s_lastHistTs = ts;
 }
 
 // ---------------------------------------------------------------------------
@@ -1735,7 +1823,7 @@ void guiStartApp() {
   lv_obj_set_style_pad_bottom(content, 0, 0);
 
   // Pages. One heading per page, drawn centrally at HEAD_Y (see below).
-  static const char *titles[PAGE_COUNT] = {"Energiefluss", "Energie", "Heute",
+  static const char *titles[PAGE_COUNT] = {"Energie", "Energie", "Heute",
                                           "24 h Verlauf", "Info", "Gerät",
                                           "Service"};
   void (*builders[PAGE_COUNT])(AppPage *) = {

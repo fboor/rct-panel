@@ -181,7 +181,11 @@ void networkSetup() {
   // TEMP (dev/test): point the panel at the local RCT simulator instead of
   // the stored host so live values can be verified. Remove for production; the
   // real host then comes from NVS / the provisioning portal again.
-  strcpy(rct_host, "192.168.1.88");
+  // Real device, read-only. The panel sends exactly two kinds of frame:
+  // READ requests (type 0x01, one per OID) and the 0x3c poll request, which
+  // asks the device to volunteer its values. It never builds a WRITE frame
+  // (type 0x02), so no setting on the device can be altered from here.
+  strcpy(rct_host, "192.168.1.83");
   strcpy(rct_port, "8899");
   Serial.printf("RCT: using simulator host %s:%s (TEMP override)\n", rct_host,
                 rct_port);

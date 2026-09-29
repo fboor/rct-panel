@@ -64,9 +64,8 @@ struct RctSnapshot {
   uint32_t nextCalibTs;     // power_mng.bat_next_calib_date next calibration [unix s]
   float batteryCycles;      // battery.cycles               charge/discharge cycles
   float batterySoh;         // battery.soh                  state of health [%]
-  // prim_sm.island_flag is "grid OK" (1 = grid present), the inverse of what
-  // the name suggests: islandMode is therefore true when the flag is 0. Only
-  // meaningful once islandKnown is set.
+  // prim_sm.island_flag is passed through 1:1 as "grid separated" by rctmon,
+  // so 1 = islanded. Only meaningful once islandKnown is set.
   bool islandMode;          // island (grid-separated) mode
   bool islandKnown;         // island flag has answered at least once
 

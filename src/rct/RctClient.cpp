@@ -674,17 +674,17 @@ void rctParse() {
   rctState.nextCalibTs = rctRaw[RCT_SLOT_CALIB];
   rctState.batteryCycles = rctCur[RCT_SLOT_CYCLES];
   rctState.batterySoh = pct100(rctCur[RCT_SLOT_SOH]);
-  // prim_sm.island_flag is documented as "grid OK" (1 = grid present), i.e.
-  // the flag is the inverse of what the name suggests - the real device
-  // reports 1 while running normally on the grid and 0 when it has dropped
-  // off, so `!= 0` showed the island warning permanently and hid it exactly
-  // when it mattered.
+  // prim_sm.island_flag is passed through 1:1 by rctmon (svalouch/rctmon,
+  // device_manager.py: OID 0x3623D82A -> inverter_grid_separated, described
+  // as "Status of the island mode"), i.e. 1 = grid separated, 0 = on grid.
+  // The raw value is logged next to the decoded one so this stays checkable.
+  //
   // islandKnown distinguishes "the device said 0" from "the device has not
-  // answered this OID yet" - both read as 0 in rctRaw, and before any answer
-  // the warning triangle would be stuck on.
+  // answered this OID yet" - both read as 0 in rctRaw, and the Service page
+  // would otherwise claim "nein" before the first answer arrived.
   if (infoSeen & (1u << (RCT_SLOT_ISLAND - RCT_SLOT_DEVNAME))) {
     rctState.islandKnown = true;
-    rctState.islandMode = rctRaw[RCT_SLOT_ISLAND] == 0;
+    rctState.islandMode = rctRaw[RCT_SLOT_ISLAND] != 0;
   }
 
   // One-time bring-up log for the "Energie" page: proves the 13 accumulated
