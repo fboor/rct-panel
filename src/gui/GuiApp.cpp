@@ -8,6 +8,12 @@
 // Direction is not spelled out in words at the netz node: the arrow on the
 // connector carries it, the table below repeats it as a value.
 //
+// Island mode (grid outage, prim_sm.island_flag) puts a red warning triangle on
+// the severed grid connector between haus and netz, and the status table then
+// reads "Unabhängig" for both Netz and Verbrauch - the house runs on PV and
+// battery alone. The flag arrives with the 10 s device group, so the triangle
+// stays hidden until the device has answered once.
+//
 // Data note: PV = dc_conv.dc_conv_struct[0|1].p_dc_lp plus the S0 meter
 // (io_board.s0_external_power, merged as "EXT." in the portal), household =
 // g_sync.p_ac_load[0..2], battery = battery.soc/current/voltage and
@@ -104,6 +110,7 @@ enum OvLabel {
   OV_GRID_ARROW,   // direction arrow on the grid connector
   OV_PV_ARROW,     // direction arrow on the PV connector
   OV_BAT_ARROW,    // direction arrow on the battery connector
+  OV_ISLAND,       // warning triangle on the grid connector (island mode)
   OV_T_ERZ,        // status table: Erzeugung
   OV_T_VERB,       // status table: Verbrauch
   OV_T_NETZ,       // status table: Netz
@@ -466,9 +473,12 @@ static void pageBuildOverview(AppPage *p) {
   lv_obj_set_style_pad_all(bat, 0, 0);
   lv_obj_set_style_shadow_width(bat, 0, 0);
   // Battery icon + SOC % grouped near the node centre (icon just above the
-  // centre line, percentage just below it).
+  // centre line, percentage just below it). BATTERY_3 is the three-quarter
+  // glyph: a completely full battery next to a "71 %" reading below it just
+  // looks wrong. Resolved through the font fallback chain (uml -> montserrat,
+  // which covers the 0xF240 symbol block).
   lv_obj_t *batIco =
-      makeLabel(bat, LV_SYMBOL_BATTERY_FULL, &lv_font_montserrat_20_uml, FLOW_GRAY);
+      makeLabel(bat, LV_SYMBOL_BATTERY_3, &lv_font_montserrat_20_uml, FLOW_GRAY);
   lv_obj_align(batIco, LV_ALIGN_CENTER, 0, -7);
   lv_obj_t *batSoc =
       makeLabel(bat, "--", &lv_font_montserrat_14_uml, FLOW_GRAY);
@@ -527,6 +537,15 @@ static void pageBuildOverview(AppPage *p) {
       makeLabel(root, LV_SYMBOL_DOWN, &lv_font_montserrat_16_uml, FLOW_RED);
   placeArrow(p->labels[OV_BAT_ARROW], 240, 146);
   lv_obj_add_flag(p->labels[OV_BAT_ARROW], LV_OBJ_FLAG_HIDDEN);
+
+  // Island mode (grid outage): a red warning triangle between haus and netz,
+  // just above the grid connector. Centred on the connector's midpoint (x=330)
+  // and 25 px above the line, so it reads as a marker for that link rather than
+  // as something attached to a node. Hidden while the grid is connected.
+  p->labels[OV_ISLAND] =
+      makeLabel(root, LV_SYMBOL_WARNING, &lv_font_montserrat_20_uml, FLOW_RED);
+  placeArrow(p->labels[OV_ISLAND], 330, 56);
+  lv_obj_add_flag(p->labels[OV_ISLAND], LV_OBJ_FLAG_HIDDEN);
 
   // Status table (2x2): Erzeugung / Verbrauch / Netz / Batterie.
   struct {
@@ -1177,6 +1196,14 @@ static void refreshCb(lv_timer_t *t) {
     bool has = s.haveData;
 
     // --- Grid ---
+    // Island mode (grid outage): warning triangle on the connector. The flag
+    // arrives with the 10 s device group, so it stays 0 (= connected) until
+    // the device has answered once - a hidden warning is the safe default.
+    if (s.islandMode) {
+      lv_obj_remove_flag(ov.labels[OV_ISLAND], LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_add_flag(ov.labels[OV_ISLAND], LV_OBJ_FLAG_HIDDEN);
+    }
     if (has) {
       float absK = fabsf(pTot) / 1000.0f;
       bool active = fabsf(pTot) >= gridActive;
@@ -1267,13 +1294,16 @@ static void refreshCb(lv_timer_t *t) {
       if (pvTotal >= pvActive) {
         setText(ov.labels[OV_T_ERZ], "Produzierend");
       } else {
-        setText(ov.labels[OV_T_ERZ], "Nicht produzierend");
+        setText(ov.labels[OV_T_ERZ], "Keine");
       }
 
-      if (house >= 50.0f) {
-        setText(ov.labels[OV_T_VERB], "Verbrauch");
+      // Verbrauch says where the household power comes from: "Netzstrom" as
+      // soon as the grid is importing, otherwise the house runs on its own
+      // (PV and/or battery), which is what "Unabhängig" names.
+      if (pTot >= gridActive) {
+        setText(ov.labels[OV_T_VERB], "Netzstrom");
       } else {
-        setText(ov.labels[OV_T_VERB], "Kein Verbrauch");
+        setText(ov.labels[OV_T_VERB], "Unabhängig");
       }
 
       if (gridFlowing) {
