@@ -83,12 +83,15 @@ inspectable on the card. Monthly rotation (`hist/RCT-202609.csv`) keeps files
 small and avoids FAT32 single-file size limits entirely (would not be hit
 anyway).
 
-- New `src/storage/` module:
-  - `sdInit()`: `SPI.begin(48, 41, 47, 42)`, `SD.begin()`; retried every ~10 s
-    if no card. Idle when absent (no UI errors forced).
+- New `src/storage/` module, **own FreeRTOS task that owns the card** (section 4b):
+  - `sdInit()`: starts the worker task. The worker does
+    `SPI.begin(48, 41, 47, 42)`, `SD.begin()`; retried every ~10 s if no card.
+    Idle when absent (no UI errors forced).
   - `sdLogSample(const RctSnapshot &s)`: skip while `!s.haveData` (no zero
-    rows for a disconnected inverter); append one line + `flush()`; open the
-    month file with `FILE_APPEND`, create with header row on first write.
+    rows for a disconnected inverter); format the line (pure computation, needs
+    the snapshot) and hand it to the worker, which appends it + `flush()`;
+    opens the month file with `FILE_APPEND`, creates it with a header row on
+    first write.
   - Monthly rotation keyed off SNTP date; if SNTP not yet valid, fall back to
     uptime-based `UPT-<days>.csv` until the first sync.
 - Call site: `main.cpp` loop (or next to the existing 5-minute history code) —
@@ -97,7 +100,11 @@ anyway).
   section 4a), never silently dropped. Service page shows `SD: OK | 8,4 GB frei`,
   `SD: -- | 5 gepuffert` or `SD: OK | 2 Zeilen verloren`.
 - Capability check at boot: write a `hist/PROBE` marker once per mount and
-  remove it after the first successful flush, as a self-test.
+  remove it after the first successful flush, as a self-test. The marker is
+  **not** re-written when a card is re-inserted during operation: that
+  delete + create is FAT metadata traffic which measured 1971 ms on this
+  400 kHz bus, and `SD.cardSize()` already answers the same presence
+  question for free.
 
 ### 4a. Card pulled out while running: RAM queue, one hour deep
 
@@ -111,18 +118,56 @@ the 24 h chart, so:
 - Each entry stores the **formatted line plus its target path**, not the
   snapshot. The row therefore keeps its original timestamp, and a month
   rollover during the outage still splits correctly across two files.
-- Retry is throttled (5 s) from `sdTick()`, oldest first, stopping at the first
-  failure so the file stays chronological. A returning card is flushed
-  immediately on mount.
+- Retry is throttled (5 s) from the worker's periodic pass, oldest first,
+  stopping at the first failure so the file stays chronological. A returning
+  card is flushed immediately on mount.
 - **Detecting removal**: a card pulled out is invisible to a writer that only
-  notices at the next 5-minute write. `sdTick()` therefore polls `SD.cardSize()`
-  every 5 s while mounted; `0` means the card is gone → unmount, report
-  `SD: -- | n gepuffert`, and let the normal mount retry bring it back.
+  notices at the next 5-minute write. The worker therefore polls
+  `SD.cardSize()` every 5 s while mounted; `0` means the card is gone → unmount,
+  report `SD: -- | n gepuffert`, and let the normal mount retry bring it back.
 - Write success is judged by the **return value of `println()`**, not
   `getWriteError()`: the ESP32 core's FS write path never calls
   `setWriteError()`, so that flag stays 0 even on a failed write.
 - Status text mirrors the queue: `SD: OK | 12 gepuffert | 16,0 GB frei`, and
   `SD: OK | 3 Zeilen verloren` while rows have been dropped since boot.
+
+### 4b. The card lives in its own task
+
+LVGL, the RCT poll and `main.cpp`'s `loop()` all run on the Arduino loop task.
+At 400 kHz SPI a single card operation is milliseconds, and that is invisible.
+Two of them were not:
+
+| Operation | Measured |
+|---|---|
+| `SD.begin()` at boot | 1457 ms |
+| History restore (scan of up to 288 CSV rows) | 1418 ms |
+| PROBE `SD.remove()` + re-create (removed, see 3) | 1971 ms |
+
+Each of these held the loop task, so the display, the touch input and the RCT
+poll all stopped together — a visibly frozen panel, and any click landing in
+that window is lost. The stall logger in `main.cpp` is what caught them.
+
+`sdlog.cpp` therefore runs a worker task (`sdTask`, FreeRTOS priority 1, i.e.
+equal to the loop task, 4096-byte stack) that **owns the card exclusively** —
+the ESP32 SD/FS layer is not thread-safe, so a shared "SD is free" semaphore
+would be a data race, not a solution. The GUI thread only ever:
+
+- formats the CSV line and posts it (`SDREQ_LOG`, queue depth 4),
+- asks for the history and collects it later (`SDREQ_HISTORY`),
+- reads the status string, which is copied out under a mutex.
+
+The history restore is therefore asynchronous, because the caller lives on the
+GUI thread and must not wait for the card:
+
+```c
+sdRequestHistory(HIST_POINTS, !graceOver);   // once, returns immediately
+int n = sdTakeHistory(seed, HIST_POINTS);    // each GUI tick: -2 pending,
+                                             // -1 clock not up, >= 0 rows
+```
+
+`s_histOut` holds the result, `s_histReady`/`s_histDeferred`/`s_histCount` are
+written under `s_lock` and cleared once collected, so a second request while
+one is running simply overwrites the result — harmless, the GUI only asks once.
 
 **Explicitly not recommended:**
 
@@ -142,8 +187,8 @@ The "Verlauf" ring buffer (`s_hist`, 288 x 5 min) lives in RAM only, so a
 reboot used to leave the chart empty until it had refilled. The SD log now
 feeds it back at boot:
 
-- `sdReadHistory()` reads the newest ≤ 288 CSV rows and maps them to the chart
-  series: `Netz = grid_l1+l2+l3`, `Haus = load_l1+l2+l3`, `PV = pv_a+pv_b`,
+- The worker's history scan (`SDREQ_HISTORY`, section 4b) reads the newest
+  ≤ 288 CSV rows and maps them to the chart series: `Netz = grid_l1+l2+l3`, `Haus = load_l1+l2+l3`, `PV = pv_a+pv_b`,
   `S0`, `Bat` — exactly what the live sampler stores.
 - The rows are replayed through the **same** writer (`histPush()`) as live
   samples, so ring cursor and the LVGL series cursor stay in lockstep and the
@@ -157,8 +202,8 @@ feeds it back at boot:
 - The card often mounts within ~2 s of boot, i.e. *before* SNTP has a time. The
   monthly file cannot be named then, and the pre-SNTP uptime file is the wrong
   one (the writer switches to `RCT-YYYYMM.csv` the moment the clock is up).
-  `sdReadHistory()` therefore defers (returns −1) while the clock is pending,
-  and the seed is retried on the next 1 Hz tick. After the 60 s grace window
+  The worker therefore defers (`sdTakeHistory()` returns −1) while the clock is
+  pending, and the seed is re-requested on the next 1 Hz tick. After the 60 s grace window
   the deferral stops and the uptime file is read as a last resort.
 - Early in a new month the current month's file is empty while the last 24 h
   are still in the previous one: the reader now falls back to the previous
@@ -167,15 +212,17 @@ feeds it back at boot:
 ## 6. Implementation status
 
 Implemented: `src/storage/sdlog.{h,cpp}`, hook in `main.cpp` (5-min beat),
-Service page "SD-Log" status line, the history restore above, and the one-hour
-RAM queue with card-removal detection (section 4a).
+Service page "SD-Log" status line, the history restore above, the one-hour RAM
+queue with card-removal detection (section 4a), and the SD worker task that
+keeps the card off the GUI thread (section 4b).
 
 Verified on the board: TF slot in SPI mode (SCK 48 / MISO 41 / MOSI 47 /
 CS 42), 400 kHz init per SD spec, mount retry every 10 s while the card is
 absent, monthly CSV + header, `PROBE` self-test marker.
 
 Not verifiable here: pulling the card while running (no hardware access to the
-slot), and a full card. The ring arithmetic and the retry order were checked
+slot), and a full card. A card that is present but *not writable* was not
+tested; the parked-row path assumes the mount succeeds first. The ring arithmetic and the retry order were checked
 separately against the exact code; the write path itself is confirmed by the
 restore count growing across runs (20 → 22 rows, i.e. two 5-minute samples
 landed).

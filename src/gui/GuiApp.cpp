@@ -1559,13 +1559,22 @@ static void refreshCb(lv_timer_t *t) {
       const bool graceOver = (millis() - s_histSeedStartMs) >= HIST_SEED_WINDOW_MS;
       static SdHistSample seed[HIST_POINTS];
       if (sdMounted()) {
-        // Card in. Read the log, but only once the log file can actually be
-        // named: a mount that succeeds before SNTP (usually within ~2 s) would
-        // look for the pre-SNTP uptime file while the writer is about to switch
-        // to RCT-YYYYMM.csv. After the grace window we stop caring and take
-        // whatever is on the card.
-        int n = sdReadHistory(seed, HIST_POINTS, !graceOver);
+        // Card in. Ask the worker to scan the log, but only once the log file
+        // can actually be named: a mount that succeeds before SNTP (usually
+        // within ~2 s) would look for the pre-SNTP uptime file while the
+        // writer is about to switch to RCT-YYYYMM.csv. After the grace window
+        // we stop caring and take whatever is on the card.
+        //
+        // The scan is asynchronous: it reads whole CSV files and would freeze
+        // this task (and with it the whole GUI) for over a second.
+        static bool histAsked = false;
+        if (!histAsked) {
+          histAsked = true;
+          sdRequestHistory(HIST_POINTS, !graceOver);
+        }
+        const int n = sdTakeHistory(seed, HIST_POINTS);
         if (n >= 0) {
+          histAsked = false;
           s_histSeeded = true; // (re)mounts later are ignored on purpose
           if (n > 0) {
             for (int r = 0; r < n; r++) {
@@ -1575,6 +1584,10 @@ static void refreshCb(lv_timer_t *t) {
             Serial.printf("hist: %d samples restored from SD log\n", n);
           }
           s_lastHistMs = millis(); // first live sample at the next interval
+        } else if (n == -1) {
+          // Deferred (clock not up yet): ask again on the next tick.
+          histAsked = false;
+        }
       } else if (graceOver) {
         s_histSeeded = true; // no card in the grace window: start fresh
         Serial.println("hist: no SD log, starting fresh");

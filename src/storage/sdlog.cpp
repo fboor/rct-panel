@@ -1,9 +1,16 @@
 // SD-card history logging (docs/sd-history.md).
 //
 // CSV, one file per calendar month on a FAT32 microSD in the TF slot:
-//   sdInit()  -> first mount attempt shortly after boot
-//   sdTick()  -> every loop: mount retry + status text refresh
-//   sdLogSample() -> append one row (caller drives the 5-minute cadence)
+//   sdInit()  -> starts the worker task that owns the card
+//   sdTick()  -> kicks the worker (non-blocking)
+//   sdLogSample() -> queues one row (caller drives the 5-minute cadence)
+//
+// Why a task: the SPI card talks at 400 kHz and SD.begin() alone measured
+// 1457 ms, the history restore 1418 ms. LVGL runs on the same task as this
+// file's callers, so a single long card operation froze the whole panel -
+// GUI redraw and touch included - for over a second. The worker owns the card
+// exclusively (the ESP32 SD/FS layer is not thread-safe) and the GUI thread
+// only ever posts messages to it.
 //
 // SPI wiring on the 4848S040 (cross-checked with a working Tasmota setup):
 //   SCK = 48, MOSI = 47 (shared with the boot-only bit-banged LCD config
@@ -17,6 +24,10 @@
 #include <SD.h>
 #include <SPI.h>
 #include <esp_timer.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
+#include <freertos/semphr.h>
+#include <freertos/task.h>
 
 namespace {
 
@@ -27,8 +38,8 @@ constexpr uint8_t kSpiMosi = 47;
 constexpr uint8_t kSpiSs = 42;
 
 SPIClass s_spi(FSPI);
-bool s_mounted = false;
-bool s_probePending = true; // PROBE self-test marker exists until first flush
+volatile bool s_mounted = false; // read by the GUI thread via sdMounted()
+bool s_probePending = true;      // PROBE self-test marker exists until first flush
 uint32_t s_nextMountMs = 0;
 constexpr uint32_t kMountRetryMs = 10000; // retry every 10 s without a card
 
@@ -64,6 +75,7 @@ constexpr size_t kPathCap = 40;
 // across two files.
 // --------------------------------------------------------------------------
 constexpr int kQueueCap = 12;
+constexpr int kHistMaxRows = 288; // 288 * 5 min = 24 h (matches GuiApp)
 constexpr uint32_t kQueueRetryMs = 5000; // retry parked rows from sdTick()
 constexpr uint32_t kProbeMs = 5000;      // ask SD.cardSize() for card presence
 
@@ -79,6 +91,34 @@ uint32_t s_nextQueueRetryMs = 0;
 uint32_t s_nextProbeMs = 0; // next card-presence check
 
 void buildStatus(); // defined below, called by queueFlush()
+
+// --------------------------------------------------------------------------
+// Worker task: the only context that ever touches the card.
+//
+// The GUI thread (Arduino loop + LVGL) posts the three things it needs - write
+// a row, read the history, report status - and never waits for them.
+// --------------------------------------------------------------------------
+enum SdReqType : uint8_t { SDREQ_LOG, SDREQ_HISTORY };
+
+struct SdReq {
+  uint8_t type;
+  int maxRows;       // SDREQ_HISTORY
+  bool waitForClock; // SDREQ_HISTORY
+  char line[kLineCap];
+  char path[kPathCap];
+};
+
+constexpr int kReqQueueLen = 4; // rows arrive every 5 min; depth 4 is ample
+QueueHandle_t s_reqQ = nullptr;
+
+// Guards s_status and the history result handoff between the two tasks.
+SemaphoreHandle_t s_lock = nullptr;
+
+// History restore result, written by the worker, collected by the GUI.
+static SdHistSample s_histOut[kHistMaxRows];
+static int s_histReady = 0; // 1 when a fresh result is waiting
+static int s_histCount = 0;  // rows in s_histOut (see sdTakeHistory)
+static bool s_histDeferred = false; // clock not ready yet, caller may retry
 
 // "202609" from the local calendar (SNTP; CET/CEST configured in main.cpp),
 // or 0 when the wall clock is not valid yet.
@@ -231,8 +271,6 @@ void buildStatus() {
 // a rolling window of maxRows keeps the newest rows without huge buffers.
 // --------------------------------------------------------------------------
 
-constexpr int kHistMaxRows = 288; // 288 * 5 min = 24 h (matches GuiApp)
-
 static bool parseLine(const char *line, SdHistSample *s) {
   unsigned long ts, status;
   float pvA, pvB, s0, tc, tb, th, l1, l2, l3, bat, soc, g1, g2, g3;
@@ -310,14 +348,9 @@ static const char *prevMonthKey(char *buf, size_t len) {
 
 } // namespace
 
-void sdInit() {
-  // First attempt shortly after boot; sdTick() takes over from there.
-  s_nextMountMs = millis() + 500;
-  buildStatus();
-}
-
-void sdTick() {
-  const uint32_t now = millis();
+// Periodic card duties, owned by the worker: mount retry, presence watch and
+// flushing parked rows. Formerly sdTick()'s body.
+static void sdWorkerPeriodic(uint32_t now) {
   if (s_mounted) {
     // A card pulled out in operation is invisible until something writes and
     // that write fails, which can be up to 5 minutes away. Reading the card
@@ -335,20 +368,19 @@ void sdTick() {
         s_pathValid = false;
         s_probePending = true;
         buildStatus();
-      } else if (s_probePending) {
-        // A card appeared again. Drop the stale PROBE, then write the new one
-        // so the first real row still gets its clean-file test.
-        if (SD.remove("/hist/PROBE")) {
-          s_probePending = probeMount();
-        }
-        if (!s_probePending) {
-          s_warnLogged = false; // back to normal, failures may warn again
-        }
+      } else if (s_probePending && !s_warnLogged) {
+        // A card is back. Do NOT re-write the PROBE marker here: delete+create
+        // is FAT metadata traffic that measured 1971 ms on this 400 kHz bus.
+        // Card presence is what this block is for, and it is answered by
+        // cardSize(). If the inserted card is a different one, the next real
+        // row write fails through appendRow() and parks the row in the RAM
+        // queue - no marker needed.
+        s_warnLogged = false; // back to normal, failures may warn again
       }
     }
     // Retry parked rows in between: a card that comes back or frees up should
     // not have to wait for the next 5-minute sample. Throttled, so a card that
-    // is still missing is not hammered every main-loop iteration.
+    // is still missing is not hammered every pass.
     if (s_queueCount > 0 && (int32_t)(now - s_nextQueueRetryMs) >= 0) {
       s_nextQueueRetryMs = now + kQueueRetryMs;
       queueFlush();
@@ -386,35 +418,13 @@ void sdTick() {
   }
 }
 
-void sdLogSample(const RctSnapshot &s) {
-  if (!s.haveData) {
-    return; // no zero rows for a disconnected inverter
-  }
-  if (!updatePath()) {
-    return;
-  }
-
-  char line[kLineCap];
-  const unsigned long faults =
-      (unsigned long)(s.faultBits[0] | s.faultBits[1] | s.faultBits[2] |
-                      s.faultBits[3]);
-  snprintf(line, sizeof(line),
-           "%lu,%.0f,%.0f,%.0f,%.1f,%.1f,%.1f,"
-           "%.0f,%.0f,%.0f,%.0f,%.0f,%.0f,%.0f,%.0f,%lX",
-           (unsigned long)time(nullptr), s.pvPower[0], s.pvPower[1],
-           s.s0Power, (double)s.coreTemp, (double)s.batteryTemp,
-           (double)s.heatSinkTemp, (double)s.loadPower[0], (double)s.loadPower[1],
-           (double)s.loadPower[2], (double)s.batteryPower, (double)s.batterySoc,
-           (double)s.gridPower[0], (double)s.gridPower[1],
-           (double)s.gridPower[2], faults);
-
-  // The row is formatted even without a card, so it can be parked with its own
-  // timestamp and path and written out later.
+// Worker side of SDREQ_LOG: actually touch the card, or park the row.
+static void sdWorkerWriteRow(const SdReq &req) {
   if (s_mounted) {
-    const int r = appendRow(s_path, line);
+    const int r = appendRow(req.path, req.line);
     if (r >= 0) {
       Serial.printf("SD: %s row -> %s\n", r > 0 ? "header + first" : "logged",
-                    s_path);
+                    req.path);
       if (s_probePending) {
         // First successful flush: the self-test marker may go away now.
         if (SD.remove("/hist/PROBE")) {
@@ -427,11 +437,11 @@ void sdLogSample(const RctSnapshot &s) {
       buildStatus();
       return;
     }
-    // The write failed. Treat the card as gone so sdTick() goes looking for it
-    // again - that is how a card pulled out during operation gets noticed.
+    // The write failed. Treat the card as gone so the worker goes looking for
+    // it again - that is how a card pulled out during operation gets noticed.
     if (!s_warnLogged) {
       s_warnLogged = true;
-      Serial.printf("SD: write to %s failed, card treated as gone\n", s_path);
+      Serial.printf("SD: write to %s failed, card treated as gone\n", req.path);
     }
     s_mounted = false;
     SD.end();
@@ -439,71 +449,219 @@ void sdLogSample(const RctSnapshot &s) {
     s_probePending = true;
   }
 
-  queuePush(line, s_path);
+  queuePush(req.line, req.path);
   buildStatus();
 }
 
-const char *sdStatusText() { return s_status; }
+void sdLogSample(const RctSnapshot &s) {
+  if (!s.haveData) {
+    return; // no zero rows for a disconnected inverter
+  }
+  if (!updatePath()) {
+    return;
+  }
+
+  // Formatting stays here: it is pure computation (microseconds) and needs the
+  // snapshot, which the worker never sees. Only the card access is handed over,
+  // so a slow card can no longer stall the GUI.
+  SdReq req;
+  req.type = SDREQ_LOG;
+  req.waitForClock = false;
+  strlcpy(req.path, s_path, sizeof(req.path));
+  const unsigned long faults =
+      (unsigned long)(s.faultBits[0] | s.faultBits[1] | s.faultBits[2] |
+                      s.faultBits[3]);
+  snprintf(req.line, sizeof(req.line),
+           "%lu,%.0f,%.0f,%.0f,%.1f,%.1f,%.1f,"
+           "%.0f,%.0f,%.0f,%.0f,%.0f,%.0f,%.0f,%.0f,%lX",
+           (unsigned long)time(nullptr), s.pvPower[0], s.pvPower[1],
+           s.s0Power, (double)s.coreTemp, (double)s.batteryTemp,
+           (double)s.heatSinkTemp, (double)s.loadPower[0], (double)s.loadPower[1],
+           (double)s.loadPower[2], s.batteryPower, s.batterySoc,
+           (double)s.gridPower[0], (double)s.gridPower[1],
+           (double)s.gridPower[2], faults);
+
+  if (s_reqQ == nullptr || xQueueSend(s_reqQ, &req, 0) != pdTRUE) {
+    // Only reachable if the worker is wedged or not started yet; count the loss
+    // rather than dropping it silently.
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    s_queueDropped++;
+    buildStatus();
+    xSemaphoreGive(s_lock);
+    Serial.println(F("SD: worker unreachable, row dropped"));
+  }
+}
+
+const char *sdStatusText() {
+  // Copied out under the lock: the worker rewrites s_status from its own task.
+  // Both readers live on the GUI task, so one scratch buffer is enough.
+  static char buf[48];
+  if (s_lock != nullptr) {
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    strlcpy(buf, s_status, sizeof(buf));
+    xSemaphoreGive(s_lock);
+  } else {
+    strlcpy(buf, s_status, sizeof(buf));
+  }
+  return buf;
+}
+
 
 bool sdMounted() { return s_mounted; }
 
-int sdReadHistory(SdHistSample *out, int maxRows, bool waitForClock) {
-  if (!s_mounted || out == nullptr || maxRows <= 0 || maxRows > kHistMaxRows) {
-    return 0;
-  }
-  const char *key = monthKey();
-  if (key == nullptr && waitForClock) {
-    // Card is there, but SNTP has not delivered a time yet: the monthly log
-    // file cannot be named, and the pre-SNTP uptime file is the wrong one
-    // (the writer switches to the month file as soon as the clock is up).
-    // The caller retries; pass waitForClock=false to take what is there.
-    return -1;
+// Worker side of SDREQ_HISTORY. Formerly sdReadHistory(), which filled a
+// caller-owned buffer on the GUI task and therefore blocked it for the whole
+// scan (measured 1418 ms). Now the scan happens here and hands the rows over
+// through s_histOut; the GUI collects them whenever it is ready.
+static void sdWorkerReadHistory(int maxRows, bool waitForClock) {
+  int count = 0;
+  bool deferred = false;
+
+  if (s_mounted) {
+    const char *key = monthKey();
+    if (key == nullptr && waitForClock) {
+      // Card is there, but SNTP has not delivered a time yet: the monthly log
+      // file cannot be named, and the pre-SNTP uptime file is the wrong one
+      // (the writer switches to the month file as soon as the clock is up).
+      // The caller retries; waitForClock=false takes what is there.
+      deferred = true;
+    } else {
+      static SdHistSample ring[kHistMaxRows];
+      static SdHistSample prevRing[kHistMaxRows];
+
+      char path[40];
+      const char *prevKey = nullptr;
+      static char prevKeyBuf[16];
+      if (key != nullptr) {
+        snprintf(path, sizeof(path), "/hist/RCT-%s.csv", key);
+        prevKey = prevMonthKey(prevKeyBuf, sizeof(prevKeyBuf));
+      } else {
+        snprintf(path, sizeof(path), "/hist/%s.csv", uptimeKey());
+      }
+
+      char prevPath[40];
+      prevPath[0] = '\0';
+      if (prevKey != nullptr) {
+        snprintf(prevPath, sizeof(prevPath), "/hist/RCT-%s.csv", prevKey);
+      }
+
+      const int cur = scanFile(path, ring, maxRows);
+      if (cur > 0) {
+        if (cur >= maxRows || prevPath[0] == '\0') {
+          drainRing(ring, cur, cur > maxRows ? maxRows : cur, s_histOut);
+          count = cur > maxRows ? maxRows : cur;
+        } else {
+          // Current file alone has fewer than maxRows rows - the 24 h window
+          // reaches across a calendar boundary. Prepend the previous month's
+          // newest rows.
+          const int need = maxRows - cur;
+          const int prev = scanFile(prevPath, prevRing, need);
+          if (prev <= 0) {
+            drainRing(ring, cur, cur, s_histOut);
+            count = cur;
+          } else {
+            const int prevKept = prev > need ? need : prev;
+            drainRing(prevRing, prev, need, s_histOut);
+            drainRing(ring, cur, cur, s_histOut + prevKept);
+            count = prevKept + cur;
+          }
+        }
+      } else if (prevPath[0] != '\0') {
+        // Early in a new month nothing is logged into its file yet, but the
+        // last 24 h are all in the previous month's file.
+        const int prev = scanFile(prevPath, ring, maxRows);
+        if (prev > 0) {
+          drainRing(ring, prev, prev > maxRows ? maxRows : prev, s_histOut);
+          count = prev > maxRows ? maxRows : prev;
+        }
+      }
+    }
   }
 
-  static SdHistSample ring[kHistMaxRows];
-  static SdHistSample prevRing[kHistMaxRows];
+  xSemaphoreTake(s_lock, portMAX_DELAY);
+  s_histCount = count;
+  s_histDeferred = deferred;
+  s_histReady = 1;
+  xSemaphoreGive(s_lock);
+}
 
-  char path[40];
-  const char *prevKey = nullptr;
-  static char prevKeyBuf[16];
-  if (key != nullptr) {
-    snprintf(path, sizeof(path), "/hist/RCT-%s.csv", key);
-    prevKey = prevMonthKey(prevKeyBuf, sizeof(prevKeyBuf));
-  } else {
-    snprintf(path, sizeof(path), "/hist/%s.csv", uptimeKey());
+void sdRequestHistory(int maxRows, bool waitForClock) {
+  if (s_reqQ == nullptr || maxRows <= 0 || maxRows > kHistMaxRows) {
+    return;
   }
+  SdReq req;
+  memset(&req, 0, sizeof(req));
+  req.type = SDREQ_HISTORY;
+  req.maxRows = maxRows;
+  req.waitForClock = waitForClock;
+  xQueueSend(s_reqQ, &req, 0);
+}
 
-  char prevPath[40];
-  prevPath[0] = '\0';
-  if (prevKey != nullptr) {
-    snprintf(prevPath, sizeof(prevPath), "/hist/RCT-%s.csv", prevKey);
+// Collect a finished history scan. Returns the row count (>= 0) once the
+// worker is done, -2 while the scan is still running or was never requested,
+// and -1 when the worker deferred because the clock was not up yet.
+int sdTakeHistory(SdHistSample *out, int maxRows) {
+  if (out == nullptr || s_lock == nullptr) {
+    return -2;
   }
+  int rc = -2;
+  xSemaphoreTake(s_lock, portMAX_DELAY);
+  if (s_histReady) {
+    if (s_histDeferred) {
+      rc = -1;
+    } else {
+      const int n = s_histCount < maxRows ? s_histCount : maxRows;
+      memcpy(out, s_histOut, (size_t)n * sizeof(SdHistSample));
+      rc = n;
+    }
+    s_histReady = 0;
+  }
+  xSemaphoreGive(s_lock);
+  return rc;
+}
 
-  int cur = scanFile(path, ring, maxRows);
-  if (cur == 0 && prevPath[0] != '\0') {
-    // Early in a new month nothing is logged into its file yet, but the last
-    // 24 h are all in the previous month's file.
-    cur = scanFile(prevPath, ring, maxRows);
-    prevPath[0] = '\0'; // already used as the primary file
-  }
-  if (cur == 0) {
-    return 0;
-  }
-  if (cur >= maxRows || prevPath[0] == '\0') {
-    drainRing(ring, cur, cur > maxRows ? maxRows : cur, out);
-    return cur > maxRows ? maxRows : cur;
-  }
+// --------------------------------------------------------------------------
+// Worker task
+// --------------------------------------------------------------------------
 
-  // Current file alone has fewer than maxRows rows - the 24 h window reaches
-  // across a calendar boundary. Prepend the previous month's newest rows.
-  int need = maxRows - cur;
-  int prev = scanFile(prevPath, prevRing, need);
-  if (prev <= 0) {
-    drainRing(ring, cur, cur, out);
-    return cur;
+static void sdTask(void *) {
+  s_nextMountMs = millis() + 500; // first attempt shortly after boot
+  for (;;) {
+    SdReq req;
+    while (s_reqQ != nullptr &&
+           xQueueReceive(s_reqQ, &req, 0) == pdTRUE) {
+      switch (req.type) {
+      case SDREQ_LOG:
+        sdWorkerWriteRow(req);
+        break;
+      case SDREQ_HISTORY:
+        sdWorkerReadHistory(req.maxRows, req.waitForClock);
+        break;
+      default:
+        break;
+      }
+    }
+    sdWorkerPeriodic(millis());
+    // Nothing else to do between requests; the card duties above are already
+    // throttled. 10 ms is far finer than any of those intervals.
+    vTaskDelay(pdMS_TO_TICKS(10));
   }
-  int prevKept = prev > need ? need : prev;
-  drainRing(prevRing, prev, need, out);
-  drainRing(ring, cur, cur, out + prevKept);
-  return prevKept + cur;
+}
+
+void sdInit() {
+  if (s_reqQ != nullptr) {
+    return; // already running
+  }
+  s_reqQ = xQueueCreate(kReqQueueLen, sizeof(SdReq));
+  s_lock = xSemaphoreCreateMutex();
+  buildStatus();
+  // Priority 1, the same as the Arduino loop task: the card work then shares
+  // the CPU with LVGL instead of pre-empting it, and the worker sleeps 10 ms
+  // between passes so a long card operation cannot monopolise the core.
+  xTaskCreate(sdTask, "sd", 4096, nullptr, 1, nullptr);
+}
+
+void sdTick() {
+  // All the work moved into the worker task; this stays as the caller's hook
+  // so the main loop keeps its shape, but it deliberately does nothing.
 }
