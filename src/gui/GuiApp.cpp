@@ -1177,8 +1177,10 @@ static void pageBuildService(AppPage *p) {
 
   // --- Battery status (decoded from battery.bat_status) ---
   sectionHead("Batterie-Status", 36);
+  // Value deliberately one step smaller than the section title, so the decoded
+  // state reads as data under a heading rather than competing with it.
   p->labels[SV_BAT_STATUS] =
-      makeLabel(root, "--", &lv_font_montserrat_16_uml, COL_TEXT);
+      makeLabel(root, "--", &lv_font_montserrat_14_uml, COL_TEXT);
   lv_obj_set_pos(p->labels[SV_BAT_STATUS], 20, 58);
   p->labels[SV_BAT_RAW] =
       makeLabel(root, "", &lv_font_montserrat_14_uml, COL_MUTED);
@@ -1528,6 +1530,11 @@ static void refreshCb(lv_timer_t *t) {
     // device has answered once - a hidden warning is the safe default.
     //
     // + = Bezug, see the sign conventions above.
+    //
+    // Node values (Netz/PV/Batterie) share one rule, per the panel's spec: a
+    // flow at or below stand-by reads the same as none - "--" in white - and
+    // only a real flow gets the red number. The connector lines keep their own
+    // stand-by colour regardless.
     const bool gridImport = pTot > 0.0f;
     if (s.islandMode && s.islandKnown) {
       lv_obj_remove_flag(ov.labels[OV_ISLAND], LV_OBJ_FLAG_HIDDEN);
@@ -1537,8 +1544,13 @@ static void refreshCb(lv_timer_t *t) {
     if (has) {
       float absK = fabsf(pTot) / 1000.0f;
       bool active = fabsf(pTot) >= gridActive;
-      setText(ov.labels[OV_GRID_VAL], "%.2f kW", absK);
-      lv_obj_set_style_text_color(ov.labels[OV_GRID_VAL], FLOW_RED, 0);
+      if (active) {
+        setText(ov.labels[OV_GRID_VAL], "%.2f kW", absK);
+        lv_obj_set_style_text_color(ov.labels[OV_GRID_VAL], FLOW_RED, 0);
+      } else {
+        lv_label_set_text(ov.labels[OV_GRID_VAL], dash);
+        lv_obj_set_style_text_color(ov.labels[OV_GRID_VAL], FLOW_WHITE, 0);
+      }
       lv_obj_set_style_line_color(s_lineGrid, active ? FLOW_RED : FLOW_LINE, 0);
       lv_obj_set_style_line_width(s_lineGrid, active ? 4 : 3, 0);
       if (active) {
@@ -1551,7 +1563,7 @@ static void refreshCb(lv_timer_t *t) {
       }
     } else {
       lv_label_set_text(ov.labels[OV_GRID_VAL], dash);
-      lv_obj_set_style_text_color(ov.labels[OV_GRID_VAL], FLOW_LINE, 0);
+      lv_obj_set_style_text_color(ov.labels[OV_GRID_VAL], FLOW_WHITE, 0);
       lv_obj_set_style_line_color(s_lineGrid, FLOW_LINE, 0);
       lv_obj_set_style_line_width(s_lineGrid, 3, 0);
       lv_obj_add_flag(ov.labels[OV_GRID_ARROW], LV_OBJ_FLAG_HIDDEN);
@@ -1567,7 +1579,7 @@ static void refreshCb(lv_timer_t *t) {
       lv_obj_remove_flag(ov.labels[OV_PV_ARROW], LV_OBJ_FLAG_HIDDEN);
     } else {
       lv_label_set_text(ov.labels[OV_PV_VAL], dash);
-      lv_obj_set_style_text_color(ov.labels[OV_PV_VAL], FLOW_LINE, 0);
+      lv_obj_set_style_text_color(ov.labels[OV_PV_VAL], FLOW_WHITE, 0);
       lv_obj_set_style_line_color(s_linePv, FLOW_LINE, 0);
       lv_obj_set_style_line_width(s_linePv, 2, 0);
       lv_obj_add_flag(ov.labels[OV_PV_ARROW], LV_OBJ_FLAG_HIDDEN);
@@ -1576,33 +1588,28 @@ static void refreshCb(lv_timer_t *t) {
     // --- Battery (haus <-> batterie) ---
     if (s.haveBattery) {
       setText(ov.labels[OV_BAT_SOC], "%.0f %%", s.batterySoc);
-      if (has) {
+      bool active = has && fabsf(pBat) >= batActive;
+      if (active) {
         float absK = fabsf(pBat) / 1000.0f;
-        bool active = fabsf(pBat) >= batActive;
         setText(ov.labels[OV_BAT_VAL], "%.2f kW", absK);
-        lv_obj_set_style_text_color(ov.labels[OV_BAT_VAL],
-                                    active ? FLOW_RED : FLOW_LINE, 0);
-        lv_obj_set_style_line_color(s_lineBat, active ? FLOW_RED : FLOW_LINE, 0);
-        lv_obj_set_style_line_width(s_lineBat, active ? 4 : 2, 0);
-        if (active) {
-          // pBat > 0 = discharging (measured), so the arrow points up into the
-          // house; charging (pBat < 0) draws down into the battery.
-          lv_label_set_text(ov.labels[OV_BAT_ARROW],
-                            pBat > 0 ? LV_SYMBOL_UP : LV_SYMBOL_DOWN);
-          lv_obj_remove_flag(ov.labels[OV_BAT_ARROW], LV_OBJ_FLAG_HIDDEN);
-        } else {
-          lv_obj_add_flag(ov.labels[OV_BAT_ARROW], LV_OBJ_FLAG_HIDDEN);
-        }
+        lv_obj_set_style_text_color(ov.labels[OV_BAT_VAL], FLOW_RED, 0);
+        lv_obj_set_style_line_color(s_lineBat, FLOW_RED, 0);
+        lv_obj_set_style_line_width(s_lineBat, 4, 0);
+        // pBat > 0 = discharging (measured), so the arrow points up into the
+        // house; charging (pBat < 0) draws down into the battery.
+        lv_label_set_text(ov.labels[OV_BAT_ARROW],
+                          pBat > 0 ? LV_SYMBOL_UP : LV_SYMBOL_DOWN);
+        lv_obj_remove_flag(ov.labels[OV_BAT_ARROW], LV_OBJ_FLAG_HIDDEN);
       } else {
         lv_label_set_text(ov.labels[OV_BAT_VAL], dash);
-        lv_obj_set_style_text_color(ov.labels[OV_BAT_VAL], FLOW_LINE, 0);
+        lv_obj_set_style_text_color(ov.labels[OV_BAT_VAL], FLOW_WHITE, 0);
         lv_obj_set_style_line_color(s_lineBat, FLOW_LINE, 0);
         lv_obj_set_style_line_width(s_lineBat, 2, 0);
         lv_obj_add_flag(ov.labels[OV_BAT_ARROW], LV_OBJ_FLAG_HIDDEN);
       }
     } else {
       lv_label_set_text(ov.labels[OV_BAT_VAL], dash);
-      lv_obj_set_style_text_color(ov.labels[OV_BAT_VAL], FLOW_LINE, 0);
+      lv_obj_set_style_text_color(ov.labels[OV_BAT_VAL], FLOW_WHITE, 0);
       lv_obj_set_style_line_color(s_lineBat, FLOW_LINE, 0);
       lv_obj_set_style_line_width(s_lineBat, 2, 0);
       lv_obj_add_flag(ov.labels[OV_BAT_ARROW], LV_OBJ_FLAG_HIDDEN);
@@ -1691,25 +1698,40 @@ static void refreshCb(lv_timer_t *t) {
     }
   }
 
+  diagPhase("gui.energy");
   AppPage &en = s_pages[PAGE_HEUTE];
   if (en.labels[EN_GEN_VAL]) {
-    // Portal "Heute" day counters (all Wh). Eigenverbrauch = Hausverbrauch
-    // minus Netzbezug: was die Wohnung verbraucht hat, ohne es aus dem Netz zu
-    // beziehen (PV direkt plus Batterie). Die Einspeisung ist damit nicht
-    // enthalten - sie geht nach aussen, nicht in den eigenen Verbrauch.
-    float gen = s.dayPvWh + s.s0EnergyWh; // Erzeugt, inkl. externem Generator
+    // Portal "Heute" day counters (all Wh). Eigenverbrauch ist hier wie auf
+    // der Energie-Seite der verbrauchsseitige Ausdruck: Hausverbrauch minus
+    // Netzbezug, also der Anteil des Verbrauchs, der nicht aus dem Netz kam
+    // (PV direkt, Batterie-Entladung, externer Generator). NICHT Erzeugung
+    // minus Einspeisung: der Ausdruck wuerde die Batterie-Entladung aussen
+    // vor lassen, denn e_load_day enthaelt sie bereits (live geprueft: nachts
+    // 569 Wh Last bei 0,1 Wh Bezug = 569 Wh aus dem Akku), und eine eigene
+    // Batterie-Entnahme dazu zu addieren wuerde dieselbe Energie doppelt
+    // zaehlen (einmal als Laden beim Erzeugen, einmal als Entnahme beim
+    // Verbrauch). Der Geraet-zaehler battery.used_energy (Lebensdauer, Wh)
+    // ist damit fuer die Quote nicht noetig.
+    float gen = s.dayPvWh + s.dayExtWh; // Erzeugt: PV-DC plus externer Generator
     float feed = s.dayFeedInWh;     // Eingespeist, kommt negativ vom Geraet
-    float consumed = s.dayLoadWh;   // Verbrauch (household)
-    float gridIn = s.dayGridLoadWh; // Bezug (grid draw)
     if (feed < 0.0f) feed = -feed;  // Betrag, nicht Vorzeichen
-    float selfUse = consumed - gridIn;
-    if (selfUse < 0.0f) selfUse = 0.0f;
+    float consumed = s.dayLoadWh + s.dayExtWh; // Verbrauch: Last plus extern
+    float gridIn = s.dayGridLoadWh;     // Bezug (grid draw)
+    float selfUse = consumed - gridIn;  // Eigenverbrauch: im Haus verbraucht,
+                                        // nicht aus dem Netz
+    if (selfUse < 0.0f) selfUse = 0.0f; // Zaehler kurz nach Geraete-Neustart versetzt
     // Autarkie = 1 - Bezug / Verbrauch. No load consumes nothing from the
     // grid, so the day is fully independent.
     float autarkie =
         consumed > 0.0f ? (1.0f - gridIn / consumed) * 100.0f : 100.0f;
     if (autarkie < 0.0f) autarkie = 0.0f;
-    float evb = gen > 0.0f ? selfUse / gen * 100.0f : 0.0f; // Eigenverbrauch %
+    // Eigenverbrauchsquote = Eigenverbrauch / Erzeugung, begrenzt auf
+    // [0, 100]: nachts liefert die Batterie Energie aus der *gestrigen*
+    // Erzeugung, und die Quote kann dann rechnerisch ueber 100 % liegen -
+    // die Energie ist verbraucht, aber heute nicht erzeugt worden. Nach einem
+    // Geraete-Neustart laufen die Zaehler kurz phasenversetzt (daher oben).
+    float evb = gen > 0.0f ? selfUse / gen * 100.0f : 0.0f;
+    if (evb > 100.0f) evb = 100.0f;
 
     if (s.haveData) {
       // Portal "Übersicht" boxes: Erzeugt / Eigenverbrauch / Eingespeist
@@ -2129,7 +2151,7 @@ void guiStartApp() {
   touchInit();
   lv_indev_t *indev = lv_indev_create();
   lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
-  lv_indev_set_read_cb(indev, touchReadCb);
+  lv_indev_set_read_cb(indev, touchReadMarked);
 
   showPage(PAGE_OVERVIEW);
 
