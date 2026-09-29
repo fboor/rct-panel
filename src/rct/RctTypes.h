@@ -42,14 +42,28 @@ struct RctSnapshot {
   float loadPower[3];   // g_sync.p_ac_load[0..2]      household load per phase [W]
   float pvPower[2];     // dc_conv.dc_conv_struct[i].p_dc_lp  solar gen A/B [W]
   float s0Power;        // io_board.s0_external_power         S0 meter [W], 0 while absent
-  // Energy integrated from s0Power, in Wh, accumulated since boot. The device
-  // provides no S0 energy counter (its e_dc_* meters cover the two DC inputs
-  // only; the registry lists just io2_s0_imp_per_kwh, which counts pulses, not
-  // energy), so "PV Erzeugung" can only include the external generator by
-  // integrating its power here. For the day period that is the day's
-  // production; for month/year/lifetime it is a lower bound, since it only
-  // covers the time since the panel was switched on.
+  // Energy integrated from s0Power, in Wh, accumulated since boot. This is NOT
+  // displayed: the device's own e_ext_* counters are authoritative, because
+  // they survive a restart of the panel while this integration does not. It
+  // is kept as an independent cross-check - it must track the rise of the
+  // device's day counter, and a growing divergence means that counter is not
+  // counting what its name says.
   float s0EnergyWh;
+
+  // External energy (S0 generator) from the device's own e_ext_* counters, in
+  // Wh. The e_dc_* family only counts the two DC inputs, so without these the
+  // external generator is missing from "PV Erzeugung", and - because the
+  // device's load meter does not see it either - from "Verbrauch" and
+  // "Eigenverbrauch" too. The device carries both a summed and an unsummed
+  // variant of each period; the summed one is displayed, the unsummed day and
+  // month pair is kept for comparison in the log, because which is meant is
+  // documented nowhere.
+  float dayExtWh;        // energy.e_ext_day_sum
+  float monthExtWh;      // energy.e_ext_month_sum
+  float yearExtWh;       // energy.e_ext_year_sum
+  float totalExtWh;      // energy.e_ext_total_sum
+  float dayExtPlainWh;   // energy.e_ext_day
+  float monthExtPlainWh; // energy.e_ext_month
   float batterySoc;     // battery.soc     [%]
   // Sign convention, measured on the real device: PV 0 W | Haus 832 W |
   // Netz +4 W | Batterie +810 W. With no production the battery cannot be

@@ -290,6 +290,17 @@ enum RCT_SLOT {
   RCT_SLOT_FEEDYEAR,  // energy.e_grid_feed_year   feed-in year [Wh]
   RCT_SLOT_GRIDMONTH, // energy.e_grid_load_month grid draw month [Wh]
   RCT_SLOT_GRIDYEAR,  // energy.e_grid_load_year  grid draw year [Wh]
+  // External energy (the S0 generator), the device's own counters. The _sum
+  // variants are asked for: the registry lists both e_ext_* and e_ext_*_sum
+  // (e.g. e_ext_day_sum, idx 43), and the sum is the one that aggregates the
+  // S0 inputs rather than a single channel. Both are polled and logged raw so
+  // the difference is measurable instead of assumed.
+  RCT_SLOT_EXTDAY,   // energy.e_ext_day_sum      external day [Wh]
+  RCT_SLOT_EXTMONTH, // energy.e_ext_month_sum    external month [Wh]
+  RCT_SLOT_EXTYEAR,  // energy.e_ext_year_sum     external year [Wh]
+  RCT_SLOT_EXTTOTAL, // energy.e_ext_total_sum    external lifetime [Wh]
+  RCT_SLOT_EXTDAYP,  // energy.e_ext_day          external day, unsummed [Wh]
+  RCT_SLOT_EXTMONP,  // energy.e_ext_month        external month, unsummed [Wh]
   // Service page (fast group): battery status + fault bitfields.
   RCT_SLOT_BATSTATUS, // battery.bat_status      status bitfield (INT32)
   RCT_SLOT_FLT0,      // fault[0].flt            fault bits  0-31 (UINT32)
@@ -353,6 +364,12 @@ static const uint32_t rctOids[RCT_NUM_SLOTS] = {
     0x26EFFC2F, // grid feed-in year energy (Wh)
     0x126ABC86, // grid load month energy (Wh)
     0xDE17F021, // grid load year energy (Wh)
+    0xC588B75,  // external day energy, summed S0 inputs (Wh)
+    0x6FF4BD55, // external month energy, summed S0 inputs (Wh)
+    0x3A9D2680, // external year energy, summed S0 inputs (Wh)
+    0xF28E2E1,  // external lifetime energy, summed S0 inputs (Wh)
+    0xB9A026F9, // external day energy, unsummed (Wh)
+    0x31A6110,  // external month energy, unsummed (Wh)
     0x70A2AF4F, // battery status bitfield (INT32)
     0x37F9D5CA, // fault[0].flt  fault bits 0-31 (UINT32)
     0x234B4736, // fault[1].flt  fault bits 32-63 (UINT32)
@@ -544,8 +561,12 @@ void rctParse() {
   const uint64_t allFast =
       (fastSlots >= 64) ? ~0ull : ((1ull << fastSlots) - 1ull);
   // The accumulated-energy block, for the one-time bring-up log below.
+  // Contiguous energy block: month/year/lifetime accumulators plus the external
+  // (S0) counters. The whole block has to answer before the one-time energy log
+  // fires, so that log proves every value the "Energie" page shows for that
+  // period - not just the ones that happen to have arrived first.
   const uint64_t energySlotsMask =
-      ((1ull << (RCT_SLOT_GRIDYEAR - RCT_SLOT_DCMONTH0 + 1)) - 1ull)
+      ((1ull << (RCT_SLOT_EXTTOTAL - RCT_SLOT_DCMONTH0 + 1)) - 1ull)
       << RCT_SLOT_DCMONTH0;
   unsigned long deadline = millis() + RCT_CYCLE_TIMEOUT_MS;
   bool streamQuiet = false;
@@ -624,12 +645,17 @@ void rctParse() {
   rctState.pvPower[1] = rctCur[RCT_SLOT_PV1];
   rctState.s0Power = rctCur[RCT_SLOT_S0];
 
-  // Integrate the S0 external generator into an energy total. The device has no
-  // counter for it, so "PV Erzeugung" would silently omit the external
-  // generator otherwise. Trapezoidal over the interval since the last
-  // integration: a sample only says how much was produced at that instant, and
-  // the generator may be switched off between two polls - averaging the two
-  // ends is what keeps a short burst from counting for the whole interval.
+  // Integrate the S0 external generator's power into an energy total, as an
+  // independent check on the device's own e_ext_day_sum counter. The displayed
+  // value comes from that counter, not from here: it survives a restart of the
+  // panel, this does not. Kept because two numbers that are derived
+  // differently should agree - when they do not, one of them is wrong and the
+  // log is where that shows up.
+  //
+  // Trapezoidal over the interval since the last integration: a sample only
+  // says how much was produced at that instant, and the generator may be
+  // switched off between two polls - averaging the two ends is what keeps a
+  // short burst from counting for the whole interval.
   //
   // Only the fresh S0 value is used, and only while it actually answers. A
   // stale zero would otherwise drain the accumulator after the generator stops
@@ -707,6 +733,21 @@ void rctParse() {
   rctState.monthGridLoadWh = rctCur[RCT_SLOT_GRIDMONTH];
   rctState.yearGridLoadWh = rctCur[RCT_SLOT_GRIDYEAR];
 
+  // External energy (S0 generator), the device's own counters. These are the
+  // authoritative values: the e_ext_* family counts the external generator
+  // where the e_dc_* family stops at the two DC inputs. The device's own
+  // arithmetic around them is idiosyncratic - the register set carries both
+  // summed and unsummed variants, and the registry documents neither as the
+  // primary - so both are polled and logged raw, and the summed one is used for
+  // the display. That is a measured choice, not a documented one, and the log
+  // line makes the difference visible on the real device.
+  rctState.dayExtWh = rctCur[RCT_SLOT_EXTDAY];
+  rctState.monthExtWh = rctCur[RCT_SLOT_EXTMONTH];
+  rctState.yearExtWh = rctCur[RCT_SLOT_EXTYEAR];
+  rctState.totalExtWh = rctCur[RCT_SLOT_EXTTOTAL];
+  rctState.dayExtPlainWh = rctCur[RCT_SLOT_EXTDAYP];
+  rctState.monthExtPlainWh = rctCur[RCT_SLOT_EXTMONP];
+
   strlcpy(rctState.deviceName, rctDevName, sizeof(rctState.deviceName));
   strlcpy(rctState.firmwareVersion, rctFwVersion,
           sizeof(rctState.firmwareVersion));
@@ -743,7 +784,8 @@ void rctParse() {
     energyLogged = true;
     Serial.printf("RCT energy [kWh Tag/Monat/Jahr/Gesamt] PV %.1f/%.1f/%.1f/"
                   "%.1f | Verbrauch %.1f/%.1f/%.1f/%.1f | Einspeisung "
-                  "%.1f/%.1f/%.1f/%.1f | Bezug %.1f/%.1f/%.1f/%.1f\n",
+                  "%.1f/%.1f/%.1f/%.1f | Bezug %.1f/%.1f/%.1f/%.1f"
+                  " | Extern %.1f/%.1f/%.1f/%.1f (Tag/Mon/Jahr/Ges, sum)\n",
                   rctState.dayPvWh / 1000.0f, rctState.monthPvWh / 1000.0f,
                   rctState.yearPvWh / 1000.0f, rctState.totalPvWh / 1000.0f,
                   rctState.dayLoadWh / 1000.0f, rctState.monthLoadWh / 1000.0f,
@@ -755,7 +797,9 @@ void rctParse() {
                   rctState.dayGridLoadWh / 1000.0f,
                   rctState.monthGridLoadWh / 1000.0f,
                   rctState.yearGridLoadWh / 1000.0f,
-                  rctState.loadEnergyWh / 1000.0f);
+                  rctState.loadEnergyWh / 1000.0f,
+                  rctState.dayExtWh / 1000.0f, rctState.monthExtWh / 1000.0f,
+                  rctState.yearExtWh / 1000.0f, rctState.totalExtWh / 1000.0f);
   }
 
   // One-time bring-up log once the whole slow group has answered.
@@ -783,8 +827,9 @@ void rctParse() {
   }
   Serial.printf("RCT: grid %.0f/%.0f/%.0f (sum %.0f) W | load %.0f/%.0f/%.0f W"
                 " | PV %.2f kW (S0 %.0f W)"
-                " | bat %.0f%% %.2f kW (%.1f A, %.1f V) | S0 total %.2f kWh"
-                " (%d/%d fresh)\n",
+                " | bat %.0f%% %.2f kW (%.1f A, %.1f V)"
+                " | ext %.2f kWh (e_ext_day %.2f)"
+                " | integriert %.2f kWh | %d/%d fresh\n",
                 rctState.gridPower[0], rctState.gridPower[1],
                 rctState.gridPower[2], rctState.gridPowerSum,
                 rctState.loadPower[0],
@@ -794,5 +839,16 @@ void rctParse() {
                 rctState.s0Power, rctState.batterySoc,
                 rctState.batteryPower / 1000.0f, rctState.batteryCurrent,
                 rctState.batteryVoltage,
+                rctState.dayExtWh / 1000.0f,
+                // The unsummed e_ext_day next to e_ext_day_sum. Which of the two
+                // is the real external production is documented nowhere, so both
+                // stay in the log until the difference is measured rather than
+                // assumed. Measured so far: sum 2,83 kWh vs plain 0,00 kWh on
+                // 2025-09-29, i.e. the unsummed variant reads zero even though
+                // the generator ran - so the summed one is the displayed value.
+                rctState.dayExtPlainWh / 1000.0f,
+                // Our own integration of s0Power, since boot. Independent of
+                // the device: it must track the day counter's rise. A growing
+                // gap means the counter is not what its name says.
                 rctState.s0EnergyWh / 1000.0f, freshCount, RCT_NUM_SLOTS);
 }

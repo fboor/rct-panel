@@ -439,33 +439,47 @@ static void setEnergyValue(lv_obj_t *label, float wh) {
 // The four meter values of the selected period, in Wh.
 static void energyPeriodValues(const RctSnapshot &s, int period,
                                float out[ENERGY_ROWS]) {
-  float pv, feed, load, grid;
+  float pv, feed, load, grid, ext;
   switch (period) {
     case 1: // Monat
       pv = s.monthPvWh;   feed = s.monthFeedInWh;
       load = s.monthLoadWh; grid = s.monthGridLoadWh;
+      ext = s.monthExtWh;
       break;
     case 2: // Jahr
       pv = s.yearPvWh;    feed = s.yearFeedInWh;
       load = s.yearLoadWh;  grid = s.yearGridLoadWh;
+      ext = s.yearExtWh;
       break;
     case 3: // Gesamt
       // The two lifetime grid meters are the ones already tracked as
       // feedInEnergyWh / loadEnergyWh.
       pv = s.totalPvWh;   feed = s.feedInEnergyWh;
       load = s.totalLoadWh; grid = s.loadEnergyWh;
+      ext = s.totalExtWh;
       break;
     default: // Tag
       pv = s.dayPvWh;     feed = s.dayFeedInWh;
       load = s.dayLoadWh;   grid = s.dayGridLoadWh;
+      ext = s.dayExtWh;
       break;
   }
-  // The device's PV meters count the two DC inputs only, so the external
-  // generator on S0 is added from our own integration (see RctClient.cpp).
-  // Without it "PV Erzeugung" silently omitted a generator that feeds the
-  // house. For the day period this is the day's production; for month, year and
-  // lifetime it only covers the time since boot and is therefore a lower bound.
-  pv += s.s0EnergyWh;
+  // Externe Energie (S0-Generator). Das Geraet fuehrt dafuer eine eigene
+  // Zaehlerfamilie, e_ext_*: in den e_dc_* (Erzeugung) kommt der S0-Ertrag
+  // nicht hinein, und im Lastzaehler taucht er ebenfalls nicht auf - sonst
+  // waere er bereits in e_load enthalten und braeuchte hier nichts ergaenzt.
+  // Die Rechnung des Geraets ist insofern eigenartig, und genau deshalb geht
+  // derselbe Betrag auf beide Seiten:
+  //
+  //   Erzeugung = PV (DC) + extern
+  //   Verbrauch = Haus + extern
+  //
+  // Ohne das waere der externe Ertrag weder in "PV Erzeugung" noch in
+  // "Verbrauch" und "Eigenverbrauch" sichtbar, obwohl er das Haus versorgt.
+  // Der Eigenverbrauch unten bleibt damit die Differenz aus dem, was im Haus
+  // ankam, und dem, was dafuer aus dem Netz kam.
+  pv += ext;
+  load += ext;
   out[EB_VAL_PV] = pv;
   // The feed-in counters arrive negative on the real device (measured: -20,1 kWh
   // on a day with 32,5 kWh production). Shown as reported, the "Netzeinspeisung"
