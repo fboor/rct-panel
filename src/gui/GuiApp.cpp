@@ -407,8 +407,8 @@ static const int EB_BAR_X = 20;
 static const int EB_BAR_W = 440;
 static const int EB_BAR_H = 16;
 static const int EB_LABEL_GAP = 24; // label line (20 px) + 4 px air to the bar
-static const int EB_ROW0_Y = 82;   // first label line (below heading + selector)
-static const int EB_ROW_H = 62;     // label (20) + gap (4) + bar (16) + air (22)
+static const int EB_ROW0_Y = 72;   // first label line (below heading + selector)
+static const int EB_ROW_H = 56;     // label (20) + gap (4) + bar (16) + air (16)
 
 // "< 1000 kWh" prints as "12,4 kWh", above that in MWh ("1,23 MWh"). The
 // decimal separator is a comma, as in the portal.
@@ -606,12 +606,12 @@ static void pageBuildOverview(AppPage *p) {
 static void pageBuildEnergy(AppPage *p) {
   lv_obj_t *root = p->root;
 
-  // Period selector: Tag | Monat | Jahr | Gesamt. Starts below the page
-  // heading (y=8..28), which took the top row this page used before.
+  // Period selector: Tag | Monat | Jahr | Gesamt. Sits just below the page
+  // heading (8..28), which took the top row this page used before.
   for (int i = 0; i < ENERGY_PERIODS; i++) {
     lv_obj_t *btn = lv_button_create(root);
     lv_obj_set_size(btn, 108, 34);
-    lv_obj_set_pos(btn, 12 + i * 114, 34);
+    lv_obj_set_pos(btn, 12 + i * 114, 30);
     lv_obj_set_style_bg_color(btn, COL_CARD, 0);
     lv_obj_set_style_bg_color(btn, COL_ACCENT, LV_STATE_PRESSED);
     lv_obj_set_style_radius(btn, 8, 0);
