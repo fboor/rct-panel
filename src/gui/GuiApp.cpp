@@ -456,10 +456,14 @@ static void energyPeriodValues(const RctSnapshot &s, int period,
   out[EB_VAL_FEED] = feed;
   out[EB_VAL_GRID] = grid;
   out[EB_VAL_LOAD] = load;
-  // Eigenverbrauch = produced energy that was not fed into the grid (direct
-  // use plus battery charge). Clamped at 0: the counters can disagree slightly
-  // right after a device restart, and a negative bar makes no sense.
-  out[EB_VAL_SELF] = pv - feed > 0.0f ? pv - feed : 0.0f;
+  // Eigenverbrauch = Hausverbrauch minus Netzbezug, also der Anteil des
+  // Verbrauchs, der nicht aus dem Netz kam - PV direkt genutzt plus was die
+  // Batterie lieferte. Nicht PV minus Einspeisung: das waere "PV im eigenen
+  // Haus genutzt" ohne den Batteriebeitrag und wuerde zudem die Einspeisung
+  // als Teil des Eigenverbrauchs rechnen, obwohl die exportiert wird.
+  // Geklammert bei 0: die Zaehler laufen nach einem Geraete-Neustart kurz
+  // auseinander, und ein negativer Balken waere sinnlos.
+  out[EB_VAL_SELF] = load - grid > 0.0f ? load - grid : 0.0f;
 }
 
 // Highlight the active period button (portal dashboard style).
@@ -888,30 +892,61 @@ static const char *const kFaultDe[128] = {
     "Neutralleiterfehler",                                       // 127
 };
 
-// battery.bat_status decode (rctclient "Bitfields and Enumerations"):
-//   * bits 3 + 10 (0x0408 = 1032) both clear  => calibration in progress
-//     (the official app appends "(calib.)")
-//   * bit 11 (0x0800 = 2048) clear             => balancing in progress
-//     (the official app appends "(balance)")
-//   * bit 3 set => charging, bit 10 set => discharging, else standby.
-// Most other bits are not publicly documented, hence the raw value below.
-static void serviceBatteryDecode(uint32_t v, char *out, size_t n) {
-  const uint32_t CALIB = (1u << 3) | (1u << 10); // 1032
-  const uint32_t BAL = (1u << 11);               // 2048
-  const char *state = "--";
-  if ((v & CALIB) == 0) {
-    state = "Kalibrierung läuft";
+// battery.bat_status (OID 0x70A2AF4F) decode.
+//
+// A gesetztes Bit bedeutet den Zustand, ein leeres Register ist der normale
+// Leerlauf. Die verbreitete rctclient-Zeile "if (value & 1032 == 0) =>
+// calibration" liest das genau verkehrt herum und meldet bei v == 0
+// "Kalibrierung laeuft" plus "Balancing laeuft" - auf echter Hardware also bei
+// jedem unauffaelligen Geraet. Die Bitbelegung ist durch Beobachtung am
+// Geraet belegt (HA-Integration Issue #264, python-rctclient Issue #39):
+//
+//   Bit 3  /     8 = Kalibrierung, Ladephase   (SOC-Ziel 100 %)
+//   Bit 10 /  1024 = Kalibrierung, Entladephase (SOC-Ziel 0 %)
+//   Bit 11 /  2048 = Balancing der Batteriezellen
+//   Bit 9  /   512 = Unterspannung / leer
+//   alle anderen = undokumentiert
+//
+// Laden/Entladen steht in diesem Register nicht zuverlaessig; dafuer wird das
+// Vorzeichen der Batterieleistung verwendet (positiv = Ladung), das unabhaengig
+// davon ist und ohnehin schon angezeigt wird.
+static void serviceBatteryDecode(uint32_t v, float batPower, char *out,
+                                 size_t n) {
+  char state[40] = "";
+  bool namesPhase = false; // Zustand nennt die Lade-/Entladerichtung selbst
+  if (v == 0) {
+    strlcpy(state, "Bereit", sizeof(state));
   } else if (v & (1u << 3)) {
-    state = "Laden";
+    strlcpy(state, "Kalibrierung (Ladephase)", sizeof(state));
+    namesPhase = true;
   } else if (v & (1u << 10)) {
-    state = "Entladen";
+    strlcpy(state, "Kalibrierung (Entladephase)", sizeof(state));
+    namesPhase = true;
+  } else if (v & (1u << 11)) {
+    strlcpy(state, "Balancing", sizeof(state));
+  } else if (v & (1u << 9)) {
+    strlcpy(state, "Unterspannung", sizeof(state));
+  } else if (v & 1u) {
+    strlcpy(state, "Getrennt", sizeof(state));
   } else {
-    state = "Standby";
+    // Unbekannte Bits: nicht raten, der Rohwert steht darunter.
+    snprintf(state, sizeof(state), "Status %lu", (unsigned long)v);
   }
-  snprintf(out, n, "%s", state);
-  if ((v & BAL) == 0) {
-    strncat(out, "  -  Balancing läuft", n - strlen(out) - 1);
+  // Zusatz, der unabhaengig vom Register gilt. Mehrere Zustaende koennen
+  // gleichzeitig gesetzt sein, deshalb werden sie verknuepft statt als else-if.
+  if (v & (1u << 11) && !(v & ((1u << 3) | (1u << 10)))) {
+    strncat(state, " + Balancing", sizeof(state) - strlen(state) - 1);
   }
+  // Lade-/Entladerichtung aus der Leistung. Entfaellt, wenn der Zustand sie
+  // bereits nennt - "Kalibrierung (Entladephase) (entlaedt)" waere doppelt.
+  if (!namesPhase) {
+    if (batPower > 50.0f) {
+      strncat(state, "  (laedt)", sizeof(state) - strlen(state) - 1);
+    } else if (batPower < -50.0f) {
+      strncat(state, "  (entlaedt)", sizeof(state) - strlen(state) - 1);
+    }
+  }
+  strlcpy(out, state, n);
 }
 
 // Active faults -> "F<n> <description>" lines, capped at kMax so the list
@@ -1253,9 +1288,16 @@ static void refreshCb(lv_timer_t *t) {
 
     // --- Grid ---
     // Island mode (grid outage): warning triangle on the connector. The flag
-    // arrives with the 10 s device group, so it stays 0 (= connected) until
-    // the device has answered once - a hidden warning is the safe default.
-    if (s.islandMode) {
+    // arrives with the 10 s device group, so the warning stays hidden until the
+    // device has answered once - a hidden warning is the safe default.
+    //
+    // g_sync.p_ac_grid_sum_lp is + = Einspeisung on the real device, not + =
+    // Bezug as the portal comment claimed: the overview showed "Bezug" while
+    // the panel was feeding the grid and vice versa, including the arrow
+    // direction and the "Netzstrom"/"Unabhängig" verdict. The sign meaning is
+    // defined once here and every consumer below derives from it.
+    const bool gridImport = pTot < 0.0f;
+    if (s.islandMode && s.islandKnown) {
       lv_obj_remove_flag(ov.labels[OV_ISLAND], LV_OBJ_FLAG_HIDDEN);
     } else {
       lv_obj_add_flag(ov.labels[OV_ISLAND], LV_OBJ_FLAG_HIDDEN);
@@ -1268,9 +1310,9 @@ static void refreshCb(lv_timer_t *t) {
       lv_obj_set_style_line_color(s_lineGrid, active ? FLOW_RED : FLOW_LINE, 0);
       lv_obj_set_style_line_width(s_lineGrid, active ? 4 : 3, 0);
       if (active) {
-        // import: flow grid -> haus (arrow points left), export: haus -> grid
+        // import: grid -> haus (arrow points left), export: haus -> grid
         lv_label_set_text(ov.labels[OV_GRID_ARROW],
-                          pTot > 0 ? LV_SYMBOL_LEFT : LV_SYMBOL_RIGHT);
+                          gridImport ? LV_SYMBOL_LEFT : LV_SYMBOL_RIGHT);
         lv_obj_remove_flag(ov.labels[OV_GRID_ARROW], LV_OBJ_FLAG_HIDDEN);
       } else {
         lv_obj_add_flag(ov.labels[OV_GRID_ARROW], LV_OBJ_FLAG_HIDDEN);
@@ -1356,14 +1398,14 @@ static void refreshCb(lv_timer_t *t) {
       // Verbrauch says where the household power comes from: "Netzstrom" as
       // soon as the grid is importing, otherwise the house runs on its own
       // (PV and/or battery), which is what "Unabhängig" names.
-      if (pTot >= gridActive) {
+      if (gridImport && fabsf(pTot) >= gridActive) {
         setText(ov.labels[OV_T_VERB], "Netzstrom");
       } else {
         setText(ov.labels[OV_T_VERB], "Unabhängig");
       }
 
       if (gridFlowing) {
-        setText(ov.labels[OV_T_NETZ], pTot > 0 ? "Bezug" : "Einspeisung");
+        setText(ov.labels[OV_T_NETZ], gridImport ? "Bezug" : "Einspeisung");
       } else {
         setText(ov.labels[OV_T_NETZ], "Unabhängig");
       }
@@ -1418,13 +1460,15 @@ static void refreshCb(lv_timer_t *t) {
 
   AppPage &en = s_pages[PAGE_HEUTE];
   if (en.labels[EN_GEN_VAL]) {
-    // Portal "Heute" day counters (all Wh). Eigenverbrauch = PV produced that
-    // was not fed into the grid (direct use + battery charge).
+    // Portal "Heute" day counters (all Wh). Eigenverbrauch = Hausverbrauch
+    // minus Netzbezug: was die Wohnung verbraucht hat, ohne es aus dem Netz zu
+    // beziehen (PV direkt plus Batterie). Die Einspeisung ist damit nicht
+    // enthalten - sie geht nach aussen, nicht in den eigenen Verbrauch.
     float gen = s.dayPvWh;          // Erzeugt
     float feed = s.dayFeedInWh;     // Eingespeist
     float consumed = s.dayLoadWh;   // Verbrauch (household)
     float gridIn = s.dayGridLoadWh; // Bezug (grid draw)
-    float selfUse = gen - feed;
+    float selfUse = consumed - gridIn;
     if (selfUse < 0.0f) selfUse = 0.0f;
     // Autarkie = 1 - Bezug / Verbrauch. No load consumes nothing from the
     // grid, so the day is fully independent.
@@ -1514,7 +1558,8 @@ static void refreshCb(lv_timer_t *t) {
       setNum(dev.labels[DEV_CYCLES], "%.0f", s.batteryCycles);
       setNum(dev.labels[DEV_FREQ], "%.2f Hz", s.gridFrequency[0]);
       setNum(dev.labels[DEV_SOH], "%.1f %%", s.batterySoh);
-      setText(dev.labels[DEV_ISLAND], "%s", s.islandMode ? "ja" : "nein");
+      setText(dev.labels[DEV_ISLAND], "%s",
+              s.islandKnown ? (s.islandMode ? "ja" : "nein") : "--");
     }
   }
 
@@ -1527,8 +1572,8 @@ static void refreshCb(lv_timer_t *t) {
       lv_label_set_text(sv.labels[SV_BAT_STATUS], "--");
       lv_label_set_text(sv.labels[SV_BAT_RAW], "");
     } else {
-      char tmp[48];
-      serviceBatteryDecode(s.batteryStatus, tmp, sizeof(tmp));
+      char tmp[64];
+      serviceBatteryDecode(s.batteryStatus, s.batteryPower, tmp, sizeof(tmp));
       lv_label_set_text(sv.labels[SV_BAT_STATUS], tmp);
       setText(sv.labels[SV_BAT_RAW], "Rohwert: 0x%08X", s.batteryStatus);
     }

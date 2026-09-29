@@ -51,8 +51,21 @@ static bool timeStarted = false;  // SNTP kicked off once the link is up
 // blocking config portal were both found. Keep it: it costs one comparison.
 #define STALL_REPORT_MS 300
 
+// LVGL's clock has exactly one source. The yield hook below advances the same
+// timestamp that loop() does; a second, independent "last" would let the two
+// call sites disagree about how much time passed, and LVGL timers then run
+// fast or stall depending on which one was called last.
+static uint32_t s_lvLastTick = 0;
+
+static void lvAdvance(uint32_t now) {
+  const uint32_t d = now - s_lvLastTick;
+  if (d > 0) {
+    lv_tick_inc(d);
+    s_lvLastTick = now;
+  }
+}
+
 void loop() {
-  static uint32_t lastTick = 0;
   static uint32_t loopStart = 0;
   uint32_t now = millis();
   {
@@ -63,8 +76,7 @@ void loop() {
     }
     loopStart = now;
   }
-  lv_tick_inc(now - lastTick); // monotonic-ish; provisioning is absorbed
-  lastTick = now;
+  lvAdvance(now); // monotonic-ish; provisioning is absorbed
 
   displayLooper(); // lv_timer_handler() -> flush -> esp_lcd
 
@@ -76,10 +88,7 @@ void loop() {
   if (!hookInstalled) {
     hookInstalled = true;
     rctSetYieldHook([]() {
-      static uint32_t last = 0;
-      const uint32_t t = millis();
-      lv_tick_inc(t - last);
-      last = t;
+      lvAdvance(millis());
       displayLooper();
     });
   }

@@ -8,8 +8,12 @@
 // slot. Values keep their last good reading until refreshed (a partially
 // responsive device must not blank the panel).
 struct RctSnapshot {
+  // True once prim_sm.island_flag has actually answered. The flag is 0 both
+  // for "grid lost" and for "not received yet", so the GUI may only draw the
+  // island warning after this is set - otherwise a device that is merely
+  // quiet would be reported as islanding.
   float gridPower[3];     // g_sync.p_ac_sc[0..2]      grid power per phase [W]
-  float gridPowerSum;     // g_sync.p_ac_grid_sum_lp   grid exchange total [W], + = Bezug
+  float gridPowerSum;     // g_sync.p_ac_grid_sum_lp   grid exchange total [W], + = Einspeisung
   float gridVoltage[3];   // rb485.u_l_grid[0..2]      grid voltage per phase [V]
   float gridFrequency[3]; // rb485.f_grid[0..2]        grid frequency per phase [Hz]
   float feedInEnergyWh;   // energy.e_grid_feed_total  lifetime feed-in [Wh] (already Wh)
@@ -39,7 +43,10 @@ struct RctSnapshot {
   float pvPower[2];     // dc_conv.dc_conv_struct[i].p_dc_lp  solar gen A/B [W]
   float s0Power;        // io_board.s0_external_power         S0 meter [W], 0 while absent
   float batterySoc;     // battery.soc     [%]
-  float batteryCurrent; // battery.current [A]
+  // Sign convention: batteryPower and batteryCurrent both use "positive =
+  // charging". The device's raw current register uses the opposite polarity, so
+  // the sign is reconciled against U*I vs P in RctClient.cpp before it is stored.
+  float batteryCurrent; // battery.current [A], sign aligned with batteryPower
   float batteryVoltage; // battery.voltage [V]
   float batteryPower;   // g_sync.p_acc_lp [W]; positive = charging
 
@@ -57,7 +64,11 @@ struct RctSnapshot {
   uint32_t nextCalibTs;     // power_mng.bat_next_calib_date next calibration [unix s]
   float batteryCycles;      // battery.cycles               charge/discharge cycles
   float batterySoh;         // battery.soh                  state of health [%]
-  bool islandMode;          // prim_sm.island_flag != 0     island (grid-separated) mode
+  // prim_sm.island_flag is "grid OK" (1 = grid present), the inverse of what
+  // the name suggests: islandMode is therefore true when the flag is 0. Only
+  // meaningful once islandKnown is set.
+  bool islandMode;          // island (grid-separated) mode
+  bool islandKnown;         // island flag has answered at least once
 
   bool haveData;      // any value ever received from the device
   bool haveBattery;   // battery.soc ever answered (device has a battery)

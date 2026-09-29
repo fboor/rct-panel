@@ -181,7 +181,7 @@ void networkSetup() {
   // TEMP (dev/test): point the panel at the local RCT simulator instead of
   // the stored host so live values can be verified. Remove for production; the
   // real host then comes from NVS / the provisioning portal again.
-  strcpy(rct_host, "192.168.2.91");
+  strcpy(rct_host, "192.168.1.88");
   strcpy(rct_port, "8899");
   Serial.printf("RCT: using simulator host %s:%s (TEMP override)\n", rct_host,
                 rct_port);

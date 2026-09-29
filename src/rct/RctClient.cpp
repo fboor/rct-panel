@@ -419,19 +419,34 @@ static void rctDecodeString(const uint8_t *p, size_t n, char *dst) {
 // Most devices work without it, but some firmware stays silent for plain
 // READs until it was received. No response is expected; any bytes the device
 // sends back are drained so the following READ frames line up.
-static void rctSendExtension() {
-  static const uint8_t ext[] = {0x2b, 0x3c, 0xe1};
-  rctClient.write(ext, sizeof(ext));
-  unsigned long startMillisHere = millis();
-  while (millis() - startMillisHere < 300) {
+// Drain window after the extension frame. This runs on every reconnect, and a
+// plain delay(1) here froze the GUI for the full 300 ms - not a long stall, but
+// it lands right where the user is most likely to be switching pages.
+static void rctDrain(uint32_t ms) {
+  const unsigned long startMillisHere = millis();
+  while (millis() - startMillisHere < ms) {
     while (rctClient.available()) {
       rctClient.read();
     }
-    delay(1);
+    if (rctYieldHook) {
+      rctYieldHook();
+    } else {
+      delay(1);
+    }
   }
 }
 
+static void rctSendExtension() {
+  static const uint8_t ext[] = {0x2b, 0x3c, 0xe1};
+  rctClient.write(ext, sizeof(ext));
+  rctDrain(300);
+}
+
 RctSnapshot rctState = {};
+
+// One-time note when the current sign had to be flipped, so the reconciliation
+// is visible in the log instead of being a silent guess.
+static bool rctCurrentFlipLogged = false;
 
 // Public poll entry point (mirrors parseRCT in the ported project).
 void rctParse() {
@@ -596,9 +611,34 @@ void rctParse() {
     return v < 0.0f ? 0.0f : (v > 100.0f ? 100.0f : v);
   };
   rctState.batterySoc = pct100(rctCur[RCT_SLOT_SOC]);
-  rctState.batteryCurrent = rctCur[RCT_SLOT_IBAT];
-  rctState.batteryVoltage = rctCur[RCT_SLOT_UBAT];
-  rctState.batteryPower = rctCur[RCT_SLOT_PBAT];
+  // battery.current (OID 0x21961B58) reports with the opposite sign convention
+  // to g_sync.p_acc_lp: on the real device the current reads positive while
+  // the battery is discharging, the power positive while it charges. Showing
+  // the raw value therefore labelled a discharging battery as charging.
+  //
+  // Rather than hardcoding a negation, the sign is reconciled against the
+  // physics: for a battery P = U * I, so the sign of (U * I) must match the
+  // sign of the reported power. Whichever of the two is inconsistent, the
+  // current is flipped - and the check holds for either firmware convention.
+  float current = rctCur[RCT_SLOT_IBAT];
+  const float voltage = rctCur[RCT_SLOT_UBAT];
+  const float power = rctCur[RCT_SLOT_PBAT];
+  if (fabsf(power) > 50.0f && voltage > 1.0f && current != 0.0f) {
+    const bool elecNeg = (voltage * current) < 0.0f;
+    const bool powerNeg = power < 0.0f;
+    if (elecNeg != powerNeg) {
+      current = -current;
+      if (!rctCurrentFlipLogged) {
+        rctCurrentFlipLogged = true;
+        Serial.printf("RCT: battery current sign flipped to match power "
+                      "(I=%.2f A, U=%.1f V, P=%.0f W)\n",
+                      (double)current, (double)voltage, (double)power);
+      }
+    }
+  }
+  rctState.batteryCurrent = current;
+  rctState.batteryVoltage = voltage;
+  rctState.batteryPower = power;
 
   // Service page data (raw, exact values).
   rctState.batteryStatus = rctRaw[RCT_SLOT_BATSTATUS];
@@ -634,7 +674,18 @@ void rctParse() {
   rctState.nextCalibTs = rctRaw[RCT_SLOT_CALIB];
   rctState.batteryCycles = rctCur[RCT_SLOT_CYCLES];
   rctState.batterySoh = pct100(rctCur[RCT_SLOT_SOH]);
-  rctState.islandMode = rctRaw[RCT_SLOT_ISLAND] != 0;
+  // prim_sm.island_flag is documented as "grid OK" (1 = grid present), i.e.
+  // the flag is the inverse of what the name suggests - the real device
+  // reports 1 while running normally on the grid and 0 when it has dropped
+  // off, so `!= 0` showed the island warning permanently and hid it exactly
+  // when it mattered.
+  // islandKnown distinguishes "the device said 0" from "the device has not
+  // answered this OID yet" - both read as 0 in rctRaw, and before any answer
+  // the warning triangle would be stuck on.
+  if (infoSeen & (1u << (RCT_SLOT_ISLAND - RCT_SLOT_DEVNAME))) {
+    rctState.islandKnown = true;
+    rctState.islandMode = rctRaw[RCT_SLOT_ISLAND] == 0;
+  }
 
   // One-time bring-up log for the "Energie" page: proves the 13 accumulated
   // OIDs answer and that the units are kWh. Every meter prints in the period
@@ -663,14 +714,19 @@ void rctParse() {
   if (!infoLogged && infoSeen ==
                          ((1u << (RCT_NUM_SLOTS - RCT_SLOT_DEVNAME)) - 1u)) {
     infoLogged = true;
+    // The raw island and bat_status values are printed alongside the decoded
+    // ones: both are polarity questions that only the real device can settle,
+    // and the decode is only trustworthy if the raw value is visible next to it.
     Serial.printf("RCT info: \"%s\" | SW %s | core %.1f C | bat %.1f C | "
                   "heat %.1f C | calib %lu | cycles %.0f | SOH %.1f %% | "
-                  "island %u\n",
+                  "island %u (raw 0x%08X) | bat_status 0x%08X\n",
                   rctState.deviceName, rctState.firmwareVersion,
                   rctState.coreTemp, rctState.batteryTemp,
                   rctState.heatSinkTemp,
                   (unsigned long)rctState.nextCalibTs, rctState.batteryCycles,
-                  rctState.batterySoh, (unsigned)rctState.islandMode);
+                  rctState.batterySoh, (unsigned)rctState.islandMode,
+                  (unsigned)rctRaw[RCT_SLOT_ISLAND],
+                  (unsigned)rctState.batteryStatus);
   }
 
   int freshCount = 0;
