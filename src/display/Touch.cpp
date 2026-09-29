@@ -17,6 +17,7 @@ static uint8_t s_addr = 0;
 static int16_t s_x = 0;
 static int16_t s_y = 0;
 static bool s_pressed = false;
+static bool s_logPress = true;
 
 #define GT911_REG_STATUS 0x814E
 #define GT911_REG_POINT1 0x814F
@@ -30,6 +31,9 @@ static bool gt911Read(uint16_t reg, uint8_t *buf, size_t len) {
   }
   size_t got = Wire.requestFrom(s_addr, len);
   if (got != len) {
+    while (Wire.available()) {
+      Wire.read(); // drain leftovers so the next transaction starts clean
+    }
     return false;
   }
   for (size_t i = 0; i < len; i++) {
@@ -44,7 +48,10 @@ static bool gt911Write16(uint16_t reg, uint16_t value) {
   Wire.write(reg & 0xFF);
   Wire.write(value >> 8);
   Wire.write(value & 0xFF);
-  return Wire.endTransmission(false) == 0;
+  // endTransmission(false) leaves the Wire core waiting for a requestFrom();
+  // the next command would then log "Unfinished Repeated Start ..." and be
+  // cleared. A write-only transaction must always end with a STOP.
+  return Wire.endTransmission() == 0;
 }
 
 bool touchInit() {
@@ -73,18 +80,33 @@ void touchReadCb(lv_indev_t *indev, lv_indev_data_t *data) {
     return;
   }
   uint8_t status = 0;
-  if (gt911Read(GT911_REG_STATUS, &status, 1) && (status & 0x01)) {
-    uint8_t pt[6] = {0}; // track id + x(lo,hi) + y(lo,hi) + size
-    if (gt911Read(GT911_REG_POINT1, pt, sizeof(pt))) {
-      s_x = pt[1] | (pt[2] << 8);
-      s_y = pt[3] | (pt[4] << 8);
-      if (s_x < 480 && s_y < 480) {
-        s_pressed = true;
+  if (gt911Read(GT911_REG_STATUS, &status, 1)) {
+    // GT911 buffer-status register: bit7 = data ready, bits2:0 = touch count
+    // (ESPhome gt911 driver uses 0x80/count; bit0 must NOT be used).
+    uint8_t num = status & 0x07;
+    gt911Write16(GT911_REG_STATUS, 0); // acknowledge/clear (before reading points)
+    if ((status & 0x80) && num > 0) {
+      uint8_t pt[6] = {0}; // track id + x(lo,hi) + y(lo,hi) + size
+      if (gt911Read(GT911_REG_POINT1, pt, sizeof(pt))) {
+        s_x = pt[1] | (pt[2] << 8);
+        s_y = pt[3] | (pt[4] << 8);
+        if (s_logPress) { // log press transitions only (no serial flood)
+          Serial.printf("Touch: press x=%d y=%d id=%u size=%u status=0x%02X%s\n",
+                        s_x, s_y, pt[0], pt[5], status,
+                        (s_x < 480 && s_y < 480) ? " ok" : " OUT-OF-RANGE");
+          s_logPress = false;
+        }
+        if (s_x < 480 && s_y < 480) {
+          s_pressed = true;
+        }
       }
+    } else {
+      if (s_pressed) {
+        Serial.printf("Touch: release (%d,%d)\n", s_x, s_y);
+      }
+      s_pressed = false;
+      s_logPress = true;
     }
-    gt911Write16(GT911_REG_STATUS, 0); // acknowledge
-  } else {
-    s_pressed = false;
   }
 
   if (s_x < 0) s_x = 0;

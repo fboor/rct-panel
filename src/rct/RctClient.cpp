@@ -253,6 +253,12 @@ enum RCT_SLOT {
   RCT_SLOT_ELOADDAY, // energy.e_load_day       household day [Wh]
   RCT_SLOT_EFEEDDAY, // energy.e_grid_feed_day  feed-in day [Wh]
   RCT_SLOT_EGRIDLOADDAY, // energy.e_grid_load_day grid draw day [Wh]
+  // Service page (fast group): battery status + fault bitfields.
+  RCT_SLOT_BATSTATUS, // battery.bat_status      status bitfield (INT32)
+  RCT_SLOT_FLT0,      // fault[0].flt            fault bits  0-31 (UINT32)
+  RCT_SLOT_FLT1,      // fault[1].flt            fault bits 32-63 (UINT32)
+  RCT_SLOT_FLT2,      // fault[2].flt            fault bits 64-95 (UINT32)
+  RCT_SLOT_FLT3,      // fault[3].flt            fault bits 96-127 (UINT32)
   // Device info group: name / software version / temperatures / calibration
   // date / cycles / SOH / island flag. RCT_SLOT_DEVNAME also marks the
   // boundary between the fast and the info poll groups.
@@ -296,6 +302,11 @@ static const uint32_t rctOids[RCT_NUM_SLOTS] = {
     0x2F3C1D7D, // household day energy (Wh)
     0x3C87C4F5, // day energy grid feed-in (Wh)
     0x867DEF7D, // day energy grid load (Wh)
+    0x70A2AF4F, // battery status bitfield (INT32)
+    0x37F9D5CA, // fault[0].flt  fault bits 0-31 (UINT32)
+    0x234B4736, // fault[1].flt  fault bits 32-63 (UINT32)
+    0x3B7FCD47, // fault[2].flt  fault bits 64-95 (UINT32)
+    0x7F813D73, // fault[3].flt  fault bits 96-127 (UINT32)
     0xEBC62737, // device name (string)
     0xDDD1C2D0, // control software version (string)
     0xC24E85D0, // core temperature (°C)
@@ -321,6 +332,11 @@ static int rctSlotForOid(uint32_t oid) {
 enum RCT_DTYPE : uint8_t { RCT_DT_FLOAT = 0, RCT_DT_INT, RCT_DT_STRING };
 
 static uint8_t rctTypeOf(int slot) {
+  // Non-float fast-group slots: battery status + fault bitfields decode as
+  // raw integers (exact 32-bit values; float would lose bits above 2^24).
+  if (slot >= RCT_SLOT_BATSTATUS && slot <= RCT_SLOT_FLT3) {
+    return RCT_DT_INT;
+  }
   if (slot < RCT_SLOT_DEVNAME) {
     return RCT_DT_FLOAT;
   }
@@ -511,10 +527,21 @@ void rctParse() {
   rctState.pvPower[0] = rctCur[RCT_SLOT_PV0];
   rctState.pvPower[1] = rctCur[RCT_SLOT_PV1];
   rctState.s0Power = rctCur[RCT_SLOT_S0];
-  rctState.batterySoc = rctCur[RCT_SLOT_SOC];
+  // SOC/SOH are reported as 0..1 fractions; scale to percent.
+  static const auto pct100 = [](float frac) {
+    float v = frac * 100.0f;
+    return v < 0.0f ? 0.0f : (v > 100.0f ? 100.0f : v);
+  };
+  rctState.batterySoc = pct100(rctCur[RCT_SLOT_SOC]);
   rctState.batteryCurrent = rctCur[RCT_SLOT_IBAT];
   rctState.batteryVoltage = rctCur[RCT_SLOT_UBAT];
   rctState.batteryPower = rctCur[RCT_SLOT_PBAT];
+
+  // Service page data (raw, exact values).
+  rctState.batteryStatus = rctRaw[RCT_SLOT_BATSTATUS];
+  for (int k = 0; k < 4; k++) {
+    rctState.faultBits[k] = rctRaw[RCT_SLOT_FLT0 + k];
+  }
 
   rctState.dayPvWh = rctCur[RCT_SLOT_DC0] + rctCur[RCT_SLOT_DC1];
   rctState.dayFeedInWh = rctCur[RCT_SLOT_EFEEDDAY];
@@ -529,7 +556,7 @@ void rctParse() {
   rctState.heatSinkTemp = rctCur[RCT_SLOT_HTEMP];
   rctState.nextCalibTs = rctRaw[RCT_SLOT_CALIB];
   rctState.batteryCycles = rctCur[RCT_SLOT_CYCLES];
-  rctState.batterySoh = rctCur[RCT_SLOT_SOH];
+  rctState.batterySoh = pct100(rctCur[RCT_SLOT_SOH]);
   rctState.islandMode = rctRaw[RCT_SLOT_ISLAND] != 0;
 
   // One-time bring-up log once the whole slow group has answered.

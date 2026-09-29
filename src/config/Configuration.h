@@ -39,4 +39,17 @@ bool networkUpdate();
 // post-provisioning. No-op while provisioning (the portal owns the radio).
 void wifiReconnectLoop();
 
+// While the "RCT-Panel" provisioning access point is running: whether it is
+// currently up, its SSID, and whether it is an open network (no password).
+// The GUI uses these to draw a Wi-Fi QR code on the display while the panel
+// waits to be provisioned.
+bool provisioningApActive();
+const char *provisioningApSsid();
+bool provisioningApOpen(); // true = open network (no password)
+
+// User-triggered return to provisioning (Service page button): leaves normal
+// network operation and serves the "RCT-Panel" setup access point again so
+// the Wi-Fi / RCT host can be reconfigured without wiping NVS.
+void restartProvisioning();
+
 #endif // CONFIGURATION_H

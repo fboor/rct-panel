@@ -49,9 +49,14 @@ void loop() {
 
   displayLooper(); // lv_timer_handler() -> flush -> esp_lcd
 
-  if (!networkReady) {
-    networkReady = networkUpdate();
-  }
+  // Pump the Wi-Fi state machine on every loop. This runs the captive portal's
+  // web/DNS servers via WiFiManager::process() whenever the panel is in the
+  // provisioning state - including manual re-entry from the Service page
+  // (restartProvisioning()), where networkReady is already true from an earlier
+  // connect. Gating this on !networkReady starved the portal's HTTP server:
+  // the softAP/DHCP (driver handled) kept working, but http://192.168.4.1
+  // never answered. networkUpdate() returns immediately in WIFI_READY.
+  networkReady = networkUpdate();
   if (networkReady && !timeStarted) {
     // Wall clock for the "next calibration" countdown on the Gerät page;
     // becomes valid a few seconds after the link is up (non-blocking).

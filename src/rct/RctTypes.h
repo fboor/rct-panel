@@ -28,6 +28,10 @@ struct RctSnapshot {
   float batteryVoltage; // battery.voltage [V]
   float batteryPower;   // g_sync.p_acc_lp [W]; positive = charging
 
+  // Service page: battery status bitfield + inverter fault bitfields.
+  uint32_t batteryStatus; // battery.bat_status    status bitfield (INT32)
+  uint32_t faultBits[4];  // fault[0..3].flt        128 fault bits (UINT32)
+
   // Device info (page "Gerät"). Kept as its own group so it can be tuned
   // independently (currently polled on the same cadence as the fast values).
   char deviceName[40];      // android_description          device name

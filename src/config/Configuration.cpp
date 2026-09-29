@@ -44,6 +44,9 @@ static bool ready = false; // provisioning finished, link usable
 static char wifi_ssid[33] = "";
 static char wifi_pass[65] = "";
 
+// Provisioning AP: WiFiManager starts it open ("RCT-Panel", no password).
+static const char kApSsid[] = "RCT-Panel";
+
 enum WifiPhase { WIFI_CONNECTING, WIFI_PORTAL, WIFI_READY };
 static WifiPhase phase = WIFI_CONNECTING;
 
@@ -94,33 +97,35 @@ void saveConfig() {
 // WiFiManager portal web server is kept running by networkUpdate()).
 static void startProvisioningAp() {
   Serial.println(F("WiFi: starting 'RCT-Panel' provisioning access point ..."));
+  // Keep the portal form's RCT host/port fields in sync with the values
+  // actually in use. The WiFiManagerParameter defaults are captured at file
+  // scope - before readConfig() and any dev override run - so without this a
+  // save would re-submit the stale compile-time host and clobber NVS.
+  p_rct_host.setValue(rct_host, sizeof(rct_host) - 1);
+  p_rct_port.setValue(rct_port, sizeof(rct_port) - 1);
   // Modem sleep can make the ESP32-S3 softAP drop beacons/associations; keep
   // the radio fully awake while the panel is acting as the provisioning AP.
   WiFi.setSleep(false);
   wm.startConfigPortal("RCT-Panel");
-  // WiFiManager disables the station interface when the portal starts while
-  // not connected (_disableSTAConn), leaving the radio in AP-only mode. A
-  // portal save then re-enables STA inside the library's save processing - a
-  // full mode flap that has dropped the browser's connection before it could
-  // finish reading the "Saved!" reply. Keep the radio in AP_STA with the
-  // station interface enabled but idle: the save then leaves the radio alone
-  // (no mode change, no flap) and the reply is delivered reliably. The
-  // station is reconfigured for the target network during the save hand-off.
+  char apIp[16];
+  strncpy(apIp, WiFi.softAPIP().toString().c_str(), sizeof(apIp) - 1);
+  apIp[sizeof(apIp) - 1] = '\0';
+  Serial.printf("WiFi: softAP IP %s, mode %d, portal active %d\n", apIp,
+                WiFi.getMode(), wm.getConfigPortalActive());
+  // Do NOT touch the radio mode / station interface / AP after the portal has
+  // started: WiFi.mode()/enableSTA()/enableAP() each stop and restart the
+  // whole Wi-Fi stack, tearing down the softAP interface the web/DNS servers
+  // were just bound to. That leaves the AP IP/PING/DHCP alive but the HTTP
+  // server dead (browser: "waiting for 192.168.4.1"). Callers must present a
+  // clean, station-idle radio state *before* startConfigPortal (see
+  // restartProvisioning()); the library then runs the AP-only portal and
+  // every server binds to a settled interface.
   WiFi.setAutoReconnect(false); // no stray station re-association while provisioning
-  WiFi.mode(WIFI_AP_STA);
-  WiFi.enableSTA(true);
-  WiFi.disconnect(false, false); // drop any stale link, keep the AP up
   phase = WIFI_PORTAL;
 }
 
 // Called once Wi-Fi is usable (background connect or portal config done).
 static void finishWifiUp() {
-  // The portal form edits the parameter buffers in place; on a background
-  // reconnect they still hold the persisted values, so only persist when the
-  // user actually changed something in the portal.
-  strcpy(rct_host, p_rct_host.getValue());
-  strcpy(rct_port, p_rct_port.getValue());
-
   // Capture the connected network's credentials (Wi-Fi driver is up now, so
   // the getters are valid) so future boots and reconnects are self-contained.
   String ssid = wm.getWiFiSSID();
@@ -133,15 +138,22 @@ static void finishWifiUp() {
   }
 
   if (shouldSaveConfig) {
+    // Portal save: the form edited the WiFiManager parameter buffers in
+    // place, so adopt the submitted RCT settings and persist everything.
+    strcpy(rct_host, p_rct_host.getValue());
+    strcpy(rct_port, p_rct_port.getValue());
     saveConfig();
     shouldSaveConfig = false;
-  } else if (wifi_ssid[0]) {
-    // Newly captured credentials should survive a reboot even when the portal
-    // was not involved (can happen on the very first connect).
-    prefs.begin("config", false);
-    prefs.putString("wifi_ssid", wifi_ssid);
-    prefs.putString("wifi_pass", wifi_pass);
-    prefs.end();
+  } else {
+    // Background reconnect: the parameter buffers still hold the compile-time
+    // defaults; do NOT let them overwrite the values readConfig() loaded from
+    // NVS. Persist newly captured credentials only.
+    if (wifi_ssid[0]) {
+      prefs.begin("config", false);
+      prefs.putString("wifi_ssid", wifi_ssid);
+      prefs.putString("wifi_pass", wifi_pass);
+      prefs.end();
+    }
   }
   ready = true;
   phase = WIFI_READY;
@@ -156,6 +168,14 @@ static void finishWifiUp() {
 void networkSetup() {
   readConfig();
 
+  // TEMP (dev/test): point the panel at the local RCT simulator instead of
+  // the stored host so live values can be verified. Remove for production; the
+  // real host then comes from NVS / the provisioning portal again.
+  strcpy(rct_host, "192.168.2.91");
+  strcpy(rct_port, "8899");
+  Serial.printf("RCT: using simulator host %s:%s (TEMP override)\n", rct_host,
+                rct_port);
+
   wm.setDebugOutput(false);
   wm.setTitle("RCT Panel");
   wm.setSaveConfigCallback(saveConfigCallback);
@@ -167,6 +187,10 @@ void networkSetup() {
   // captive portal web server from networkUpdate()/loop() instead.
   wm.setConfigPortalBlocking(false);
   wm.setConfigPortalTimeout(0); // AP stays up until configured; we close it ourselves
+  // Pin the provisioning AP to the classic 192.168.4.1/24 (the QR overlay
+  // caption promises this address; don't rely on the driver default).
+  wm.setAPStaticIPConfig(IPAddress(192, 168, 4, 1), IPAddress(192, 168, 4, 1),
+                         IPAddress(255, 255, 255, 0));
   // Bound the portal's connect-on-save: with the library default (_connectTimeout
   // = 0) a save runs Arduino's 60 s waitForConnectResult() while the loop is
   // blocked inside process() - the portal and LCD freeze and the client times
@@ -256,10 +280,12 @@ bool networkUpdate() {
         // the library already configured the station with them), so the
         // hand-off never depends on the chip's NVS profile.
         String ssid = wm.getWiFiSSID();
+        String pass = wm.getWiFiPass();
+        Serial.printf("WiFi: portal save: ssid='%s' (%d ch), pass %d ch\n",
+                      ssid.c_str(), ssid.length(), pass.length());
         if (ssid.length() > 0) {
           strncpy(wifi_ssid, ssid.c_str(), sizeof(wifi_ssid) - 1);
           wifi_ssid[sizeof(wifi_ssid) - 1] = '\0';
-          String pass = wm.getWiFiPass();
           strncpy(wifi_pass, pass.c_str(), sizeof(wifi_pass) - 1);
           wifi_pass[sizeof(wifi_pass) - 1] = '\0';
         }
@@ -274,14 +300,15 @@ bool networkUpdate() {
           (int32_t)(millis() - portalCloseDeadline) >= 0) {
         portalClosePending = false;
         wm.stopConfigPortal();
-        Serial.println(F("WiFi: connecting to saved network ..."));
+        Serial.println(F("WiFi: connecting after save ..."));
         WiFi.setAutoReconnect(true); // normal operation
         WiFi.mode(WIFI_STA);
-        if (wifi_ssid[0]) {
-          WiFi.begin(wifi_ssid, wifi_pass);
-        } else {
-          WiFi.begin(); // profile-based fallback
-        }
+        // Connect with the station config the library just submitted (its
+        // save flow ran WiFi.begin(ssid, pass) and esp_wifi_set_config, even
+        // in save-only mode). The no-arg begin() uses exactly that config;
+        // our NVS copy may still hold the previous network until
+        // finishWifiUp() re-captures and persists the live credentials.
+        WiFi.begin();
         phase = WIFI_CONNECTING;
         connectDeadline = millis() + CONNECT_BUDGET_MS;
       }
@@ -308,4 +335,44 @@ void wifiReconnectLoop() {
       WiFi.reconnect(); // profile-based
     }
   }
+}
+
+bool provisioningApActive() { return phase == WIFI_PORTAL; }
+
+const char *provisioningApSsid() {
+  // Prefer the live softAP SSID once the portal is up, so the QR reflects
+  // what clients actually see; fall back to the configured name otherwise.
+  if (phase == WIFI_PORTAL) {
+    String ssid = WiFi.softAPSSID();
+    if (ssid.length() > 0) {
+      static char buf[33];
+      strncpy(buf, ssid.c_str(), sizeof(buf) - 1);
+      buf[sizeof(buf) - 1] = '\0';
+      return buf;
+    }
+  }
+  return kApSsid;
+}
+
+bool provisioningApOpen() {
+  // The provisioning portal is started without a password (open network).
+  return true;
+}
+
+void restartProvisioning() {
+  if (phase == WIFI_PORTAL) {
+    return; // already serving the provisioning AP
+  }
+  ready = false;
+  Serial.println(F("WiFi: reopening 'RCT-Panel' provisioning AP (Service page)"));
+  // The portal must start from the same clean radio state as a first boot
+  // with no credentials (the only state known to work): WiFiManager skips its
+  // own station teardown when the STA is still connected, and a portal
+  // started alongside a live station link leaves the softAP and its web/DNS
+  // servers unresponsive. Kill the station and the radio entirely first; the
+  // library brings the radio back up in AP-only mode, and nothing touches
+  // mode/STA/AP afterwards (see startProvisioningAp()).
+  WiFi.setAutoReconnect(false);
+  WiFi.mode(WIFI_OFF); // full teardown: station + radio off, like a fresh boot
+  startProvisioningAp();
 }
