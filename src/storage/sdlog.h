@@ -3,6 +3,11 @@
 // SPI mode on the 4848S040 TF slot. One blocking SPI write every 5 minutes
 // has no impact on the RGB/LVGL path.
 //
+// The card may be pulled out while the panel runs, and a write can fail for
+// other reasons too (full, marginal card). Rows that cannot be written are
+// parked in a 12-slot RAM ring (one hour at the 5-minute cadence) and retried;
+// on overflow the oldest row goes and the loss shows up in sdStatusText().
+//
 // SPDX-License-Identifier: MIT
 #ifndef RCT_SDLOG_H
 #define RCT_SDLOG_H
@@ -11,16 +16,18 @@
 
 // sdInit(): kick off the first mount attempt (non-blocking).
 // sdTick(): call every main loop iteration - retries the mount while the
-//           card is absent and rebuilds the Service page status text.
+//           card is absent, watches for a card pulled out in operation, and
+//           retries rows that could not be written.
 void sdInit();
 void sdTick();
 
-// Append one 5-minute CSV row. Skips silently while the card is missing or
-// before the first RCT frame arrived (no zero rows for a disconnected
-// inverter).
+// Append one 5-minute CSV row. If the card is missing or the write fails, the
+// row is parked in RAM and written out later. Silently skipped before the
+// first RCT frame arrived (no zero rows for a disconnected inverter).
 void sdLogSample(const RctSnapshot &s);
 
-// Service page status: "SD: OK · 8,4 GB frei" / "SD: --".
+// Service page status, e.g. "SD: OK | 8,4 GB frei", "SD: -- | 5 gepuffert",
+// "SD: OK | 2 Zeilen verloren".
 const char *sdStatusText();
 bool sdMounted();
 

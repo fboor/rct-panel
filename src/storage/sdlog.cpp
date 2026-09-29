@@ -37,7 +37,48 @@ char s_pathKey[16]; // rotation key of the currently open file ("202609" ...)
 bool s_pathValid = false;
 bool s_warnLogged = false; // one-time write-error message per mount
 
-char s_status[40] = "SD: --";
+char s_status[48] = "SD: --";
+
+const char *const kCsvHeader =
+    "ts,pv_a,pv_b,s0,temp_core,temp_bat,temp_hsink,"
+    "load_l1,load_l2,load_l3,bat,soc,grid_l1,grid_l2,grid_l3,status";
+
+// One formatted CSV row. Long enough for the 16 columns with worst-case
+// negative values and a full 8-digit fault mask (about 102 characters).
+constexpr size_t kLineCap = 176;
+constexpr size_t kPathCap = 40;
+
+// --------------------------------------------------------------------------
+// Write-failure queue
+//
+// The card can be pulled out while the panel is running, and a write can fail
+// for other reasons too (card full, marginal card). Dropping the row would
+// punch a hole in the 24 h chart, so a row that cannot be written right now is
+// parked in RAM and retried later.
+//
+// 12 slots = one hour at the 5-minute cadence. On overflow the oldest row goes,
+// because recent data is what the chart needs; how many rows were lost stays
+// visible in the status text. A row is stored already formatted rather than as
+// a snapshot, so it keeps its original timestamp, and it remembers the path it
+// belongs to - a month rollover during the outage then still splits correctly
+// across two files.
+// --------------------------------------------------------------------------
+constexpr int kQueueCap = 12;
+constexpr uint32_t kQueueRetryMs = 5000; // retry parked rows from sdTick()
+constexpr uint32_t kProbeMs = 5000;      // ask SD.cardSize() for card presence
+
+struct QueuedRow {
+  char line[kLineCap];
+  char path[kPathCap];
+};
+QueuedRow s_queue[kQueueCap];
+int s_queueCount = 0;     // rows parked right now
+int s_queueHead = 0;      // ring cursor of the oldest parked row
+uint32_t s_queueDropped = 0; // rows lost to overflow since boot
+uint32_t s_nextQueueRetryMs = 0;
+uint32_t s_nextProbeMs = 0; // next card-presence check
+
+void buildStatus(); // defined below, called by queueFlush()
 
 // "202609" from the local calendar (SNTP; CET/CEST configured in main.cpp),
 // or 0 when the wall clock is not valid yet.
@@ -98,18 +139,90 @@ bool probeMount() {
   return true;
 }
 
-void buildStatus() {
-  if (!s_mounted) {
-    strlcpy(s_status, "SD: --", sizeof(s_status));
-    return;
+// Append one formatted row. Returns 1 when it was written as the first row of
+// a fresh file, 0 when it was appended, and -1 on any failure (card gone, card
+// full, short write).
+//
+// The result is taken from the return value of println(), not from
+// getWriteError(): the ESP32 core's FS write path never sets that flag, it just
+// returns the byte count it managed to write. A short write would leave the row
+// re-queued and possibly logged twice, but a short write on a 512-byte-sector
+// card means the card is failing anyway.
+int appendRow(const char *path, const char *line) {
+  File f = SD.open(path, FILE_APPEND);
+  if (!f) {
+    return -1;
   }
-  const uint64_t freeB = SD.totalBytes() - SD.usedBytes();
-  snprintf(s_status, sizeof(s_status), "SD: OK | %.1f GB frei",
-           (float)freeB / 1.0e9f);
-  char *dot = strchr(s_status, '.');
+  const bool freshFile = (f.size() == 0);
+  if (freshFile) {
+    f.println(kCsvHeader); // fresh file (new month / first ever)
+  }
+  const size_t want = strlen(line) + 2; // trailing "\r\n"
+  const size_t got = f.println(line);
+  f.flush();
+  f.close();
+  return got >= want ? (freshFile ? 1 : 0) : -1;
+}
+
+void queuePush(const char *line, const char *path) {
+  if (s_queueCount == kQueueCap) {
+    s_queueHead = (s_queueHead + 1) % kQueueCap; // drop the oldest row
+    s_queueCount--;
+    s_queueDropped++;
+  }
+  // Next free slot is one past the newest row. When the ring was just full,
+  // head has already moved on by one, so this is exactly the freed slot.
+  const int tail = (s_queueHead + s_queueCount) % kQueueCap;
+  strlcpy(s_queue[tail].line, line, sizeof(s_queue[tail].line));
+  strlcpy(s_queue[tail].path, path, sizeof(s_queue[tail].path));
+  s_queueCount++;
+}
+
+// Retry parked rows, oldest first. Stops at the first failure and keeps the
+// rest, so the rows stay in chronological order inside the file.
+void queueFlush() {
+  int written = 0;
+  while (s_queueCount > 0) {
+    const QueuedRow &q = s_queue[s_queueHead];
+    if (appendRow(q.path, q.line) < 0) {
+      break;
+    }
+    s_queueHead = (s_queueHead + 1) % kQueueCap;
+    s_queueCount--;
+    written++;
+  }
+  if (written > 0) {
+    Serial.printf("SD: %d gepufferte Zeile(n) nachgeschrieben\n", written);
+    buildStatus();
+  }
+}
+
+void buildStatus() {
+  char buf[48];
+  if (!s_mounted) {
+    if (s_queueCount > 0) {
+      snprintf(buf, sizeof(buf), "SD: -- | %d gepuffert", s_queueCount);
+    } else {
+      snprintf(buf, sizeof(buf), "SD: --");
+    }
+  } else if (s_queueDropped > 0) {
+    // Lost rows outrank the free space: that is the number that matters.
+    snprintf(buf, sizeof(buf), "SD: OK | %u %s verloren",
+             (unsigned)s_queueDropped,
+             s_queueDropped == 1 ? "Zeile" : "Zeilen");
+  } else if (s_queueCount > 0) {
+    snprintf(buf, sizeof(buf), "SD: OK | %d gepuffert | %.1f GB frei",
+             s_queueCount,
+             (float)(SD.totalBytes() - SD.usedBytes()) / 1.0e9f);
+  } else {
+    snprintf(buf, sizeof(buf), "SD: OK | %.1f GB frei",
+             (float)(SD.totalBytes() - SD.usedBytes()) / 1.0e9f);
+  }
+  char *dot = strchr(buf, '.');
   if (dot != nullptr) {
     *dot = ','; // German decimal comma
   }
+  strlcpy(s_status, buf, sizeof(s_status));
 }
 
 // --------------------------------------------------------------------------
@@ -204,10 +317,44 @@ void sdInit() {
 }
 
 void sdTick() {
+  const uint32_t now = millis();
   if (s_mounted) {
+    // A card pulled out in operation is invisible until something writes and
+    // that write fails, which can be up to 5 minutes away. Reading the card
+    // size instead detects removal within seconds and starts a fresh PROBE on
+    // re-insert, without a remount in between.
+    if ((int32_t)(now - s_nextProbeMs) >= 0) {
+      s_nextProbeMs = now + kProbeMs;
+      if (SD.cardSize() == 0) {
+        if (s_warnLogged) { // only announce once per disappearance
+          Serial.println("SD: card no longer present");
+        }
+        s_warnLogged = true;
+        s_mounted = false;
+        SD.end();
+        s_pathValid = false;
+        s_probePending = true;
+        buildStatus();
+      } else if (s_probePending) {
+        // A card appeared again. Drop the stale PROBE, then write the new one
+        // so the first real row still gets its clean-file test.
+        if (SD.remove("/hist/PROBE")) {
+          s_probePending = probeMount();
+        }
+        if (!s_probePending) {
+          s_warnLogged = false; // back to normal, failures may warn again
+        }
+      }
+    }
+    // Retry parked rows in between: a card that comes back or frees up should
+    // not have to wait for the next 5-minute sample. Throttled, so a card that
+    // is still missing is not hammered every main-loop iteration.
+    if (s_queueCount > 0 && (int32_t)(now - s_nextQueueRetryMs) >= 0) {
+      s_nextQueueRetryMs = now + kQueueRetryMs;
+      queueFlush();
+    }
     return;
   }
-  const uint32_t now = millis();
   if ((int32_t)(now - s_nextMountMs) < 0) {
     return;
   }
@@ -229,23 +376,25 @@ void sdTick() {
   s_warnLogged = false;
   s_pathValid = false;
   s_probePending = probeMount();
+  updatePath(); // fill s_path, otherwise the log line below stays empty
   buildStatus();
   Serial.printf("SD: mounted, %.1f GB free (%s)\n",
                 (double)(SD.totalBytes() - SD.usedBytes()) / 1.0e9, s_path);
+  if (s_queueCount > 0) {
+    s_nextQueueRetryMs = millis(); // flush parked rows right away
+    queueFlush();
+  }
 }
 
 void sdLogSample(const RctSnapshot &s) {
-  if (!s_mounted || !s.haveData) {
-    return;
+  if (!s.haveData) {
+    return; // no zero rows for a disconnected inverter
   }
   if (!updatePath()) {
     return;
   }
 
-  const char *header =
-      "ts,pv_a,pv_b,s0,temp_core,temp_bat,temp_hsink,"
-      "load_l1,load_l2,load_l3,bat,soc,grid_l1,grid_l2,grid_l3,status";
-  char line[192];
+  char line[kLineCap];
   const unsigned long faults =
       (unsigned long)(s.faultBits[0] | s.faultBits[1] | s.faultBits[2] |
                       s.faultBits[3]);
@@ -259,33 +408,39 @@ void sdLogSample(const RctSnapshot &s) {
            (double)s.gridPower[0], (double)s.gridPower[1],
            (double)s.gridPower[2], faults);
 
-  File f = SD.open(s_path, FILE_APPEND);
-  if (!f) {
+  // The row is formatted even without a card, so it can be parked with its own
+  // timestamp and path and written out later.
+  if (s_mounted) {
+    const int r = appendRow(s_path, line);
+    if (r >= 0) {
+      Serial.printf("SD: %s row -> %s\n", r > 0 ? "header + first" : "logged",
+                    s_path);
+      if (s_probePending) {
+        // First successful flush: the self-test marker may go away now.
+        if (SD.remove("/hist/PROBE")) {
+          s_probePending = false;
+          Serial.println("SD: PROBE self-test ok (marker removed)");
+        } else {
+          Serial.println(F("SD: PROBE marker could not be removed"));
+        }
+      }
+      buildStatus();
+      return;
+    }
+    // The write failed. Treat the card as gone so sdTick() goes looking for it
+    // again - that is how a card pulled out during operation gets noticed.
     if (!s_warnLogged) {
       s_warnLogged = true;
-      Serial.printf("SD: cannot open %s for append\n", s_path);
+      Serial.printf("SD: write to %s failed, card treated as gone\n", s_path);
     }
-    return;
+    s_mounted = false;
+    SD.end();
+    s_pathValid = false;
+    s_probePending = true;
   }
-  const bool freshFile = (f.size() == 0);
-  if (freshFile) {
-    f.println(header); // fresh file (new month / first ever)
-  }
-  f.println(line);
-  f.flush();
-  f.close();
-  Serial.printf("SD: %s row -> %s\n", freshFile ? "header + first" : "logged",
-                s_path);
 
-  if (s_probePending) {
-    // First successful flush: the self-test marker may go away now.
-    if (SD.remove("/hist/PROBE")) {
-      s_probePending = false;
-      Serial.println("SD: PROBE self-test ok (marker removed)");
-    } else {
-      Serial.println(F("SD: PROBE marker could not be removed"));
-    }
-  }
+  queuePush(line, s_path);
+  buildStatus();
 }
 
 const char *sdStatusText() { return s_status; }

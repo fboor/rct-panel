@@ -93,10 +93,36 @@ anyway).
     uptime-based `UPT-<days>.csv` until the first sync.
 - Call site: `main.cpp` loop (or next to the existing 5-minute history code) —
   one `sdLogSample()` per 5 min.
-- Errors: on card full / write failure, log once to serial, keep retrying the
-  next sample; show `SD: OK · 8,4 GB frei` / `SD: leer` on the Service page.
+- Errors: a row that cannot be written is **parked in RAM and retried** (see
+  section 4a), never silently dropped. Service page shows `SD: OK | 8,4 GB frei`,
+  `SD: -- | 5 gepuffert` or `SD: OK | 2 Zeilen verloren`.
 - Capability check at boot: write a `hist/PROBE` marker once per mount and
   remove it after the first successful flush, as a self-test.
+
+### 4a. Card pulled out while running: RAM queue, one hour deep
+
+The card sits in an external slot and may be pulled at any time; a write can
+also fail on a full or marginal card. Dropping the row would punch a hole in
+the 24 h chart, so:
+
+- **12-slot ring buffer** of already-formatted CSV rows — 12 × 5 min = one
+  hour. On overflow the oldest row goes (recent data is what the chart needs)
+  and the loss is counted.
+- Each entry stores the **formatted line plus its target path**, not the
+  snapshot. The row therefore keeps its original timestamp, and a month
+  rollover during the outage still splits correctly across two files.
+- Retry is throttled (5 s) from `sdTick()`, oldest first, stopping at the first
+  failure so the file stays chronological. A returning card is flushed
+  immediately on mount.
+- **Detecting removal**: a card pulled out is invisible to a writer that only
+  notices at the next 5-minute write. `sdTick()` therefore polls `SD.cardSize()`
+  every 5 s while mounted; `0` means the card is gone → unmount, report
+  `SD: -- | n gepuffert`, and let the normal mount retry bring it back.
+- Write success is judged by the **return value of `println()`**, not
+  `getWriteError()`: the ESP32 core's FS write path never calls
+  `setWriteError()`, so that flag stays 0 even on a failed write.
+- Status text mirrors the queue: `SD: OK | 12 gepuffert | 16,0 GB frei`, and
+  `SD: OK | 3 Zeilen verloren` while rows have been dropped since boot.
 
 **Explicitly not recommended:**
 
@@ -141,11 +167,18 @@ feeds it back at boot:
 ## 6. Implementation status
 
 Implemented: `src/storage/sdlog.{h,cpp}`, hook in `main.cpp` (5-min beat),
-Service page "SD-Log" status line, and the history restore above.
+Service page "SD-Log" status line, the history restore above, and the one-hour
+RAM queue with card-removal detection (section 4a).
 
 Verified on the board: TF slot in SPI mode (SCK 48 / MISO 41 / MOSI 47 /
 CS 42), 400 kHz init per SD spec, mount retry every 10 s while the card is
 absent, monthly CSV + header, `PROBE` self-test marker.
+
+Not verifiable here: pulling the card while running (no hardware access to the
+slot), and a full card. The ring arithmetic and the retry order were checked
+separately against the exact code; the write path itself is confirmed by the
+restore count growing across runs (20 → 22 rows, i.e. two 5-minute samples
+landed).
 
 > A first card was dead (no CMD0 response on any device). The pinout was
 > cross-checked against vendor pinout, Tasmota and ESPHome configs — all
