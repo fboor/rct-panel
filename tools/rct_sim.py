@@ -43,9 +43,13 @@ log = logging.getLogger("rct_sim")
 def build_values():
     now = int(time.time())
     v = {
-        "g_sync.p_ac_sc[0]": -71.0,       # grid L1 (W)
-        "g_sync.p_ac_sc[1]": 241.0,
-        "g_sync.p_ac_sc[2]": -165.0,
+        # Grid exchange (sum low-pass) + a coherent per-phase split. The panel
+        # shows g_sync.p_ac_grid_sum_lp on the overview; p_ac_sc per phase on
+        # the Netz detail page. _drift() recomputes all four every 2 s.
+        "g_sync.p_ac_grid_sum_lp": 164.0,  # + = Bezug (import from grid)
+        "g_sync.p_ac_sc[0]": 57.4,         # grid L1 (W)
+        "g_sync.p_ac_sc[1]": 73.8,         # grid L2 (W)
+        "g_sync.p_ac_sc[2]": 32.8,         # grid L3 (W)
         "energy.e_grid_feed_total": 3_124_000.0,
         "energy.e_grid_load_total": 8_455_000.0,
         "rb485.u_l_grid[0]": 231.9,
@@ -131,6 +135,15 @@ def _drift():
     bat_p = 0.75 * (pv - load) + 90.0 * math.sin(t / 23.0)
     set_value("g_sync.p_acc_lp", max(-2000.0, min(2000.0, bat_p)))
     set_value("battery.current", bat_p / 393.12)
+    # Grid exchange = the residual of the balance (house load - PV - battery),
+    # with the battery absorbing 75 % of the surplus/deficit. Positive = Bezug
+    # (import), negative = Einspeisung (export). p_ac_sc is the same total
+    # split across phases so the overview and the Netz detail page agree.
+    grid = load - pv + bat_p
+    set_value("g_sync.p_ac_grid_sum_lp", grid)
+    set_value("g_sync.p_ac_sc[0]", grid * 0.35)
+    set_value("g_sync.p_ac_sc[1]", grid * 0.45)
+    set_value("g_sync.p_ac_sc[2]", grid * 0.20)
     # Drive the battery status bitfield along with the power sign.
     if bat_p > 100.0:
         set_value("battery.bat_status", 1 << 3)   # charging

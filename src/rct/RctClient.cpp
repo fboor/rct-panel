@@ -230,6 +230,7 @@ enum RCT_SLOT {
   RCT_SLOT_P0 = 0, // g_sync.p_ac_sc[0]      grid power L1 [W]
   RCT_SLOT_P1,     // g_sync.p_ac_sc[1]      grid power L2 [W]
   RCT_SLOT_P2,     // g_sync.p_ac_sc[2]      grid power L3 [W]
+  RCT_SLOT_PGRIDSUM, // g_sync.p_ac_grid_sum_lp  grid exchange total [W], + = Bezug
   RCT_SLOT_EFEED,  // energy.e_grid_feed_total raw, already Wh
   RCT_SLOT_ELOAD,  // energy.e_grid_load_total raw, already Wh
   RCT_SLOT_V0,     // rb485.u_l_grid[0]      grid voltage L1 [V]
@@ -279,6 +280,7 @@ static const uint32_t rctOids[RCT_NUM_SLOTS] = {
     0x27BE51D9, // grid power L1 (W)
     0xF5584F90, // grid power L2 (W)
     0xB221BCFA, // grid power L3 (W)
+    0x91617C58, // grid exchange total (W), + = grid import
     0x44D4C533, // feed-in energy (Wh)
     0x62FBE7DC, // load energy (Wh)
     0x93F976AB, // grid voltage L1 (V)
@@ -521,6 +523,7 @@ void rctParse() {
   memcpy(rctState.gridVoltage, voltages, sizeof(rctState.gridVoltage));
   memcpy(rctState.gridFrequency, frequencies, sizeof(rctState.gridFrequency));
   memcpy(rctState.loadPower, loads, sizeof(rctState.loadPower));
+  rctState.gridPowerSum = rctCur[RCT_SLOT_PGRIDSUM];
   rctState.feedInEnergyWh = rctCur[RCT_SLOT_EFEED];
   rctState.loadEnergyWh = rctCur[RCT_SLOT_ELOAD];
 
@@ -577,10 +580,12 @@ void rctParse() {
   for (uint32_t m = freshMask; m; m &= m - 1) {
     freshCount++;
   }
-  Serial.printf("RCT: grid %.0f/%.0f/%.0f W | load %.0f/%.0f/%.0f W | PV %.2f kW"
+  Serial.printf("RCT: grid %.0f/%.0f/%.0f (sum %.0f) W | load %.0f/%.0f/%.0f W"
+                " | PV %.2f kW"
                 " | bat %.0f%% %.2f kW (%d/%d fresh)\n",
                 rctState.gridPower[0], rctState.gridPower[1],
-                rctState.gridPower[2], rctState.loadPower[0],
+                rctState.gridPower[2], rctState.gridPowerSum,
+                rctState.loadPower[0],
                 rctState.loadPower[1], rctState.loadPower[2],
                 (rctState.pvPower[0] + rctState.pvPower[1] +
                  rctState.s0Power) / 1000.0f,

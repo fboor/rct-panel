@@ -9,6 +9,7 @@
 // responsive device must not blank the panel).
 struct RctSnapshot {
   float gridPower[3];     // g_sync.p_ac_sc[0..2]      grid power per phase [W]
+  float gridPowerSum;     // g_sync.p_ac_grid_sum_lp   grid exchange total [W], + = Bezug
   float gridVoltage[3];   // rb485.u_l_grid[0..2]      grid voltage per phase [V]
   float gridFrequency[3]; // rb485.f_grid[0..2]        grid frequency per phase [Hz]
   float feedInEnergyWh;   // energy.e_grid_feed_total  [Wh] (already Wh)

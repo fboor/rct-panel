@@ -968,7 +968,7 @@ static void refreshCb(lv_timer_t *t) {
   AppPage &ov = s_pages[PAGE_OVERVIEW];
   if (ov.labels[OV_GRID_VAL]) {
     // Derived quantities (all W; sign conventions per the rctclient docs):
-    //   grid  = p_ac_sc sum            + = Bezug (import from grid)
+    //   grid  = p_ac_grid_sum_lp        + = Bezug (import from grid)
     //   pv    = p_dc_lp[0]+[1]+S0      >= 0, production
     //   bat   = p_acc_lp               + = charging
     //   house = p_ac_load sum          measured household load
@@ -976,7 +976,7 @@ static void refreshCb(lv_timer_t *t) {
     const float pvActive = 20.0f;   // W, below = no visible generation
     const float batActive = 50.0f;  // W, below = Standby
     const char *dash = "--";
-    float pTot = s.gridPower[0] + s.gridPower[1] + s.gridPower[2];
+    float pTot = s.gridPowerSum;
     float pvTotal = s.pvPower[0] + s.pvPower[1] + s.s0Power;
     float pBat = s.batteryPower;
     float house = s.loadPower[0] + s.loadPower[1] + s.loadPower[2];
@@ -1249,7 +1249,7 @@ static void refreshCb(lv_timer_t *t) {
     if (s_lastHistMs == 0 || now - s_lastHistMs >= HIST_INTERVAL_MS) {
       s_lastHistMs = now;
       float v[HIST_SERIES] = {0.0f};
-      v[0] = s.gridPower[0] + s.gridPower[1] + s.gridPower[2]; // Netz
+      v[0] = s.gridPowerSum;                                    // Netz
       v[1] = s.loadPower[0] + s.loadPower[1] + s.loadPower[2]; // Haus
       v[2] = s.pvPower[0] + s.pvPower[1];                      // PV A+B
       v[3] = s.s0Power;                                        // S0 (own series)
