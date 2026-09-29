@@ -1,7 +1,8 @@
 # SD-card history logging — evaluation (rct-panel)
 
-Status: **evaluation, not yet implemented.** Everything below is verified against
-the board hardware, the installed rctclient registry and the current code.
+Status: **implemented and verified on the board** (2026-09-29). The design
+below was verified against the board hardware, the installed rctclient
+registry and the current code; see section 6 for the outcome.
 
 Goal: log, every 5 minutes to the on-board microSD (TF) slot:
 
@@ -109,7 +110,39 @@ anyway).
   ("Heute"). If energy integration is wanted, it can be derived from the
   logged powers later.
 
-## 5. Effort / steps if approved
+## 5. History restore: 24 h chart survives a reboot
+
+The "Verlauf" ring buffer (`s_hist`, 288 x 5 min) lives in RAM only, so a
+reboot used to leave the chart empty until it had refilled. The SD log now
+feeds it back at boot:
+
+- `sdReadHistory()` reads the newest ≤ 288 CSV rows and maps them to the chart
+  series: `Netz = grid_l1+l2+l3`, `Haus = load_l1+l2+l3`, `PV = pv_a+pv_b`,
+  `S0`, `Bat` — exactly what the live sampler stores.
+- The rows are replayed through the **same** writer (`histPush()`) as live
+  samples, so ring cursor and the LVGL series cursor stay in lockstep and the
+  chart looks exactly like a continuous recording.
+- Month rotation on read: when the current month file has fewer rows than
+  288, the previous month's tail is prepended, so the 24 h window stays full
+  across a calendar boundary.
+- Boot order: the first live sample waits for a decision — card mounted (seed
+  from log) or no card within a 60 s grace window (start fresh). A card
+  inserted later in the session does not clobber the running history.
+
+## 6. Implementation status
+
+Implemented: `src/storage/sdlog.{h,cpp}`, hook in `main.cpp` (5-min beat),
+Service page "SD-Log" status line, and the history restore above.
+
+Verified on the board: TF slot in SPI mode (SCK 48 / MISO 41 / MOSI 47 /
+CS 42), 400 kHz init per SD spec, mount retry every 10 s while the card is
+absent, monthly CSV + header, `PROBE` self-test marker.
+
+> A first card was dead (no CMD0 response on any device). The pinout was
+> cross-checked against vendor pinout, Tasmota and ESPHome configs — all
+> agree on 42/41/47/48. With a healthy card the mount succeeds immediately.
+
+## 7. Effort / steps if approved
 
 1. `src/storage/sdlog.{h,cpp}`: SPI/FSPI init + mount/retry, CSV writer with
    monthly rotation, sample capture from `rctState`.

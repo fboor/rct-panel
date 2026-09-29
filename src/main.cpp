@@ -13,8 +13,10 @@
 #include "display/Touch.h"
 #include "gui/GuiApp.h"
 #include "rct/RctClient.h"
+#include "storage/sdlog.h"
 
 #define RCT_POLL_MS 10000
+#define SD_LOG_INTERVAL_MS 300000 // 5 min, aligned to the history sampler
 
 void setup() {
   Serial.begin(115200);
@@ -36,6 +38,8 @@ void setup() {
 
   guiSetSplashText("Connecting to RCT ...");
   guiStartApp();
+
+  sdInit(); // SD history: first mount attempt shortly after boot
 }
 
 static bool networkReady = false; // usable Wi-Fi link established at least once
@@ -72,5 +76,14 @@ void loop() {
   if (now - lastRct >= RCT_POLL_MS) {
     lastRct = now;
     rctParse();
+  }
+
+  // SD history: mount retry while the card is absent; one CSV row per
+  // 5 minutes (see docs/sd-history.md).
+  sdTick();
+  static uint32_t lastSd = 0;
+  if (now - lastSd >= SD_LOG_INTERVAL_MS) {
+    lastSd = now;
+    sdLogSample(rctState);
   }
 }

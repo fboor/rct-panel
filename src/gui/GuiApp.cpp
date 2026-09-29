@@ -35,6 +35,7 @@
 #include "../display/Display.h"
 #include "../display/Touch.h"
 #include "../rct/RctTypes.h"
+#include "../storage/sdlog.h"
 #include "fonts/lv_font_portal_icons_20.h"
 // Montserrat with German umlauts (Latin-1 supplement), falling back to the
 // LVGL built-ins for the LV_SYMBOL_* glyphs. See OFL-Montserrat.txt.
@@ -166,6 +167,7 @@ enum SvLabel {
   SV_BAT_STATUS, // decoded battery status (white)
   SV_BAT_RAW,    // raw bitfield hex (muted)
   SV_FLT_LIST,   // decoded faults, one per line
+  SV_SD,         // SD history log status
   SV_LABEL_COUNT,
 };
 
@@ -178,6 +180,7 @@ enum SvLabel {
 static const int HIST_POINTS = 288;              // 288 * 5 min = 24 h
 static const int HIST_SERIES = 5;                // grid, house, PV, S0, battery
 static const uint32_t HIST_INTERVAL_MS = 300000; // 5 min
+static const uint32_t HIST_SEED_WINDOW_MS = 60000; // boot grace without a card
 static const uint32_t kHistColor[HIST_SERIES] = {0xCA0C0F, 0xA45EE5, 0x3EC97A,
                                                  0x2E93E5, 0xF0A202};
 static const char *const kHistName[HIST_SERIES] = {"Netz", "Haus", "PV", "S0",
@@ -188,6 +191,12 @@ static float s_hist[HIST_POINTS * HIST_SERIES] = {0.0f}; // packed [pt][ser]
 static int s_histCount = 0; // samples stored so far
 static int s_histNext = 0;  // next write slot (ring cursor)
 static uint32_t s_lastHistMs = 0; // time of the last stored sample
+static bool s_histSeeded = false; // history seeded once from the SD log
+static uint32_t s_histSeedStartMs = 0; // boot time used for the no-card grace
+
+// Defined below refreshCb (which calls it): ring + chart share one writer so
+// restored rows and live samples land in identical state.
+static void histPush(const float v[HIST_SERIES]);
 
 struct AppPage {
   const char *title;
@@ -751,6 +760,13 @@ static void pageBuildService(AppPage *p) {
   lv_obj_set_pos(p->labels[SV_FLT_LIST], 20, 142);
   lv_obj_set_width(p->labels[SV_FLT_LIST], 440);
   p->labelCount = SV_LABEL_COUNT;
+
+  // --- SD history log (status only; the writer lives in storage/sdlog.cpp) ---
+  (void)sectionHead("SD-Log", 236);
+  p->labels[SV_SD] =
+      makeLabel(root, sdStatusText(), &lv_font_montserrat_16_uml, COL_TEXT);
+  lv_obj_set_pos(p->labels[SV_SD], 20, 260);
+  lv_obj_set_width(p->labels[SV_SD], 440);
 }
 
 // Recompute the chart Y range from the stored history ring (kW = W / 1000 on
@@ -1243,27 +1259,65 @@ static void refreshCb(lv_timer_t *t) {
     }
   }
 
-  // --- 24 h history: one sample every 5 minutes while running ---
-  if (s_chart && s.haveData) {
-    uint32_t now = millis();
-    if (s_lastHistMs == 0 || now - s_lastHistMs >= HIST_INTERVAL_MS) {
-      s_lastHistMs = now;
-      float v[HIST_SERIES] = {0.0f};
-      v[0] = s.gridPowerSum;                                    // Netz
-      v[1] = s.loadPower[0] + s.loadPower[1] + s.loadPower[2]; // Haus
-      v[2] = s.pvPower[0] + s.pvPower[1];                      // PV A+B
-      v[3] = s.s0Power;                                        // S0 (own series)
-      v[4] = s.batteryPower;                                   // Bat
-      float *dst = &s_hist[s_histNext * HIST_SERIES];
-      for (int i = 0; i < HIST_SERIES; i++) {
-        dst[i] = v[i];
-        lv_chart_set_next_value(s_chart, s_chartSer[i], (int32_t)v[i]);
+  // SD card log status (1 Hz refresh; the writer module keeps it fresh).
+  if (sv.labels[SV_SD]) {
+    lv_label_set_text(sv.labels[SV_SD], sdStatusText());
+  }
+
+  // --- 24 h history: seed once from the SD log, then one sample per 5 min ---
+  if (s_chart) {
+    if (!s_histSeeded) {
+      if (s_histSeedStartMs == 0) {
+        s_histSeedStartMs = millis();
       }
-      s_histNext = (s_histNext + 1) % HIST_POINTS;
-      if (s_histCount < HIST_POINTS) s_histCount++;
-      updateChartRange();
+      if (sdMounted()) {
+        s_histSeeded = true; // (re)mounts later are ignored on purpose
+        static SdHistSample seed[HIST_POINTS];
+        int n = sdReadHistory(seed, HIST_POINTS);
+        if (n > 0) {
+          for (int r = 0; r < n; r++) {
+            histPush(seed[r].v);
+          }
+          updateChartRange();
+          Serial.printf("hist: %d samples restored from SD log\n", n);
+        }
+        s_lastHistMs = millis(); // first live sample at the next interval
+      } else if (millis() - s_histSeedStartMs >= HIST_SEED_WINDOW_MS) {
+        s_histSeeded = true; // no card in the grace window: start fresh
+        Serial.println("hist: no SD log, starting fresh");
+        s_lastHistMs = 0; // first live sample immediately
+      }
+    }
+    if (s_histSeeded && s.haveData) {
+      uint32_t now = millis();
+      if (s_lastHistMs == 0 || now - s_lastHistMs >= HIST_INTERVAL_MS) {
+        s_lastHistMs = now;
+        float v[HIST_SERIES] = {0.0f};
+        v[0] = s.gridPowerSum;                                    // Netz
+        v[1] = s.loadPower[0] + s.loadPower[1] + s.loadPower[2]; // Haus
+        v[2] = s.pvPower[0] + s.pvPower[1];                      // PV A+B
+        v[3] = s.s0Power;                                        // S0
+        v[4] = s.batteryPower;                                   // Bat
+        histPush(v);
+        updateChartRange();
+      }
     }
   }
+}
+
+// Store one sample in the ring and feed the chart. Ring cursor and the
+// chart's per-series cursor advance in lockstep, so replaying restored rows
+// through this same call keeps both views identical to a live recording.
+static void histPush(const float v[HIST_SERIES]) {
+  float *dst = &s_hist[s_histNext * HIST_SERIES];
+  for (int i = 0; i < HIST_SERIES; i++) {
+    dst[i] = v[i];
+    if (s_chart) {
+      lv_chart_set_next_value(s_chart, s_chartSer[i], (int32_t)v[i]);
+    }
+  }
+  s_histNext = (s_histNext + 1) % HIST_POINTS;
+  if (s_histCount < HIST_POINTS) s_histCount++;
 }
 
 // ---------------------------------------------------------------------------
