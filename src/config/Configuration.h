@@ -39,6 +39,12 @@ bool networkUpdate();
 // post-provisioning. No-op while provisioning (the portal owns the radio).
 void wifiReconnectLoop();
 
+// True while the panel is still trying to reach the saved network. The GUI
+// shows a "connecting" badge in this phase - it is not a fault, so it must not
+// be reported like the "no data" state that only means the data supplier is
+// unreachable.
+bool networkConnecting();
+
 // While the "RCT-Panel" provisioning access point is running: whether it is
 // currently up, its SSID, and whether it is an open network (no password).
 // The GUI uses these to draw a Wi-Fi QR code on the display while the panel

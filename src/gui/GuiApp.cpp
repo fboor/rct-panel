@@ -79,6 +79,7 @@ static const lv_color_t COL_TEXT = lv_color_hex(0xE8ECF1);
 static const lv_color_t COL_MUTED = lv_color_hex(0x8A94A0);
 static const lv_color_t COL_OK = lv_color_hex(0x3EC97A);
 static const lv_color_t COL_ERR = lv_color_hex(0xE5484D);
+static const lv_color_t COL_WARN = lv_color_hex(0xEBD300); // waiting, not broken
 static const lv_color_t COL_BORDER = lv_color_hex(0x2A3038); // stat card ring
 
 // Energiefluss palette (reference values)
@@ -408,7 +409,7 @@ static const int EB_BAR_W = 440;
 static const int EB_BAR_H = 16;
 static const int EB_LABEL_GAP = 24; // label line (20 px) + 4 px air to the bar
 static const int EB_ROW0_Y = 82;   // first label line (below heading + selector)
-static const int EB_ROW_H = 59;     // label (20) + gap (4) + bar (16) + air (19)
+static const int EB_ROW_H = 58;     // label (20) + gap (4) + bar (16) + air (18)
 
 // "< 1000 kWh" prints as "12,4 kWh", above that in MWh ("1,23 MWh"). The
 // decimal separator is a comma, as in the portal.
@@ -1211,12 +1212,27 @@ static void refreshCb(lv_timer_t *t) {
     }
   }
 
-  // Status badge.
-  const char *badge = !s.haveData   ? "no data"
-                      : s.connected ? "live"
-                                    : "reconnect";
+  // Status badge. Four distinct states, because "still associating" and "the
+  // data supplier is unreachable" are different problems and must not share a
+  // colour: the connect phase can take up to CONNECT_BUDGET_MS and would
+  // otherwise flash a red "no data" for a full minute.
+  const char *badge;
+  lv_color_t badgeCol;
+  if (networkConnecting()) {
+    badge = "connecting";
+    badgeCol = COL_WARN;
+  } else if (!s.haveData) {
+    badge = "no data"; // link is up, but no RCT frame arrives
+    badgeCol = COL_ERR;
+  } else if (s.connected) {
+    badge = "live";
+    badgeCol = COL_OK;
+  } else {
+    badge = "reconnect"; // data was there, then the stream stopped
+    badgeCol = COL_WARN;
+  }
   lv_label_set_text(s_statusLabel, badge);
-  lv_obj_set_style_text_color(s_statusLabel, s.haveData ? COL_OK : COL_ERR, 0);
+  lv_obj_set_style_text_color(s_statusLabel, badgeCol, 0);
 
   AppPage &ov = s_pages[PAGE_OVERVIEW];
   if (ov.labels[OV_GRID_VAL]) {
@@ -1559,7 +1575,6 @@ static void refreshCb(lv_timer_t *t) {
             Serial.printf("hist: %d samples restored from SD log\n", n);
           }
           s_lastHistMs = millis(); // first live sample at the next interval
-        }
       } else if (graceOver) {
         s_histSeeded = true; // no card in the grace window: start fresh
         Serial.println("hist: no SD log, starting fresh");

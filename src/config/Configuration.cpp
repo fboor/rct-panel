@@ -347,6 +347,8 @@ void wifiReconnectLoop() {
   }
 }
 
+bool networkConnecting() { return phase == WIFI_CONNECTING; }
+
 bool provisioningApActive() { return phase == WIFI_PORTAL; }
 
 const char *provisioningApSsid() {
