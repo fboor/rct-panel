@@ -42,6 +42,14 @@ struct RctSnapshot {
   float loadPower[3];   // g_sync.p_ac_load[0..2]      household load per phase [W]
   float pvPower[2];     // dc_conv.dc_conv_struct[i].p_dc_lp  solar gen A/B [W]
   float s0Power;        // io_board.s0_external_power         S0 meter [W], 0 while absent
+  // Energy integrated from s0Power, in Wh, accumulated since boot. The device
+  // provides no S0 energy counter (its e_dc_* meters cover the two DC inputs
+  // only; the registry lists just io2_s0_imp_per_kwh, which counts pulses, not
+  // energy), so "PV Erzeugung" can only include the external generator by
+  // integrating its power here. For the day period that is the day's
+  // production; for month/year/lifetime it is a lower bound, since it only
+  // covers the time since the panel was switched on.
+  float s0EnergyWh;
   float batterySoc;     // battery.soc     [%]
   // Sign convention, measured on the real device: PV 0 W | Haus 832 W |
   // Netz +4 W | Batterie +810 W. With no production the battery cannot be

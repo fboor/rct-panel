@@ -32,6 +32,12 @@
 #define RCT_CONNECT_TIMEOUT_MS 400  // hard ceiling for one frozen frame
 #define RCT_CONNECT_RETRY_MS 5000   // dead host: retry often, stall briefly
 
+// Longest gap the S0 energy integration bridges. The fast group is polled every
+// RCT_POLL_MS (10 s), so a normal step is 10 s. A much longer one means the
+// device was not answering and the samples in between do not exist - averaging
+// across such a gap would credit the generator with energy nobody measured.
+#define RCT_S0_MAX_STEP_MS 30000
+
 static WiFiClient rctClient;
 
 // ---------------------------------------------------------------------------
@@ -605,6 +611,33 @@ void rctParse() {
   rctState.pvPower[0] = rctCur[RCT_SLOT_PV0];
   rctState.pvPower[1] = rctCur[RCT_SLOT_PV1];
   rctState.s0Power = rctCur[RCT_SLOT_S0];
+
+  // Integrate the S0 external generator into an energy total. The device has no
+  // counter for it, so "PV Erzeugung" would silently omit the external
+  // generator otherwise. Trapezoidal over the interval since the last
+  // integration: a sample only says how much was produced at that instant, and
+  // the generator may be switched off between two polls - averaging the two
+  // ends is what keeps a short burst from counting for the whole interval.
+  //
+  // Only the fresh S0 value is used, and only while it actually answers. A
+  // stale zero would otherwise drain the accumulator after the generator stops
+  // sending, and a stale non-zero would keep inflating it.
+  if (freshMask & (1ull << RCT_SLOT_S0)) {
+    const uint32_t nowMs = millis();
+    static uint32_t lastS0Ms = 0;
+    static float lastS0W = 0.0f;
+    if (lastS0Ms != 0) {
+      const uint32_t dtMs = nowMs - lastS0Ms;
+      // Cap the step: a long outage would otherwise integrate the average
+      // across minutes of production the panel never saw.
+      if (dtMs > 0 && dtMs <= RCT_S0_MAX_STEP_MS) {
+        rctState.s0EnergyWh +=
+            (lastS0W + rctState.s0Power) * 0.5f * (float)dtMs / 3600000.0f;
+      }
+    }
+    lastS0Ms = nowMs;
+    lastS0W = rctState.s0Power;
+  }
   // SOC/SOH are reported as 0..1 fractions; scale to percent.
   static const auto pct100 = [](float frac) {
     float v = frac * 100.0f;
@@ -641,6 +674,8 @@ void rctParse() {
     rctState.faultBits[k] = rctRaw[RCT_SLOT_FLT0 + k];
   }
 
+  // The two DC inputs only; the S0 external generator is added by the caller
+  // from s0EnergyWh, because this counter does not see it.
   rctState.dayPvWh = rctCur[RCT_SLOT_DC0] + rctCur[RCT_SLOT_DC1];
   rctState.dayFeedInWh = rctCur[RCT_SLOT_EFEEDDAY];
   rctState.dayLoadWh = rctCur[RCT_SLOT_ELOADDAY];
@@ -735,14 +770,17 @@ void rctParse() {
     freshCount++;
   }
   Serial.printf("RCT: grid %.0f/%.0f/%.0f (sum %.0f) W | load %.0f/%.0f/%.0f W"
-                " | PV %.2f kW"
-                " | bat %.0f%% %.2f kW (%d/%d fresh)\n",
+                " | PV %.2f kW (S0 %.0f W)"
+                " | bat %.0f%% %.2f kW (%.1f A, %.1f V) | S0 total %.2f kWh"
+                " (%d/%d fresh)\n",
                 rctState.gridPower[0], rctState.gridPower[1],
                 rctState.gridPower[2], rctState.gridPowerSum,
                 rctState.loadPower[0],
                 rctState.loadPower[1], rctState.loadPower[2],
                 (rctState.pvPower[0] + rctState.pvPower[1] +
                  rctState.s0Power) / 1000.0f,
-                rctState.batterySoc, rctState.batteryPower / 1000.0f,
-                freshCount, RCT_NUM_SLOTS);
+                rctState.s0Power, rctState.batterySoc,
+                rctState.batteryPower / 1000.0f, rctState.batteryCurrent,
+                rctState.batteryVoltage,
+                rctState.s0EnergyWh / 1000.0f, freshCount, RCT_NUM_SLOTS);
 }

@@ -458,6 +458,12 @@ static void energyPeriodValues(const RctSnapshot &s, int period,
       load = s.dayLoadWh;   grid = s.dayGridLoadWh;
       break;
   }
+  // The device's PV meters count the two DC inputs only, so the external
+  // generator on S0 is added from our own integration (see RctClient.cpp).
+  // Without it "PV Erzeugung" silently omitted a generator that feeds the
+  // house. For the day period this is the day's production; for month, year and
+  // lifetime it only covers the time since boot and is therefore a lower bound.
+  pv += s.s0EnergyWh;
   out[EB_VAL_PV] = pv;
   // The feed-in counters arrive negative on the real device (measured: -20,1 kWh
   // on a day with 32,5 kWh production). Shown as reported, the "Netzeinspeisung"
@@ -1501,7 +1507,7 @@ static void refreshCb(lv_timer_t *t) {
     // minus Netzbezug: was die Wohnung verbraucht hat, ohne es aus dem Netz zu
     // beziehen (PV direkt plus Batterie). Die Einspeisung ist damit nicht
     // enthalten - sie geht nach aussen, nicht in den eigenen Verbrauch.
-    float gen = s.dayPvWh;          // Erzeugt
+    float gen = s.dayPvWh + s.s0EnergyWh; // Erzeugt, inkl. externem Generator
     float feed = s.dayFeedInWh;     // Eingespeist, kommt negativ vom Geraet
     float consumed = s.dayLoadWh;   // Verbrauch (household)
     float gridIn = s.dayGridLoadWh; // Bezug (grid draw)
