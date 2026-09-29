@@ -50,7 +50,10 @@ static const char kApSsid[] = "RCT-Panel";
 enum WifiPhase { WIFI_CONNECTING, WIFI_PORTAL, WIFI_READY };
 static WifiPhase phase = WIFI_CONNECTING;
 
-static const uint32_t CONNECT_BUDGET_MS = 15000; // give up saved network after this
+// The saved-network attempt gets a full minute: with the measured RSSI of
+// -74..-83 dBm, association plus DHCP regularly need longer than 15 s, and
+// dropping into provisioning early only costs the user time.
+static const uint32_t CONNECT_BUDGET_MS = 60000; // give up saved network after this
 static uint32_t connectDeadline = 0;
 
 static void saveConfigCallback() {
@@ -106,6 +109,13 @@ static void startProvisioningAp() {
   // Modem sleep can make the ESP32-S3 softAP drop beacons/associations; keep
   // the radio fully awake while the panel is acting as the provisioning AP.
   WiFi.setSleep(false);
+  // MUST be non-blocking. Otherwise startConfigPortal() parks the main loop in
+  // its internal while(1), and with _configPortalTimeout == 0 (the default)
+  // configPortalHasTimeout() never fires, so the only exits are a client
+  // action or a WiFi status change: the loop can hang forever. That froze the
+  // GUI and the touch input outright. networkUpdate() already pumps
+  // wm.process() every loop, which serves the DNS/HTTP requests in that mode.
+  wm.setConfigPortalBlocking(false);
   wm.startConfigPortal("RCT-Panel");
   char apIp[16];
   strncpy(apIp, WiFi.softAPIP().toString().c_str(), sizeof(apIp) - 1);
