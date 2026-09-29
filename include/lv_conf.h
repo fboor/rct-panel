@@ -40,7 +40,20 @@
  * - LV_STDLIB_RTTHREAD:    RT-Thread implementation
  * - LV_STDLIB_CUSTOM:      Implement the functions externally
  */
-#define LV_USE_STDLIB_MALLOC    LV_STDLIB_BUILTIN
+/* LVGL's own 64 kB static pool was the cause of a permanent freeze at startup:
+ * the seven pages' widget tree alone takes 55 kB of it (measured 2026-09-29,
+ * 11% used after guiSetup(), 97% after guiStartApp()), and the first full-page
+ * render - the moment the Wi-Fi overlay hides, 10 s after boot - then fails to
+ * get a glyph draw buffer, and the failed allocation ends in
+ * LV_ASSERT_HANDLER's `while(1)`. Raising LV_MEM_SIZE is not an option: the
+ * panel is already using most of the internal DRAM, and the pool is a static
+ * array that can never reach PSRAM.
+ *
+ * With the C library allocator LVGL takes its memory from the ESP heap, which
+ * has ~155 kB free and can spill into the 8 MB PSRAM, so the UI can grow
+ * without ever hitting an artificial ceiling. LV_MEM_SIZE below only applies to
+ * the built-in pool and is therefore unused. */
+#define LV_USE_STDLIB_MALLOC    LV_STDLIB_CLIB
 
 /** Possible values
  * - LV_STDLIB_BUILTIN:     LVGL's built in implementation
@@ -375,7 +388,13 @@
      *  - LV_LOG_LEVEL_ERROR    Log only critical issues, when system may fail.
      *  - LV_LOG_LEVEL_USER     Log only custom log messages added by the user.
      *  - LV_LOG_LEVEL_NONE     Do not log anything. */
-    #define LV_LOG_LEVEL LV_LOG_LEVEL_WARN
+    /* ERROR instead of WARN on purpose: LVGL's LV_ASSERT() reports through
+     * LV_LOG_ERROR, which is compiled out unless LV_LOG_LEVEL <= LV_LOG_LEVEL_ERROR.
+     * With WARN every failed assertion therefore hit LV_ASSERT_HANDLER
+     * (`while(1);`) without leaving a single line in the log, so a freeze
+     * looked like a mystery hang. ERROR keeps the log quiet but makes
+     * assertions visible. */
+    #define LV_LOG_LEVEL LV_LOG_LEVEL_ERROR
 
     /** - 1: Print log with 'printf';
      *  - 0: User needs to register a callback with `lv_log_register_print_cb()`. */

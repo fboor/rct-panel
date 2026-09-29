@@ -42,6 +42,7 @@
 #include "GuiApp.h"
 
 #include "../config/Configuration.h"
+#include "../Diag.h"
 #include "../display/Display.h"
 #include "../display/Touch.h"
 #include "../rct/RctTypes.h"
@@ -1260,9 +1261,20 @@ static void updateApQr() {
 // ---------------------------------------------------------------------------
 // 1 Hz data refresh
 // ---------------------------------------------------------------------------
+// Marks the touch read; see the wrapper installed in guiSetup(). The I2C read is
+// the only blocking call inside lv_timer_handler() that has no phase marker of
+// its own, and it runs between refreshCb and the first flush - exactly the place
+// where a freeze reported as "gui.end" would otherwise hide.
+static void touchReadMarked(lv_indev_t *indev, lv_indev_data_t *data) {
+  diagPhase("touch.read");
+  touchReadCb(indev, data);
+  diagPhase("touch.done");
+}
+
 static void refreshCb(lv_timer_t *t) {
   (void)t;
   const RctSnapshot &s = rctState;
+  diagPhase("gui.refresh");
 
   // Wi-Fi setup overlay: visible while the provisioning AP runs, or during
   // the boot test window (first 10 s) so the QR layout can be verified.
@@ -1279,6 +1291,7 @@ static void refreshCb(lv_timer_t *t) {
     }
   }
 
+  diagPhase("gui.badge");
   // Status badge. Four distinct states, because "still associating" and "the
   // data supplier is unreachable" are different problems and must not share a
   // colour: the connect phase can take up to CONNECT_BUDGET_MS and would
@@ -1539,6 +1552,7 @@ static void refreshCb(lv_timer_t *t) {
     }
   }
 
+  diagPhase("gui.info");
   AppPage &inf = s_pages[PAGE_INFO];
   if (inf.labels[INF_HOST]) {
     setText(inf.labels[INF_HOST], "%s", rct_host);
@@ -1607,6 +1621,7 @@ static void refreshCb(lv_timer_t *t) {
     }
   }
 
+  diagPhase("gui.service");
   AppPage &sv = s_pages[PAGE_SERVICE];
   if (sv.labels[SV_BAT_STATUS]) {
     if (!s.haveBattery) {
@@ -1639,6 +1654,31 @@ static void refreshCb(lv_timer_t *t) {
     lv_label_set_text(sv.labels[SV_SD], sdStatusText());
   }
 
+  // Screenshot countdown. Runs here rather than in the button's own callback
+  // because the user is expected to leave the Service page before the shot is
+  // taken; a 1 s tick is exactly the resolution the countdown needs, so this
+  // costs no extra timer.
+  if (s_shotDueMs != 0) {
+    const int32_t leftMs = (int32_t)(s_shotDueMs - millis());
+    if (sv.labels[SV_SHOT]) {
+      setText(sv.labels[SV_SHOT], "Aufnahme in %d s ...",
+              leftMs > 0 ? (int)(leftMs / 1000) + 1 : 0);
+    }
+  }
+
+  // Screenshot handoff: the card worker needs seconds for 691 kB at 400 kHz, so
+  // the buffer stays allocated until it says it is finished. Only then is it
+  // released - freeing it earlier would hand the worker memory that PSRAM has
+  // already handed to something else.
+  if (s_shotBuf != nullptr && sdTakeShotDone()) {
+    heap_caps_free(s_shotBuf);
+    s_shotBuf = nullptr;
+    if (sv.labels[SV_SHOT]) {
+      lv_label_set_text(sv.labels[SV_SHOT], "auf /shot gespeichert");
+    }
+  }
+
+  diagPhase("gui.hist");
   // --- 24 h history: gap summary ---
   if (s_chart) {
     AppPage &gp = s_pages[PAGE_GRAPH];
@@ -1726,6 +1766,11 @@ static void refreshCb(lv_timer_t *t) {
       }
     }
   }
+  // End of the last section. If a freeze is ever reported from a phase before
+  // this one, refreshCb returned and the hang is in what runs after it - that
+  // distinction is worth one string, because the two have completely different
+  // causes.
+  diagPhase("gui.end");
 }
 
 // Store one sample in the ring and feed the chart. Ring cursor and the

@@ -13,6 +13,8 @@
 // SPDX-License-Identifier: MIT
 #include "Display.h"
 
+#include "../Diag.h"
+
 #include <Arduino.h>
 #include <esp_lcd_panel_ops.h>
 #include <esp_lcd_panel_rgb.h>
@@ -237,6 +239,12 @@ static void corrIdentity() {
 }
 
 static void lcdFlushCb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map) {
+  // Phase names inside the flush callback: the heartbeat reported "lvgl" as
+  // stuck for minutes without distinguishing LVGL's draw logic from this, and
+  // esp_lcd's draw_bitmap() on an RGB panel blocks until the driver takes the
+  // buffer. A 480 px high area against an 80-row draw buffer means this runs six
+  // times per frame, so it is also where a per-frame cost would accumulate.
+  diagPhase("lcd.flush");
   uint16_t *px = (uint16_t *)px_map;
   size_t n = (size_t)(area->x2 - area->x1 + 1) * (area->y2 - area->y1 + 1);
   for (size_t i = 0; i < n; i++) {
@@ -245,6 +253,7 @@ static void lcdFlushCb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_ma
   esp_lcd_panel_draw_bitmap(s_lcd_panel, area->x1, area->y1, area->x2 + 1,
                             area->y2 + 1, px_map);
   lv_display_flush_ready(disp);
+  diagPhase("lcd.ready");
 }
 
 bool displayInit() {
@@ -346,6 +355,15 @@ bool displayInit() {
   return true;
 }
 
-void displayLooper() { lv_timer_handler(); }
+// Marked on both sides on purpose. A hang *inside* lv_timer_handler() that does
+// not reach the flush callback - LVGL's own draw code, between one callback and
+// the next - would otherwise be reported under whatever phase the caller last
+// named, which is what made the first two runs ambiguous: the same freeze was
+// reported as "rct.poll" and as "lvgl" depending on which path reached it.
+void displayLooper() {
+  diagPhase("lv.handler");
+  lv_timer_handler();
+  diagPhase("lv.done");
+}
 
 lv_display_t *dispGetHandle() { return s_lv_disp; }

@@ -22,6 +22,7 @@
 #include <WiFi.h>
 
 #include "../config/Configuration.h"
+#include "../Diag.h"
 #include "RctTypes.h"
 
 #define RCT_RX_TIMEOUT_MS 2000    // per-frame receive window
@@ -430,6 +431,7 @@ static void rctDecodeString(const uint8_t *p, size_t n, char *dst) {
 // it lands right where the user is most likely to be switching pages.
 static void rctDrain(uint32_t ms) {
   const unsigned long startMillisHere = millis();
+  diagPhase("rct.drain");
   while (millis() - startMillisHere < ms) {
     while (rctClient.available()) {
       rctClient.read();
@@ -479,6 +481,11 @@ void rctParse() {
         port = 8899;
       }
       Serial.printf("RCT: connecting to %s:%d ...\n", rct_host, port);
+      // connect() is the one blocking lwIP call the yield hook cannot get into,
+      // so it gets its own phase name: a panel that wedges on a connect is a
+      // different fault than one that wedges on a poll, and the two need
+      // different fixes.
+      diagPhase("rct.connect");
       if (!rctClient.connect(rct_host, port, RCT_CONNECT_TIMEOUT_MS)) {
         // A failed connect can leave the socket half-open; the observation on
         // the panel was 21 of them stacked up, which eventually exhausted the
@@ -521,6 +528,11 @@ void rctParse() {
   // Consume the stream for this poll; keep last-good values per slot. The
   // fast group gates the receive window; info responses are consumed
   // opportunistically whenever they arrive during the same window.
+  //
+  // This is the phase that blocks: every OID the device does not answer costs
+  // the full RCT_RX_TIMEOUT_MS. With 60 slots now polled and the real device
+  // answering 45 of them, that is the single longest stretch in the whole loop.
+  diagPhase("rct.poll");
   static float rctCur[RCT_NUM_SLOTS];
   static uint32_t rctRaw[RCT_NUM_SLOTS]; // exact ints (calib ts, island ...)
   static uint32_t infoSeen = 0;          // slow slots that answered once

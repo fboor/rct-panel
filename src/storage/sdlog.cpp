@@ -22,6 +22,8 @@
 
 #include <Arduino.h>
 #include <SD.h>
+
+#include "../Diag.h"
 #include <SPI.h>
 #include <esp_timer.h>
 #include <freertos/FreeRTOS.h>
@@ -238,6 +240,10 @@ void queueFlush() {
 }
 
 void buildStatus() {
+  // Reads the card geometry (SD.totalBytes/usedBytes) whenever the status line
+  // is refreshed, and that also happens on the GUI task - so this is card I/O
+  // outside the worker, and it gets a name of its own.
+  diagPhase("sd.status");
   char buf[48];
   if (!s_mounted) {
     if (s_queueCount > 0) {
@@ -392,6 +398,10 @@ static void sdWorkerPeriodic(uint32_t now) {
   }
   s_nextMountMs = now + kMountRetryMs;
 
+  // SD.begin() is the longest single blocking card operation in the project
+  // (measured 1457 ms). It runs on this task, not on the GUI task, but the GUI
+  // then blocks on s_lock in the status call, so it has to be visible.
+  diagPhase("sd.mount");
   s_spi.begin(kSpiSck, kSpiMiso, kSpiMosi, kSpiSs);
   // Spec-compliant 400 kHz init: the Arduino SD library clocks the card at the
   // given frequency from CMD0 onwards, and fast init is the classic cause of
@@ -421,6 +431,7 @@ static void sdWorkerPeriodic(uint32_t now) {
 // Worker side of SDREQ_LOG: actually touch the card, or park the row.
 static void sdWorkerWriteRow(const SdReq &req) {
   if (s_mounted) {
+    diagPhase("sd.append");
     const int r = appendRow(req.path, req.line);
     if (r >= 0) {
       Serial.printf("SD: %s row -> %s\n", r > 0 ? "header + first" : "logged",

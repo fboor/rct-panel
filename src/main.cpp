@@ -9,6 +9,7 @@
 #include <Arduino.h>
 
 #include "config/Configuration.h"
+#include "Diag.h"
 #include "display/Display.h"
 #include "display/Touch.h"
 #include "gui/GuiApp.h"
@@ -18,27 +19,47 @@
 #define RCT_POLL_MS 10000
 #define SD_LOG_INTERVAL_MS 300000 // 5 min, aligned to the history sampler
 
+// LVGL's own diagnostics were going nowhere: no print callback was registered,
+// so every LV_LOG_ERROR and, more importantly, every failed assertion died
+// silently. With LV_ASSERT_HANDLER set to `while(1);` a failed allocation
+// therefore froze the panel with no output at all, which is exactly the class
+// of bug that is impossible to diagnose from the outside. Forward everything
+// LVGL has to say to the serial log.
+static void lvLogPrint(lv_log_level_t level, const char *msg) {
+  Serial.printf("[lv%d] %s", (int)level, msg);
+}
+
 void setup() {
   Serial.begin(115200);
   delay(200);
   Serial.println(F("\nRCT Power Panel boot"));
+  // Started first, so a hang during the rest of the boot is reported too.
+  diagStart();
+  lv_log_register_print_cb(lvLogPrint);
 
   if (!displayInit()) {
     Serial.println(F("FATAL: display init failed, halting"));
+    diagPhase("lcd.init");
     while (1) {
       delay(10);
     }
   }
+  diagPhase("gui.init");
   guiSetup();
   guiSetSplashText("Starting ...");
+  diagMem("gui.setup");
 
   // Non-blocking: background connect attempt to the saved network, or
   // provisioning AP if none is reachable (see Configuration.cpp).
+  diagPhase("net.setup");
   networkSetup();
 
+  diagPhase("gui.start");
   guiSetSplashText("Connecting to RCT ...");
   guiStartApp();
+  diagMem("gui.start");
 
+  diagPhase("sd.init");
   sdInit(); // SD history: first mount attempt shortly after boot
 }
 
@@ -78,6 +99,10 @@ void loop() {
   }
   lvAdvance(now); // monotonic-ish; provisioning is absorbed
 
+  // Phase markers from here on. They cost one pointer comparison per call and
+  // are what makes a hang reportable at all: without them the heartbeat can say
+  // "something is stuck for 12 s" but not what. See Diag.cpp.
+  diagPhase("lvgl");
   displayLooper(); // lv_timer_handler() -> flush -> esp_lcd
 
   // rctParse() has to wait for the device's answers, up to 2 s for an OID that
@@ -100,6 +125,7 @@ void loop() {
   // connect. Gating this on !networkReady starved the portal's HTTP server:
   // the softAP/DHCP (driver handled) kept working, but http://192.168.4.1
   // never answered. networkUpdate() returns immediately in WIFI_READY.
+  diagPhase("net.update");
   networkReady = networkUpdate();
   if (networkReady && !timeStarted) {
     // Wall clock for the "next calibration" countdown on the Gerät page;
@@ -115,11 +141,12 @@ void loop() {
   static uint32_t lastRct = 0;
   if (now - lastRct >= RCT_POLL_MS) {
     lastRct = now;
-    rctParse();
+    rctParse(); // marks its own phases: rct.connect / rct.poll
   }
 
   // SD history: one CSV row per 5 minutes (see docs/sd-history.md). The card
   // work itself happens in the SD worker task; these calls only format and post.
+  diagPhase("sd.tick");
   sdTick();
   static uint32_t lastSd = 0;
   if (now - lastSd >= SD_LOG_INTERVAL_MS) {
