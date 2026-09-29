@@ -12,9 +12,10 @@
 // g_sync.p_acc_lp (positive = charging). Nodes stay "-" until the device
 // answers the respective OIDs.
 //
-// Pages: 1 Energiefluss, 2 Heute (day summary), 3 Info, 4 Verlauf (24 h
-// power graph; one sample every 5 minutes, PV A+B and S0 as separate series),
-// 5 Gerät (device info polled every 10 s).
+// Pages: 1 Energiefluss, 2 Energie (accumulated energies per period as bars,
+// selectable Tag/Monat/Jahr/Gesamt), 3 Heute (day summary), 4 Info, 5 Verlauf
+// (24 h power graph; one sample every 5 minutes, PV A+B and S0 as separate
+// series), 6 Gerät (device info polled every 10 s), 7 Service.
 //
 // Layout:
 //   +-----------------------------+  <- status bar (title / link badge)
@@ -80,7 +81,8 @@ static const char kPortalSolarIcon[] = "\uE044";
 // ---------------------------------------------------------------------------
 enum PageId {
   PAGE_OVERVIEW = 0,
-  PAGE_ENERGY,
+  PAGE_ENERGY,   // accumulated energies per period (bars, portal colors)
+  PAGE_HEUTE,    // current-day summary cards
   PAGE_INFO,
   PAGE_GRAPH,   // 24 h power history
   PAGE_DEVICE,  // device info (Gerät)
@@ -139,6 +141,32 @@ enum EnLabel {
   EN_EVB_VAL, EN_EVB_LBL,     // Eigenverbrauch (%)
   EN_LABEL_COUNT,
 };
+
+// "Energie" page. Five bar rows in the portal's series colors; the chip + name
+// of every row acts as the legend, so no separate legend block is needed at
+// 480 px. Only the value labels are refreshed by the 1 Hz timer, the bars are
+// resized there too.
+enum EbLabel {
+  EB_VAL_PV = 0,  // PV Erzeugung
+  EB_VAL_SELF,    // Eigenverbrauch (PV − Netzeinspeisung)
+  EB_VAL_FEED,    // Netzeinspeisung
+  EB_VAL_GRID,    // Netzbezug
+  EB_VAL_LOAD,    // Verbrauch
+  EB_LABEL_COUNT,
+};
+
+static const int ENERGY_ROWS = 5;
+static const int ENERGY_PERIODS = 4; // Tag | Monat | Jahr | Gesamt
+// Portal palette (examples/RCT Portal _ ...-page2.html).
+static const uint32_t kEnergyColor[ENERGY_ROWS] = {0xEBD300, 0x12A40A, 0xF48756,
+                                                   0xCA0C0F, 0x3CBCD4};
+static const char *const kEnergyName[ENERGY_ROWS] = {
+    "PV Erzeugung", "Eigenverbrauch", "Netzeinspeisung", "Netzbezug", "Verbrauch"};
+static const char *const kPeriodName[ENERGY_PERIODS] = {"Tag", "Monat", "Jahr",
+                                                         "Gesamt"};
+static lv_obj_t *s_ebarFill[ENERGY_ROWS] = {nullptr}; // bar fills, resized live
+static lv_obj_t *s_ebarBtn[ENERGY_PERIODS] = {nullptr};
+static int s_energyPeriod = 0; // selected period, 0 = Tag
 
 // 24 h history (graph) page label indices.
 enum GhLabel {
@@ -331,6 +359,86 @@ static void makeStatCard(lv_obj_t *parent, int x, int y, int w, int h,
 }
 
 // ---------------------------------------------------------------------------
+// "Energie" page helpers
+// ---------------------------------------------------------------------------
+// Bar geometry: 480 px content, 12 px margin, chip + name on the left, bar in
+// the middle, right-aligned value at the far right.
+static const int EB_BAR_X = 150;
+static const int EB_BAR_W = 190;
+static const int EB_BAR_H = 20;
+static const int EB_ROW_H = 56;
+
+// "< 1000 kWh" prints as "12,4 kWh", above that in MWh ("1,23 MWh"). The
+// decimal separator is a comma, as in the portal.
+static void setEnergyValue(lv_obj_t *label, float wh) {
+  char buf[32];
+  if (wh < 1000000.0f) {
+    snprintf(buf, sizeof(buf), "%.1f kWh", wh / 1000.0f);
+  } else {
+    snprintf(buf, sizeof(buf), "%.2f MWh", wh / 1000000.0f);
+  }
+  for (char *p = buf; *p; p++) {
+    if (*p == '.') {
+      *p = ',';
+    }
+  }
+  lv_label_set_text(label, buf);
+}
+
+// The four meter values of the selected period, in Wh.
+static void energyPeriodValues(const RctSnapshot &s, int period,
+                               float out[ENERGY_ROWS]) {
+  float pv, feed, load, grid;
+  switch (period) {
+    case 1: // Monat
+      pv = s.monthPvWh;   feed = s.monthFeedInWh;
+      load = s.monthLoadWh; grid = s.monthGridLoadWh;
+      break;
+    case 2: // Jahr
+      pv = s.yearPvWh;    feed = s.yearFeedInWh;
+      load = s.yearLoadWh;  grid = s.yearGridLoadWh;
+      break;
+    case 3: // Gesamt
+      // The two lifetime grid meters are the ones already tracked as
+      // feedInEnergyWh / loadEnergyWh.
+      pv = s.totalPvWh;   feed = s.feedInEnergyWh;
+      load = s.totalLoadWh; grid = s.loadEnergyWh;
+      break;
+    default: // Tag
+      pv = s.dayPvWh;     feed = s.dayFeedInWh;
+      load = s.dayLoadWh;   grid = s.dayGridLoadWh;
+      break;
+  }
+  out[EB_VAL_PV] = pv;
+  out[EB_VAL_FEED] = feed;
+  out[EB_VAL_GRID] = grid;
+  out[EB_VAL_LOAD] = load;
+  // Eigenverbrauch = produced energy that was not fed into the grid (direct
+  // use plus battery charge). Clamped at 0: the counters can disagree slightly
+  // right after a device restart, and a negative bar makes no sense.
+  out[EB_VAL_SELF] = pv - feed > 0.0f ? pv - feed : 0.0f;
+}
+
+// Highlight the active period button (portal dashboard style).
+static void energySelectStyle() {
+  for (int i = 0; i < ENERGY_PERIODS; i++) {
+    if (!s_ebarBtn[i]) {
+      continue;
+    }
+    lv_obj_set_style_bg_color(s_ebarBtn[i],
+                              i == s_energyPeriod ? COL_ACCENT : COL_CARD, 0);
+    lv_obj_set_style_text_color(lv_obj_get_child(s_ebarBtn[i], 0),
+                                i == s_energyPeriod ? COL_BG : COL_MUTED, 0);
+  }
+}
+
+static void energyPeriodCb(lv_event_t *e) {
+  s_energyPeriod = (int)(intptr_t)lv_event_get_user_data(e);
+  energySelectStyle();
+  // The values follow on the next 1 Hz tick; no immediate redraw needed.
+}
+
+// ---------------------------------------------------------------------------
 // Page builders
 // ---------------------------------------------------------------------------
 
@@ -439,10 +547,82 @@ static void pageBuildOverview(AppPage *p) {
   p->labelCount = OV_LABEL_COUNT;
 }
 
+// "Energie": accumulated energies of the selected period as bars, mirroring
+// the portal's "Auswahl Messungen" block. The five chip + name rows double as
+// the color legend; bars are normalized to the largest value of the period.
+static void pageBuildEnergy(AppPage *p) {
+  lv_obj_t *root = p->root;
+
+  // Period selector: Tag | Monat | Jahr | Gesamt.
+  for (int i = 0; i < ENERGY_PERIODS; i++) {
+    lv_obj_t *btn = lv_button_create(root);
+    lv_obj_set_size(btn, 108, 34);
+    lv_obj_set_pos(btn, 12 + i * 114, 8);
+    lv_obj_set_style_bg_color(btn, COL_CARD, 0);
+    lv_obj_set_style_bg_color(btn, COL_ACCENT, LV_STATE_PRESSED);
+    lv_obj_set_style_radius(btn, 8, 0);
+    lv_obj_set_style_border_width(btn, 1, 0);
+    lv_obj_set_style_border_color(btn, COL_BORDER, 0);
+    lv_obj_add_event_cb(btn, energyPeriodCb, LV_EVENT_CLICKED,
+                        (void *)(intptr_t)i);
+    lv_obj_t *l = makeLabel(btn, kPeriodName[i], &lv_font_montserrat_14_uml,
+                            COL_MUTED);
+    lv_obj_center(l);
+    s_ebarBtn[i] = btn;
+  }
+
+  // One row per series: color chip, name, bar track + fill, right-aligned value.
+  for (int i = 0; i < ENERGY_ROWS; i++) {
+    const int y = 58 + i * EB_ROW_H;
+    const lv_color_t c = lv_color_hex(kEnergyColor[i]);
+
+    lv_obj_t *chip = lv_obj_create(root);
+    lv_obj_set_size(chip, 10, 26);
+    lv_obj_set_pos(chip, 16, y + 1);
+    lv_obj_set_style_bg_color(chip, c, 0);
+    lv_obj_set_style_bg_opa(chip, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(chip, 5, 0);
+    lv_obj_set_style_border_width(chip, 0, 0);
+    lv_obj_set_style_pad_all(chip, 0, 0);
+    lv_obj_set_style_shadow_width(chip, 0, 0);
+
+    lv_obj_t *name = makeLabel(root, kEnergyName[i], &lv_font_montserrat_16_uml,
+                               COL_TEXT);
+    lv_obj_set_pos(name, 34, y + 8);
+
+    lv_obj_t *track = lv_obj_create(root);
+    lv_obj_set_size(track, EB_BAR_W, EB_BAR_H);
+    lv_obj_set_pos(track, EB_BAR_X, y + 4);
+    lv_obj_set_style_bg_color(track, COL_CARD, 0);
+    lv_obj_set_style_radius(track, 4, 0);
+    lv_obj_set_style_border_width(track, 0, 0);
+    lv_obj_set_style_pad_all(track, 0, 0);
+    lv_obj_set_style_shadow_width(track, 0, 0);
+
+    lv_obj_t *fill = lv_obj_create(track);
+    lv_obj_set_size(fill, 0, EB_BAR_H);
+    lv_obj_set_pos(fill, 0, 0);
+    lv_obj_set_style_bg_color(fill, c, 0);
+    lv_obj_set_style_radius(fill, 4, 0);
+    lv_obj_set_style_border_width(fill, 0, 0);
+    lv_obj_set_style_pad_all(fill, 0, 0);
+    lv_obj_set_style_shadow_width(fill, 0, 0);
+    s_ebarFill[i] = fill;
+
+    p->labels[i] = makeLabel(root, "--", &lv_font_montserrat_16_uml, COL_TEXT);
+    lv_obj_set_width(p->labels[i], 116);
+    lv_obj_set_style_text_align(p->labels[i], LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_set_pos(p->labels[i], 348, y + 7);
+  }
+
+  p->labelCount = EB_LABEL_COUNT;
+  energySelectStyle();
+}
+
 // Current-day summary page, mirroring the portal "Übersicht" (Erzeugt /
 // Eigenverbrauch / Eingespeist kWh boxes) and "Energiestatistiken" (Autarkie /
 // Eigenverbrauch percentage gauges). All energy values are scaled ÷1000 → kWh.
-static void pageBuildEnergy(AppPage *p) {
+static void pageBuildHeute(AppPage *p) {
   lv_obj_t *root = p->root;
   p->labels[EN_TITLE] = makeLabel(root, "Heute", &lv_font_montserrat_16_uml, COL_MUTED);
   lv_obj_set_pos(p->labels[EN_TITLE], 20, 10);
@@ -1128,7 +1308,38 @@ static void refreshCb(lv_timer_t *t) {
     }
   }
 
-  AppPage &en = s_pages[PAGE_ENERGY];
+  AppPage &eb = s_pages[PAGE_ENERGY];
+  if (eb.labels[EB_VAL_PV]) {
+    float v[ENERGY_ROWS];
+    energyPeriodValues(s, s_energyPeriod, v);
+    float maxV = 0.0f;
+    for (int i = 0; i < ENERGY_ROWS; i++) {
+      if (v[i] > maxV) {
+        maxV = v[i];
+      }
+    }
+    for (int i = 0; i < ENERGY_ROWS; i++) {
+      // Bars share the scale of the largest value of the period; a small but
+      // non-zero value still gets a visible stub.
+      int w = 0;
+      if (maxV > 0.0f) {
+        w = (int)(v[i] / maxV * (float)EB_BAR_W);
+        if (w == 0 && v[i] > 0.0f) {
+          w = 3;
+        }
+      }
+      if (s_ebarFill[i] && lv_obj_get_width(s_ebarFill[i]) != w) {
+        lv_obj_set_width(s_ebarFill[i], w);
+      }
+      if (s.haveData) {
+        setEnergyValue(eb.labels[i], v[i]);
+      } else {
+        lv_label_set_text(eb.labels[i], "--");
+      }
+    }
+  }
+
+  AppPage &en = s_pages[PAGE_HEUTE];
   if (en.labels[EN_GEN_VAL]) {
     // Portal "Heute" day counters (all Wh). Eigenverbrauch = PV produced that
     // was not fed into the grid (direct use + battery charge).
@@ -1270,19 +1481,27 @@ static void refreshCb(lv_timer_t *t) {
       if (s_histSeedStartMs == 0) {
         s_histSeedStartMs = millis();
       }
+      const bool graceOver = (millis() - s_histSeedStartMs) >= HIST_SEED_WINDOW_MS;
+      static SdHistSample seed[HIST_POINTS];
       if (sdMounted()) {
-        s_histSeeded = true; // (re)mounts later are ignored on purpose
-        static SdHistSample seed[HIST_POINTS];
-        int n = sdReadHistory(seed, HIST_POINTS);
-        if (n > 0) {
-          for (int r = 0; r < n; r++) {
-            histPush(seed[r].v);
+        // Card in. Read the log, but only once the log file can actually be
+        // named: a mount that succeeds before SNTP (usually within ~2 s) would
+        // look for the pre-SNTP uptime file while the writer is about to switch
+        // to RCT-YYYYMM.csv. After the grace window we stop caring and take
+        // whatever is on the card.
+        int n = sdReadHistory(seed, HIST_POINTS, !graceOver);
+        if (n >= 0) {
+          s_histSeeded = true; // (re)mounts later are ignored on purpose
+          if (n > 0) {
+            for (int r = 0; r < n; r++) {
+              histPush(seed[r].v);
+            }
+            updateChartRange();
+            Serial.printf("hist: %d samples restored from SD log\n", n);
           }
-          updateChartRange();
-          Serial.printf("hist: %d samples restored from SD log\n", n);
+          s_lastHistMs = millis(); // first live sample at the next interval
         }
-        s_lastHistMs = millis(); // first live sample at the next interval
-      } else if (millis() - s_histSeedStartMs >= HIST_SEED_WINDOW_MS) {
+      } else if (graceOver) {
         s_histSeeded = true; // no card in the grace window: start fresh
         Serial.println("hist: no SD log, starting fresh");
         s_lastHistMs = 0; // first live sample immediately
@@ -1381,11 +1600,11 @@ void guiStartApp() {
   lv_obj_set_style_pad_bottom(content, 0, 0);
 
   // Pages.
-  static const char *titles[PAGE_COUNT] = {"Energiefluss", "Heute", "Info",
-                                          "Verlauf", "Gerät", "Service"};
-  void (*builders[PAGE_COUNT])(AppPage *) = {pageBuildOverview, pageBuildEnergy,
-                                             pageBuildInfo, pageBuildGraph,
-                                             pageBuildDevice, pageBuildService};
+  static const char *titles[PAGE_COUNT] = {"Energiefluss", "Energie", "Heute",
+                                          "Info", "Verlauf", "Gerät", "Service"};
+  void (*builders[PAGE_COUNT])(AppPage *) = {
+      pageBuildOverview, pageBuildEnergy, pageBuildHeute, pageBuildInfo,
+      pageBuildGraph, pageBuildDevice, pageBuildService};
   for (int i = 0; i < PAGE_COUNT; i++) {
     s_pages[i].title = titles[i];
     s_pages[i].labelCount = 0;

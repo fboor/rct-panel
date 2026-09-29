@@ -254,6 +254,22 @@ enum RCT_SLOT {
   RCT_SLOT_ELOADDAY, // energy.e_load_day       household day [Wh]
   RCT_SLOT_EFEEDDAY, // energy.e_grid_feed_day  feed-in day [Wh]
   RCT_SLOT_EGRIDLOADDAY, // energy.e_grid_load_day grid draw day [Wh]
+  // "Energie" page: month / year / lifetime accumulators. They are static
+  // counters, but they ride along in the fast group so the page never shows a
+  // gap right after a period switch.
+  RCT_SLOT_DCMONTH0, // energy.e_dc_month[0]  solar generator A month [Wh]
+  RCT_SLOT_DCMONTH1, // energy.e_dc_month[1]  solar generator B month [Wh]
+  RCT_SLOT_DCYEAR0,  // energy.e_dc_year[0]   solar generator A year [Wh]
+  RCT_SLOT_DCYEAR1,  // energy.e_dc_year[1]   solar generator B year [Wh]
+  RCT_SLOT_DCTOTAL0, // energy.e_dc_total[0]  solar generator A lifetime [Wh]
+  RCT_SLOT_DCTOTAL1, // energy.e_dc_total[1]  solar generator B lifetime [Wh]
+  RCT_SLOT_LOADMONTH, // energy.e_load_month  household month [Wh]
+  RCT_SLOT_LOADYEAR,  // energy.e_load_year   household year [Wh]
+  RCT_SLOT_LOADTOTAL, // energy.e_load_total  household lifetime [Wh]
+  RCT_SLOT_FEEDMONTH, // energy.e_grid_feed_month  feed-in month [Wh]
+  RCT_SLOT_FEEDYEAR,  // energy.e_grid_feed_year   feed-in year [Wh]
+  RCT_SLOT_GRIDMONTH, // energy.e_grid_load_month grid draw month [Wh]
+  RCT_SLOT_GRIDYEAR,  // energy.e_grid_load_year  grid draw year [Wh]
   // Service page (fast group): battery status + fault bitfields.
   RCT_SLOT_BATSTATUS, // battery.bat_status      status bitfield (INT32)
   RCT_SLOT_FLT0,      // fault[0].flt            fault bits  0-31 (UINT32)
@@ -281,8 +297,8 @@ static const uint32_t rctOids[RCT_NUM_SLOTS] = {
     0xF5584F90, // grid power L2 (W)
     0xB221BCFA, // grid power L3 (W)
     0x91617C58, // grid exchange total (W), + = grid import
-    0x44D4C533, // feed-in energy (Wh)
-    0x62FBE7DC, // load energy (Wh)
+    0x44D4C533, // e_grid_feed_total  lifetime feed-in energy (Wh)
+    0x62FBE7DC, // e_grid_load_total  lifetime grid draw energy (Wh)
     0x93F976AB, // grid voltage L1 (V)
     0x7A9091EA, // grid voltage L2 (V)
     0x21EE7CBB, // grid voltage L3 (V)
@@ -304,6 +320,19 @@ static const uint32_t rctOids[RCT_NUM_SLOTS] = {
     0x2F3C1D7D, // household day energy (Wh)
     0x3C87C4F5, // day energy grid feed-in (Wh)
     0x867DEF7D, // day energy grid load (Wh)
+    0x81AE960B, // solar generator A month energy (Wh)
+    0x7AB9B045, // solar generator B month energy (Wh)
+    0xAF64D0FE, // solar generator A year energy (Wh)
+    0xBD55D796, // solar generator B year energy (Wh)
+    0xFC724A9E, // solar generator A lifetime energy (Wh)
+    0x68EEFD3D, // solar generator B lifetime energy (Wh)
+    0xF0BE6429, // household month energy (Wh)
+    0xC7D3B479, // household year energy (Wh)
+    0xEFF4B537, // household lifetime energy (Wh)
+    0x65B624AB, // grid feed-in month energy (Wh)
+    0x26EFFC2F, // grid feed-in year energy (Wh)
+    0x126ABC86, // grid load month energy (Wh)
+    0xDE17F021, // grid load year energy (Wh)
     0x70A2AF4F, // battery status bitfield (INT32)
     0x37F9D5CA, // fault[0].flt  fault bits 0-31 (UINT32)
     0x234B4736, // fault[1].flt  fault bits 32-63 (UINT32)
@@ -451,9 +480,16 @@ void rctParse() {
   static uint32_t rctRaw[RCT_NUM_SLOTS]; // exact ints (calib ts, island ...)
   static uint32_t infoSeen = 0;          // slow slots that answered once
   static bool infoLogged = false;        // one-time bring-up log
-  uint32_t freshMask = 0;
+  // 64-bit: the fast group has grown past 32 slots, so a 32-bit mask (and the
+  // 1u << 32 shift that built its "all answered" mask) no longer works.
+  uint64_t freshMask = 0;
   const uint32_t fastSlots = (uint32_t)RCT_SLOT_DEVNAME;
-  const uint32_t allFast = (1u << fastSlots) - 1;
+  const uint64_t allFast =
+      (fastSlots >= 64) ? ~0ull : ((1ull << fastSlots) - 1ull);
+  // The accumulated-energy block, for the one-time bring-up log below.
+  const uint64_t energySlotsMask =
+      ((1ull << (RCT_SLOT_GRIDYEAR - RCT_SLOT_DCMONTH0 + 1)) - 1ull)
+      << RCT_SLOT_DCMONTH0;
   unsigned long deadline = millis() + RCT_CYCLE_TIMEOUT_MS;
   bool streamQuiet = false;
   while (freshMask != allFast && !streamQuiet &&
@@ -502,7 +538,7 @@ void rctParse() {
         if (slot >= RCT_SLOT_DEVNAME) {
           infoSeen |= (1u << (slot - RCT_SLOT_DEVNAME));
         } else {
-          freshMask |= (1u << slot);
+          freshMask |= (1ull << slot);
         }
       }
     }
@@ -551,6 +587,20 @@ void rctParse() {
   rctState.dayLoadWh = rctCur[RCT_SLOT_ELOADDAY];
   rctState.dayGridLoadWh = rctCur[RCT_SLOT_EGRIDLOADDAY];
 
+  rctState.monthPvWh =
+      rctCur[RCT_SLOT_DCMONTH0] + rctCur[RCT_SLOT_DCMONTH1];
+  rctState.yearPvWh =
+      rctCur[RCT_SLOT_DCYEAR0] + rctCur[RCT_SLOT_DCYEAR1];
+  rctState.totalPvWh =
+      rctCur[RCT_SLOT_DCTOTAL0] + rctCur[RCT_SLOT_DCTOTAL1];
+  rctState.monthLoadWh = rctCur[RCT_SLOT_LOADMONTH];
+  rctState.yearLoadWh = rctCur[RCT_SLOT_LOADYEAR];
+  rctState.totalLoadWh = rctCur[RCT_SLOT_LOADTOTAL];
+  rctState.monthFeedInWh = rctCur[RCT_SLOT_FEEDMONTH];
+  rctState.yearFeedInWh = rctCur[RCT_SLOT_FEEDYEAR];
+  rctState.monthGridLoadWh = rctCur[RCT_SLOT_GRIDMONTH];
+  rctState.yearGridLoadWh = rctCur[RCT_SLOT_GRIDYEAR];
+
   strlcpy(rctState.deviceName, rctDevName, sizeof(rctState.deviceName));
   strlcpy(rctState.firmwareVersion, rctFwVersion,
           sizeof(rctState.firmwareVersion));
@@ -561,6 +611,29 @@ void rctParse() {
   rctState.batteryCycles = rctCur[RCT_SLOT_CYCLES];
   rctState.batterySoh = pct100(rctCur[RCT_SLOT_SOH]);
   rctState.islandMode = rctRaw[RCT_SLOT_ISLAND] != 0;
+
+  // One-time bring-up log for the "Energie" page: proves the 13 accumulated
+  // OIDs answer and that the units are kWh. Every meter prints in the period
+  // order the page offers: Tag / Monat / Jahr / Gesamt.
+  static bool energyLogged = false;
+  if (!energyLogged && (freshMask & energySlotsMask) == energySlotsMask) {
+    energyLogged = true;
+    Serial.printf("RCT energy [kWh Tag/Monat/Jahr/Gesamt] PV %.1f/%.1f/%.1f/"
+                  "%.1f | Verbrauch %.1f/%.1f/%.1f/%.1f | Einspeisung "
+                  "%.1f/%.1f/%.1f/%.1f | Bezug %.1f/%.1f/%.1f/%.1f\n",
+                  rctState.dayPvWh / 1000.0f, rctState.monthPvWh / 1000.0f,
+                  rctState.yearPvWh / 1000.0f, rctState.totalPvWh / 1000.0f,
+                  rctState.dayLoadWh / 1000.0f, rctState.monthLoadWh / 1000.0f,
+                  rctState.yearLoadWh / 1000.0f, rctState.totalLoadWh / 1000.0f,
+                  rctState.dayFeedInWh / 1000.0f,
+                  rctState.monthFeedInWh / 1000.0f,
+                  rctState.yearFeedInWh / 1000.0f,
+                  rctState.feedInEnergyWh / 1000.0f,
+                  rctState.dayGridLoadWh / 1000.0f,
+                  rctState.monthGridLoadWh / 1000.0f,
+                  rctState.yearGridLoadWh / 1000.0f,
+                  rctState.loadEnergyWh / 1000.0f);
+  }
 
   // One-time bring-up log once the whole slow group has answered.
   if (!infoLogged && infoSeen ==
@@ -577,7 +650,7 @@ void rctParse() {
   }
 
   int freshCount = 0;
-  for (uint32_t m = freshMask; m; m &= m - 1) {
+  for (uint64_t m = freshMask; m; m &= m - 1) {
     freshCount++;
   }
   Serial.printf("RCT: grid %.0f/%.0f/%.0f (sum %.0f) W | load %.0f/%.0f/%.0f W"

@@ -35,8 +35,13 @@ struct SdHistSample {
 // Read up to maxRows newest rows from the log (header skipped), taking over a
 // calendar boundary when the current month file alone has fewer rows than
 // maxRows. Rows come back in chronological order, oldest first. Returns the
-// number stored or 0 when the card / files are not available.
+// number stored, or 0 when the card / files are not available.
 // maxRows must be <= 288.
-int sdReadHistory(SdHistSample *out, int maxRows);
+//
+// waitForClock: with waitForClock=true and the wall clock not yet valid (SNTP
+// still pending at boot), the read is deferred and -1 is returned so the
+// caller can retry once the time is there. Pass false to accept the pre-SNTP
+// uptime-named file as a last resort.
+int sdReadHistory(SdHistSample *out, int maxRows, bool waitForClock);
 
 #endif // RCT_SDLOG_H

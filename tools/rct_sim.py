@@ -82,6 +82,22 @@ def build_values():
         "energy.e_load_day": 8_940.0,
         "energy.e_grid_feed_day": 2_140.0,
         "energy.e_grid_load_day": 3_010.0,
+        # "Energie" page: month / year / lifetime accumulators. The numbers are
+        # internally consistent: load = (PV - feed-in) + grid draw for every
+        # period, so Eigenverbrauch and Verbrauch do not contradict each other.
+        "energy.e_dc_month[0]": 31_800.0,
+        "energy.e_dc_month[1]": 2_100.0,
+        "energy.e_dc_year[0]": 662_000.0,
+        "energy.e_dc_year[1]": 44_000.0,
+        "energy.e_dc_total[0]": 4_180_000.0,
+        "energy.e_dc_total[1]": 268_000.0,
+        "energy.e_load_month": 103_700.0,
+        "energy.e_load_year": 865_000.0,
+        "energy.e_load_total": 9_779_000.0,
+        "energy.e_grid_feed_month": 18_400.0,
+        "energy.e_grid_feed_year": 402_000.0,
+        "energy.e_grid_load_month": 88_200.0,
+        "energy.e_grid_load_year": 561_000.0,
         "android_description": "PS 10.0 32WB",
         "svnversion": "2.3.5689",
         "db.core_temp": 31.2,
@@ -154,6 +170,11 @@ def _drift():
 
     set_value("energy.e_load_day", 8_940.0 + t * 1.4)
     set_value("energy.e_dc_day[0]", 3_180.0 + max(0.0, pv) * t / 3600.0)
+    # The month counters move with a small fraction of the day drift, so the
+    # "Monat" view of the Energie page is not completely static.
+    monthPv = max(0.0, pv) * t / 3600.0
+    set_value("energy.e_dc_month[0]", 31_800.0 + monthPv * 0.05)
+    set_value("energy.e_load_month", 103_700.0 + t * 1.4 * 0.05)
 
 
 def _drift_thread():

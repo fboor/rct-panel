@@ -292,15 +292,23 @@ const char *sdStatusText() { return s_status; }
 
 bool sdMounted() { return s_mounted; }
 
-int sdReadHistory(SdHistSample *out, int maxRows) {
+int sdReadHistory(SdHistSample *out, int maxRows, bool waitForClock) {
   if (!s_mounted || out == nullptr || maxRows <= 0 || maxRows > kHistMaxRows) {
     return 0;
   }
+  const char *key = monthKey();
+  if (key == nullptr && waitForClock) {
+    // Card is there, but SNTP has not delivered a time yet: the monthly log
+    // file cannot be named, and the pre-SNTP uptime file is the wrong one
+    // (the writer switches to the month file as soon as the clock is up).
+    // The caller retries; pass waitForClock=false to take what is there.
+    return -1;
+  }
+
   static SdHistSample ring[kHistMaxRows];
   static SdHistSample prevRing[kHistMaxRows];
 
   char path[40];
-  const char *key = monthKey();
   const char *prevKey = nullptr;
   static char prevKeyBuf[16];
   if (key != nullptr) {
@@ -310,33 +318,37 @@ int sdReadHistory(SdHistSample *out, int maxRows) {
     snprintf(path, sizeof(path), "/hist/%s.csv", uptimeKey());
   }
 
+  char prevPath[40];
+  prevPath[0] = '\0';
+  if (prevKey != nullptr) {
+    snprintf(prevPath, sizeof(prevPath), "/hist/RCT-%s.csv", prevKey);
+  }
+
   int cur = scanFile(path, ring, maxRows);
+  if (cur == 0 && prevPath[0] != '\0') {
+    // Early in a new month nothing is logged into its file yet, but the last
+    // 24 h are all in the previous month's file.
+    cur = scanFile(prevPath, ring, maxRows);
+    prevPath[0] = '\0'; // already used as the primary file
+  }
   if (cur == 0) {
     return 0;
   }
-  if (cur >= maxRows) {
-    drainRing(ring, cur, maxRows, out);
-    return maxRows;
+  if (cur >= maxRows || prevPath[0] == '\0') {
+    drainRing(ring, cur, cur > maxRows ? maxRows : cur, out);
+    return cur > maxRows ? maxRows : cur;
   }
 
   // Current file alone has fewer than maxRows rows - the 24 h window reaches
   // across a calendar boundary. Prepend the previous month's newest rows.
-  int total = cur;
-  if (prevKey != nullptr) {
-    char prevPath[40];
-    snprintf(prevPath, sizeof(prevPath), "/hist/RCT-%s.csv", prevKey);
-    int prev = scanFile(prevPath, prevRing, maxRows - cur);
-    if (prev > 0) {
-      int need = maxRows - cur;
-      int prevKept = prev > need ? need : prev;
-      drainRing(prevRing, prev, need, out);
-      drainRing(ring, cur, cur, out + prevKept);
-      total = prevKept + cur;
-    } else {
-      drainRing(ring, cur, cur, out);
-    }
-  } else {
+  int need = maxRows - cur;
+  int prev = scanFile(prevPath, prevRing, need);
+  if (prev <= 0) {
     drainRing(ring, cur, cur, out);
+    return cur;
   }
-  return total;
+  int prevKept = prev > need ? need : prev;
+  drainRing(prevRing, prev, need, out);
+  drainRing(ring, cur, cur, out + prevKept);
+  return prevKept + cur;
 }

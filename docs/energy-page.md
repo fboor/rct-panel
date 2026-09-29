@@ -1,6 +1,7 @@
-# Energy page ("Energie") — planning (rct-panel)
+# Energy page ("Energie") — design (rct-panel)
 
-Status: **planning document, not yet implemented.**
+Status: **implemented and verified on the board** (2026-09-29) against
+`tools/rct_sim.py`. The five series, colors and layout below are as built.
 
 Goal: the second page (after "Energiefluss") shows the accumulated energies in
 kWh as horizontal bars, like the RCT portal's measurement area
@@ -26,13 +27,14 @@ User decision: insert a new "Energie" page; the existing "Heute" page remains.
 | 5     | Service      | Gerät                |
 | 6     | —            | Service              |
 
-Mechanics:
-- `GuiApp.cpp`: rename `PAGE_ENERGY` → `PAGE_HEUTE` (its builder
-  `pageBuildEnergy` → `pageBuildHeute`, keeps the current day tiles and the
-  `EN_*` label enum unchanged).
-- Add `PAGE_ENERGY = 1` with a new `pageBuildEnergy` (bars page) and a new
-  `EB_*` label enum.
+Mechanics (as built):
+- `GuiApp.cpp`: `PAGE_ENERGY` → `PAGE_HEUTE` (builder `pageBuildEnergy` →
+  `pageBuildHeute`, day tiles and the `EN_*` label enum unchanged); the new
+  `PAGE_ENERGY = 1` with its own builder and the `EB_*` label enum.
 - Titles / builders arrays gain the new page; nothing else moves.
+- Side effect worth knowing: the fast poll group grew from 32 to 45 slots, past
+  the width of the 32-bit "all answered" mask in `RctClient.cpp` (whose
+  `1u << 32` was already undefined behaviour). It is a `uint64_t` now.
 
 ## 2. Measurements (5 active portal series)
 
@@ -72,10 +74,21 @@ Reused: `e_dc_day[0..1]` (DC0/DC1), `e_load_day` (ELOADDAY),
 All 13 go into the fast group (FLOAT). They are static accumulators: the plain
 10 s poll cadence costs only 13 small reads a cycle.
 
-`RctSnapshot` gains 12 floats: `monthPvWh, yearPvWh, totalPvWh,
-monthLoadWh, yearLoadWh, totalLoadWh, monthFeedInWh, yearFeedInWh,
-totalFeedInWh, monthGridLoadWh, yearGridLoadWh, totalGridLoadWh`.
-Eigenverbrauch per period is derived in the GUI (PV − Einspeisung).
+`RctSnapshot` gains 10 floats: `monthPvWh, yearPvWh, totalPvWh, monthLoadWh,
+yearLoadWh, totalLoadWh, monthFeedInWh, yearFeedInWh, monthGridLoadWh,
+yearGridLoadWh`. The two lifetime grid meters are the pre-existing
+`feedInEnergyWh` (`e_grid_feed_total`) and `loadEnergyWh` (`e_grid_load_total`),
+so no duplicate fields were added. Eigenverbrauch per period is derived in the
+GUI (PV − Einspeisung).
+
+Bring-up log (once, on the first poll where all 13 answered), so the wiring can
+be checked without a screen:
+
+```
+RCT energy [kWh Tag/Monat/Jahr/Gesamt] PV 3.6/33.9/706.0/4448.0 |
+  Verbrauch 9.8/103.7/865.0/9779.0 | Einspeisung 2.1/18.4/402.0/3124.0 |
+  Bezug 3.0/88.2/561.0/8455.0
+```
 
 ## 4. Layout (480 × 364 content)
 
@@ -99,22 +112,25 @@ Eigenverbrauch per period is derived in the GUI (PV − Einspeisung).
   `"X,XX MWh"` (2 decimals). No data yet → `--`.
 - Bars update at the 1 Hz UI tick from the snapshot; no extra polling logic.
 
+As built (constants in `GuiApp.cpp`): selector buttons 108 × 34 at y = 8, row
+pitch 56 px starting at y = 58, bar track 190 × 20 at x = 150, value column
+right-aligned at x = 348. A non-zero but tiny value keeps a 3 px stub so it does
+not read as "zero".
+
 ## 5. Simulator
 
 `tools/rct_sim.py` gains the 13 OIDs with realistic month/year/total values
 (day values already simulated). `_drift()` increments the month counters by a
 tiny fraction of the day drift so the totals slowly move, matching the panel's
-10 s / 1 Hz refresh.
+10 s / 1 Hz refresh. The seeded numbers are internally consistent — per period
+`Verbrauch = (PV − Einspeisung) + Bezug` — so Eigenverbrauch and Verbrauch do
+not contradict each other on screen. Sim serves 54 objects (was 41).
 
-## 6. Steps if approved
+## 6. Implementation status
 
-1. `RctTypes.h`: +12 snapshot fields.
-2. `RctClient.cpp`: +13 slots + OIDs, publish into the new fields.
-3. `GuiApp.cpp`: enum/split `PAGE_ENERGY`→`PAGE_HEUTE`, new `PAGE_ENERGY`
-   bars page (selector buttons, bars, legend rows, formatting).
-4. `tools/rct_sim.py`: +13 OIDs + drift.
-5. Build, flash, verify against the sim (bars render, period switch works,
-   colors match the portal palette).
+All five steps done. Verified against the sim on the board: 45/54 slots fresh
+(all 13 new OIDs answer), the energy bring-up line above, `SD: mounted`, and
+`hist: 4 samples restored from SD log` after a reboot.
 
 > Not included (currently): weekly totals (portal has "Woche", but there are
 > no weekly OIDs in the registry — a week would have to be derived from

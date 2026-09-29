@@ -128,6 +128,15 @@ feeds it back at boot:
 - Boot order: the first live sample waits for a decision — card mounted (seed
   from log) or no card within a 60 s grace window (start fresh). A card
   inserted later in the session does not clobber the running history.
+- The card often mounts within ~2 s of boot, i.e. *before* SNTP has a time. The
+  monthly file cannot be named then, and the pre-SNTP uptime file is the wrong
+  one (the writer switches to `RCT-YYYYMM.csv` the moment the clock is up).
+  `sdReadHistory()` therefore defers (returns −1) while the clock is pending,
+  and the seed is retried on the next 1 Hz tick. After the 60 s grace window
+  the deferral stops and the uptime file is read as a last resort.
+- Early in a new month the current month's file is empty while the last 24 h
+  are still in the previous one: the reader now falls back to the previous
+  month file in that case (it previously returned "nothing to restore").
 
 ## 6. Implementation status
 

@@ -12,14 +12,28 @@ struct RctSnapshot {
   float gridPowerSum;     // g_sync.p_ac_grid_sum_lp   grid exchange total [W], + = Bezug
   float gridVoltage[3];   // rb485.u_l_grid[0..2]      grid voltage per phase [V]
   float gridFrequency[3]; // rb485.f_grid[0..2]        grid frequency per phase [Hz]
-  float feedInEnergyWh;   // energy.e_grid_feed_total  [Wh] (already Wh)
-  float loadEnergyWh;     // energy.e_grid_load_total  [Wh] (already Wh)
+  float feedInEnergyWh;   // energy.e_grid_feed_total  lifetime feed-in [Wh] (already Wh)
+  float loadEnergyWh;     // energy.e_grid_load_total  lifetime grid draw [Wh] (already Wh)
 
   // Current-day totals (portal "Übersicht"/"Energiestatistiken", Heute).
   float dayPvWh;        // energy.e_dc_day[0]+[1]      generated today [Wh]
   float dayFeedInWh;    // energy.e_grid_feed_day      fed into the grid [Wh]
   float dayLoadWh;      // energy.e_load_day           household load [Wh]
   float dayGridLoadWh;  // energy.e_grid_load_day      drawn from grid [Wh]
+
+  // Month / year totals for the "Energie" page. The lifetime ("Gesamt")
+  // counterparts already live above: feedInEnergyWh = e_grid_feed_total and
+  // loadEnergyWh = e_grid_load_total (both grid meters, despite the name).
+  float monthPvWh;      // energy.e_dc_month[0]+[1]    generated this month [Wh]
+  float yearPvWh;       // energy.e_dc_year[0]+[1]     generated this year [Wh]
+  float totalPvWh;      // energy.e_dc_total[0]+[1]    generated lifetime [Wh]
+  float monthLoadWh;    // energy.e_load_month         household this month [Wh]
+  float yearLoadWh;     // energy.e_load_year          household this year [Wh]
+  float totalLoadWh;    // energy.e_load_total         household lifetime [Wh]
+  float monthFeedInWh;  // energy.e_grid_feed_month    feed-in this month [Wh]
+  float yearFeedInWh;   // energy.e_grid_feed_year     feed-in this year [Wh]
+  float monthGridLoadWh; // energy.e_grid_load_month   grid draw this month [Wh]
+  float yearGridLoadWh;  // energy.e_grid_load_year    grid draw this year [Wh]
 
   float loadPower[3];   // g_sync.p_ac_load[0..2]      household load per phase [W]
   float pvPower[2];     // dc_conv.dc_conv_struct[i].p_dc_lp  solar gen A/B [W]
