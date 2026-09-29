@@ -408,7 +408,7 @@ static const int EB_BAR_W = 440;
 static const int EB_BAR_H = 16;
 static const int EB_LABEL_GAP = 24; // label line (20 px) + 4 px air to the bar
 static const int EB_ROW0_Y = 82;   // first label line (below heading + selector)
-static const int EB_ROW_H = 60;     // label (20) + gap (4) + bar (16) + air (20)
+static const int EB_ROW_H = 59;     // label (20) + gap (4) + bar (16) + air (19)
 
 // "< 1000 kWh" prints as "12,4 kWh", above that in MWh ("1,23 MWh"). The
 // decimal separator is a comma, as in the portal.
