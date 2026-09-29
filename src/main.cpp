@@ -45,13 +45,44 @@ void setup() {
 static bool networkReady = false; // usable Wi-Fi link established at least once
 static bool timeStarted = false;  // SNTP kicked off once the link is up
 
+// LVGL, the RCT poll and the (now task-based) SD logging share this task, so a
+// blocking call anywhere here is a frozen panel. This logs every loop iteration
+// that runs long enough to be felt, which is how the SD stall of 1457 ms and the
+// blocking config portal were both found. Keep it: it costs one comparison.
+#define STALL_REPORT_MS 300
+
 void loop() {
   static uint32_t lastTick = 0;
+  static uint32_t loopStart = 0;
   uint32_t now = millis();
+  {
+    const uint32_t prevLoop = now - loopStart;
+    if (prevLoop >= STALL_REPORT_MS) {
+      Serial.printf("[stall] Iteration ab %lu ms, %lu ms lang\n",
+                    (unsigned long)(now - prevLoop), (unsigned long)prevLoop);
+    }
+    loopStart = now;
+  }
   lv_tick_inc(now - lastTick); // monotonic-ish; provisioning is absorbed
   lastTick = now;
 
   displayLooper(); // lv_timer_handler() -> flush -> esp_lcd
+
+  // rctParse() has to wait for the device's answers, up to 2 s for an OID that
+  // does not respond. Same task as LVGL, so it hands rendering back to us
+  // through this hook - otherwise the whole panel froze for two seconds on
+  // every such poll.
+  static bool hookInstalled = false;
+  if (!hookInstalled) {
+    hookInstalled = true;
+    rctSetYieldHook([]() {
+      static uint32_t last = 0;
+      const uint32_t t = millis();
+      lv_tick_inc(t - last);
+      last = t;
+      displayLooper();
+    });
+  }
 
   // Pump the Wi-Fi state machine on every loop. This runs the captive portal's
   // web/DNS servers via WiFiManager::process() whenever the panel is in the
@@ -78,12 +109,13 @@ void loop() {
     rctParse();
   }
 
-  // SD history: mount retry while the card is absent; one CSV row per
-  // 5 minutes (see docs/sd-history.md).
+  // SD history: one CSV row per 5 minutes (see docs/sd-history.md). The card
+  // work itself happens in the SD worker task; these calls only format and post.
   sdTick();
   static uint32_t lastSd = 0;
   if (now - lastSd >= SD_LOG_INTERVAL_MS) {
     lastSd = now;
     sdLogSample(rctState);
   }
+
 }

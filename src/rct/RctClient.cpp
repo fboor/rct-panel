@@ -29,8 +29,8 @@
 #define RCT_INFO_POLL_MS 10000    // device info group poll cadence
 // Bounded connect() so an unreachable host can not freeze the UI task for
 // long; offline reconnects are throttled independently of the poll cadence.
-#define RCT_CONNECT_TIMEOUT_MS 2000
-#define RCT_CONNECT_RETRY_MS 30000
+#define RCT_CONNECT_TIMEOUT_MS 400  // hard ceiling for one frozen frame
+#define RCT_CONNECT_RETRY_MS 5000   // dead host: retry often, stall briefly
 
 static WiFiClient rctClient;
 
@@ -133,6 +133,15 @@ static void rctProcessByte(uint8_t c) {
   }
 }
 
+// Hook into the wait loop. Collecting a cycle means sitting in rctReceiveFrame()
+// for up to RCT_RX_TIMEOUT_MS when a tracked OID does not answer, and LVGL runs
+// in the same FreeRTOS task as this file - without a way to render in between,
+// the whole panel froze for two seconds on every poll that had to wait. main.cpp
+// installs displayLooper()+lv_tick_inc here, which is the only safe place: it is
+// the same task, so rctState is still only ever touched from one context.
+static void (*rctYieldHook)() = nullptr;
+void rctSetYieldHook(void (*fn)()) { rctYieldHook = fn; }
+
 enum RCT_RX : int { RCT_RX_OK = 0, RCT_RX_TIMEOUT, RCT_RX_CRC };
 
 // Wait for and validate one response frame. Returns RCT_RX_OK on success,
@@ -160,7 +169,11 @@ static int rctReceiveFrame(uint8_t &command, uint32_t &oid, uint8_t *payload,
       rctRxTotal = 0;
       return RCT_RX_TIMEOUT;
     }
-    delay(1);
+    if (rctYieldHook) {
+      rctYieldHook(); // keep the panel rendering while we wait for the frame
+    } else {
+      delay(1);
+    }
   }
 
   if (!rctRxComplete) {
@@ -430,9 +443,12 @@ void rctParse() {
       return;
     }
 
-    // Retrying an unreachable host with a bounded timeout stalls the UI for
-    // up to RCT_CONNECT_TIMEOUT_MS on this task, so keep the retry cadence
-    // long; live polls only happen while the socket is up.
+    // A connect attempt is a blocking lwIP call: the yield hook cannot run
+    // inside it, so RCT_CONNECT_TIMEOUT_MS is the hard ceiling for a frozen
+    // panel. Against a host on the local network the handshake completes in
+    // well under 100 ms, so 400 ms costs nothing and turns a 2 s freeze into
+    // a barely noticeable one. Recovery is cheap because the retry cadence,
+    // not the timeout, governs how often we try.
     static uint32_t lastAtt = 0;
     const uint32_t nowAtt = millis();
     if ((int32_t)(nowAtt - lastAtt) >= (int32_t)RCT_CONNECT_RETRY_MS) {
@@ -443,12 +459,20 @@ void rctParse() {
       }
       Serial.printf("RCT: connecting to %s:%d ...\n", rct_host, port);
       if (!rctClient.connect(rct_host, port, RCT_CONNECT_TIMEOUT_MS)) {
+        // A failed connect can leave the socket half-open; the observation on
+        // the panel was 21 of them stacked up, which eventually exhausted the
+        // peer's listen backlog and made every later connect fail too.
+        rctClient.stop();
         Serial.println("RCT: connect failed");
         rctState.connected = false;
         return;
       }
       rctState.connected = true;
-      delay(20);
+      if (rctYieldHook) {
+        rctYieldHook();
+      } else {
+        delay(20);
+      }
       rctSendExtension();
     } else {
       rctState.connected = false;
