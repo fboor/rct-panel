@@ -308,9 +308,27 @@ static bool parseLine(const char *line, SdHistSample *s) {
   return true;
 }
 
-// Scan all rows of `path` into `ring` (raw ring layout, one slot per parsed
-// row modulo ringCap). Return the total number of parsed rows; the newest
+// Rows are ~102 bytes (16 columns, see kLineCap), so this is how many bytes of
+// history are needed to cover ringCap rows with room to spare. Used to skip
+// forward to the interesting part of the file instead of parsing all of it.
+constexpr size_t kRowBytesEst = 128;
+
+// Scan rows of `path` into `ring` (raw ring layout, one slot per parsed row
+// modulo ringCap). Return the number of parsed rows; the newest
 // min(total, ringCap) rows survive in the ring.
+//
+// Reads only the newest ringCap rows, by seeking that far from the end of the
+// file and parsing forward from there. Bounding the read is the whole point of
+// this function: the log is appended to every 5 minutes, so a month file grows
+// by ~8 600 rows, and parsing it from the front meant reading the entire file
+// over a 400 kHz SPI bus. That scan does not finish in any useful time - it held
+// the card worker, and behind it the GUI waiting for the history result, for
+// minutes. Measured on 2025-09-29: still running after 120 s.
+//
+// The window is sized generously (kRowBytesEst per row rather than the exact
+// row length), so it can begin slightly before the rows that matter. Extra rows
+// at the front of the window lose the ring modulo to newer ones, which is the
+// same behaviour as before and needs no special case.
 static int scanFile(const char *path, SdHistSample *ring, int ringCap) {
   if (ringCap <= 0) {
     return 0;
@@ -319,21 +337,79 @@ static int scanFile(const char *path, SdHistSample *ring, int ringCap) {
   if (!f) {
     return 0;
   }
+
+  const size_t want = (size_t)ringCap * kRowBytesEst;
+  const size_t fileSize = f.size();
+  const size_t from = fileSize > want ? fileSize - want : 0;
+  f.seek(from);
+
+  // One static block, no allocation. The old loop built a String for every row
+  // of the whole file; this reuses 8 kB and parses in place.
+  static char block[kRowBytesEst * 64];
   int total = 0;
-  while (f.available()) {
-    String line = f.readStringUntil('\n');
-    line.trim();
-    if (line.length() < 12 || line.startsWith("ts,")) {
-      continue; // header or junk
+  size_t carry = 0;   // bytes of a line split across the block boundary
+  bool atBoundary = from == 0; // only line-skip when we started mid-file
+
+  const uint32_t scanT0 = millis();
+  while (true) {
+    const size_t got = f.read((uint8_t *)block + carry, sizeof(block) - carry);
+    if (got == 0) {
+      break;
     }
-    SdHistSample s;
-    if (!parseLine(line.c_str(), &s)) {
-      continue;
+    const size_t avail = carry + got;
+
+    // Start on a line boundary. When we seeked into the middle of the file, the
+    // first line in the block is a row's tail, not a row.
+    size_t lineStart = 0;
+    if (!atBoundary) {
+      while (lineStart < avail && block[lineStart] != '\n') {
+        lineStart++;
+      }
+      if (lineStart >= avail) {
+        // Not one line end in a whole block: a row longer than the block, which
+        // kLineCap rules out. Stop rather than shift the buffer forever.
+        break;
+      }
+      lineStart++;
+      atBoundary = true;
     }
-    ring[total % ringCap] = s;
-    total++;
+
+    while (lineStart < avail) {
+      const char *nl =
+          (const char *)memchr(block + lineStart, '\n', avail - lineStart);
+      if (nl == nullptr) {
+        break; // unfinished line: carried over to the next block
+      }
+      const size_t lineEnd = (size_t)(nl - block);
+      size_t len = lineEnd - lineStart;
+      char *line = block + lineStart;
+      if (len > 0 && line[len - 1] == '\r') {
+        len--; // CRLF, as written by Print.println()
+      }
+      line[len] = '\0';
+
+      if (len >= 12 && strncmp(line, "ts,", 3) != 0) {
+        SdHistSample smp;
+        if (parseLine(line, &smp)) {
+          ring[total % ringCap] = smp;
+          total++;
+        }
+      }
+      lineStart = lineEnd + 1;
+    }
+
+    // Keep the unfinished tail for the next block.
+    carry = avail - lineStart;
+    if (carry > 0) {
+      memmove(block, block + lineStart, carry);
+    }
   }
   f.close();
+  if (fileSize > want) {
+    Serial.printf("SD: history scan %u B -> %u B, %d Zeilen, %lu ms\n",
+                  (unsigned)fileSize, (unsigned)from, total,
+                  (unsigned long)(millis() - scanT0));
+  }
   return total;
 }
 
