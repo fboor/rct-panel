@@ -5,6 +5,8 @@
 // connector lines that light up red in the direction of the actual energy
 // flow, live kW values under each node, and a status table below. The RCT
 // logo is intentionally omitted (the center shows a house icon instead).
+// Direction is not spelled out in words at the netz node: the arrow on the
+// connector carries it, the table below repeats it as a value.
 //
 // Data note: PV = dc_conv.dc_conv_struct[0|1].p_dc_lp plus the S0 meter
 // (io_board.s0_external_power, merged as "EXT." in the portal), household =
@@ -95,7 +97,6 @@ static const int MAX_PAGE_LABELS = 20;
 // Overview page label indices.
 enum OvLabel {
   OV_GRID_VAL = 0, // netz kW value (red)
-  OV_GRID_DIR,     // "Bezug" / "Einspeisung"
   OV_HOUSE_VAL,    // haus kW value
   OV_PV_VAL,       // pv kW value
   OV_BAT_VAL,      // batterie kW value
@@ -368,8 +369,9 @@ static void makeStatCard(lv_obj_t *parent, int x, int y, int w, int h,
 static const int EB_BAR_X = 20;
 static const int EB_BAR_W = 440;
 static const int EB_BAR_H = 16;
-static const int EB_ROW0_Y = 56; // first label line
-static const int EB_ROW_H = 58;   // label line (20) + bar (16) + gap (22)
+static const int EB_LABEL_GAP = 24; // label line (20 px) + 4 px air to the bar
+static const int EB_ROW0_Y = 56;   // first label line
+static const int EB_ROW_H = 62;     // label (20) + gap (4) + bar (16) + air (22)
 
 // "< 1000 kWh" prints as "12,4 kWh", above that in MWh ("1,23 MWh"). The
 // decimal separator is a comma, as in the portal.
@@ -499,12 +501,10 @@ static void pageBuildOverview(AppPage *p) {
   lv_obj_move_background(s_linePv);
   lv_obj_move_background(s_lineBat);
 
-  // Values under each node.
+  // Values under each node. The netz direction ("Bezug" / "Einspeisung") is not
+  // spelled out: the sign is already visible in the value, the arrow on the
+  // connector shows where the power goes, and the status table below names it.
   p->labels[OV_GRID_VAL] = makeValueLabel(root, 360, 118);
-  p->labels[OV_GRID_DIR] = makeLabel(root, "", &lv_font_montserrat_14_uml, FLOW_RED);
-  lv_obj_set_pos(p->labels[OV_GRID_DIR], 360, 144);
-  lv_obj_set_style_text_align(p->labels[OV_GRID_DIR], LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_width(p->labels[OV_GRID_DIR], 120);
 
   // Haus value sits right of the vertical battery line (x=240) so the line no
   // longer runs through the text.
@@ -540,8 +540,9 @@ static void pageBuildOverview(AppPage *p) {
       {248, 324, "Batterie", OV_T_BAT},
   };
   for (int i = 0; i < 4; i++) {
-    // Unify the lower part: name + status both white.
-    lv_obj_t *nm = makeLabel(root, cells[i].name, &lv_font_montserrat_14_uml, FLOW_WHITE);
+    // Names muted, values white: the value is what the eye should land on.
+    lv_obj_t *nm =
+        makeLabel(root, cells[i].name, &lv_font_montserrat_14_uml, COL_MUTED);
     lv_obj_set_pos(nm, cells[i].x, cells[i].y);
     lv_obj_t *st = makeLabel(root, "--", &lv_font_montserrat_14_uml, FLOW_WHITE);
     lv_obj_set_pos(st, cells[i].x + 110, cells[i].y);
@@ -581,8 +582,10 @@ static void pageBuildEnergy(AppPage *p) {
     const int y = EB_ROW0_Y + i * EB_ROW_H;
     const lv_color_t c = lv_color_hex(kEnergyColor[i]);
 
+    // Label white: the bar underneath already carries the series color, a
+    // colored name on top of a colored bar was just noise.
     lv_obj_t *name = makeLabel(root, kEnergyName[i], &lv_font_montserrat_16_uml,
-                               c);
+                               COL_TEXT);
     lv_obj_set_pos(name, EB_BAR_X, y);
 
     p->labels[i] = makeLabel(root, "--", &lv_font_montserrat_16_uml, COL_TEXT);
@@ -592,7 +595,7 @@ static void pageBuildEnergy(AppPage *p) {
 
     lv_obj_t *track = lv_obj_create(root);
     lv_obj_set_size(track, EB_BAR_W, EB_BAR_H);
-    lv_obj_set_pos(track, EB_BAR_X, y + 22);
+    lv_obj_set_pos(track, EB_BAR_X, y + EB_LABEL_GAP);
     lv_obj_set_style_bg_color(track, COL_CARD, 0);
     lv_obj_set_style_radius(track, 4, 0);
     lv_obj_set_style_border_width(track, 0, 0);
@@ -1177,14 +1180,8 @@ static void refreshCb(lv_timer_t *t) {
     if (has) {
       float absK = fabsf(pTot) / 1000.0f;
       bool active = fabsf(pTot) >= gridActive;
-      const char *dir = pTot > gridActive   ? "Bezug"
-                       : pTot < -gridActive ? "Einspeisung"
-                                            : "";
       setText(ov.labels[OV_GRID_VAL], "%.2f kW", absK);
       lv_obj_set_style_text_color(ov.labels[OV_GRID_VAL], FLOW_RED, 0);
-      setText(ov.labels[OV_GRID_DIR], dir);
-      lv_obj_set_style_text_color(ov.labels[OV_GRID_DIR],
-                                  active ? FLOW_RED : FLOW_LINE, 0);
       lv_obj_set_style_line_color(s_lineGrid, active ? FLOW_RED : FLOW_LINE, 0);
       lv_obj_set_style_line_width(s_lineGrid, active ? 4 : 3, 0);
       if (active) {
@@ -1198,7 +1195,6 @@ static void refreshCb(lv_timer_t *t) {
     } else {
       lv_label_set_text(ov.labels[OV_GRID_VAL], dash);
       lv_obj_set_style_text_color(ov.labels[OV_GRID_VAL], FLOW_LINE, 0);
-      lv_label_set_text(ov.labels[OV_GRID_DIR], "");
       lv_obj_set_style_line_color(s_lineGrid, FLOW_LINE, 0);
       lv_obj_set_style_line_width(s_lineGrid, 3, 0);
       lv_obj_add_flag(ov.labels[OV_GRID_ARROW], LV_OBJ_FLAG_HIDDEN);
@@ -1547,6 +1543,9 @@ void guiSetup() {
   lv_obj_align(bar, LV_ALIGN_TOP_MID, 0, 0);
   lv_obj_set_style_bg_color(bar, COL_BAR, 0);
   lv_obj_set_style_border_width(bar, 0, 0);
+  // Full-bleed bar: no rounded corners, the rounded edges would only look like
+  // an unfinished panel against the screen border.
+  lv_obj_set_style_radius(bar, 0, 0);
   lv_obj_set_style_pad_left(bar, 0, 0);
   lv_obj_set_style_pad_right(bar, 0, 0);
   lv_obj_set_style_pad_top(bar, 0, 0);
@@ -1621,6 +1620,7 @@ void guiStartApp() {
   lv_obj_align(nav, LV_ALIGN_BOTTOM_MID, 0, 0);
   lv_obj_set_style_bg_color(nav, COL_BAR, 0);
   lv_obj_set_style_border_width(nav, 0, 0);
+  lv_obj_set_style_radius(nav, 0, 0); // full-bleed like the status bar
   lv_obj_set_style_pad_left(nav, 6, 0);
   lv_obj_set_style_pad_right(nav, 6, 0);
   lv_obj_set_style_pad_top(nav, 6, 0);

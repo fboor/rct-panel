@@ -113,17 +113,17 @@ RCT energy [kWh Tag/Monat/Jahr/Gesamt] PV 3.6/33.9/706.0/4448.0 |
 - Bars update at the 1 Hz UI tick from the snapshot; no extra polling logic.
 
 As built (constants in `GuiApp.cpp`): selector buttons 108 × 34 at y = 8, row
-pitch 58 px starting at y = 56, bar track 440 × 16 at x = 20, value column
-right-aligned at x = 340. A non-zero but tiny value keeps a 3 px stub so it does
-not read as "zero".
+pitch 62 px starting at y = 56, bar track 440 × 16 at x = 20, 4 px air between
+label and bar, value column right-aligned at x = 340. A non-zero but tiny value
+keeps a 3 px stub so it does not read as "zero".
 
 ### 4.1 Legend: label above the bar
 
 First cut put a color chip + name to the left of each bar, which squeezed the
 bars into 190 px and needed a legend explanation. As built instead: the **name
-sits above its own bar, left aligned, in the series color**, with the value
-right aligned on the same line. The bar below is the same color and spans the
-full 440 px.
+sits above its own bar, left aligned, in white**, with the value right aligned
+on the same line. The bar below is the only thing that carries the series
+color, and it spans the full 440 px.
 
 ```
 PV Erzeugung                              12,4 kWh
@@ -138,6 +138,9 @@ Consequence: the bars are more than twice as long, the reading order is
 unambiguous (name directly above its bar), and there is no separate legend
 whose entries could be mistaken for something else. The chip objects are gone
 from the builder.
+
+The name is white, not series-colored: a colored word directly above a bar of
+the same color read as noise, the bar is a strong enough signal on its own.
 
 ## 5. Simulator
 
