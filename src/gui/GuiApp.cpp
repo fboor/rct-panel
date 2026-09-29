@@ -142,10 +142,11 @@ enum EnLabel {
   EN_LABEL_COUNT,
 };
 
-// "Energie" page. Five bar rows in the portal's series colors; the chip + name
-// of every row acts as the legend, so no separate legend block is needed at
-// 480 px. Only the value labels are refreshed by the 1 Hz timer, the bars are
-// resized there too.
+// "Energie" page. Five bar rows in the portal's series colors. Each label sits
+// above its own bar, left aligned, with the value right aligned on the same
+// line - that makes the colored bar itself the legend entry, so no separate
+// color chips and no legend block are needed. Only the value labels are
+// refreshed by the 1 Hz timer, the bars are resized there too.
 enum EbLabel {
   EB_VAL_PV = 0,  // PV Erzeugung
   EB_VAL_SELF,    // Eigenverbrauch (PV − Netzeinspeisung)
@@ -361,12 +362,14 @@ static void makeStatCard(lv_obj_t *parent, int x, int y, int w, int h,
 // ---------------------------------------------------------------------------
 // "Energie" page helpers
 // ---------------------------------------------------------------------------
-// Bar geometry: 480 px content, 12 px margin, chip + name on the left, bar in
-// the middle, right-aligned value at the far right.
-static const int EB_BAR_X = 150;
-static const int EB_BAR_W = 190;
-static const int EB_BAR_H = 20;
-static const int EB_ROW_H = 56;
+// Bar geometry: 480 px content, 20 px margin. Per row a label line (name left,
+// value right) over a full-width bar, so the label doubles as the legend and
+// the bar can use the whole width.
+static const int EB_BAR_X = 20;
+static const int EB_BAR_W = 440;
+static const int EB_BAR_H = 16;
+static const int EB_ROW0_Y = 56; // first label line
+static const int EB_ROW_H = 58;   // label line (20) + bar (16) + gap (22)
 
 // "< 1000 kWh" prints as "12,4 kWh", above that in MWh ("1,23 MWh"). The
 // decimal separator is a comma, as in the portal.
@@ -571,28 +574,25 @@ static void pageBuildEnergy(AppPage *p) {
     s_ebarBtn[i] = btn;
   }
 
-  // One row per series: color chip, name, bar track + fill, right-aligned value.
+  // One row per series: label line (name left, value right) above a full-width
+  // bar. The name takes the series color, the bar below it the same one - that
+  // is the whole legend.
   for (int i = 0; i < ENERGY_ROWS; i++) {
-    const int y = 58 + i * EB_ROW_H;
+    const int y = EB_ROW0_Y + i * EB_ROW_H;
     const lv_color_t c = lv_color_hex(kEnergyColor[i]);
 
-    lv_obj_t *chip = lv_obj_create(root);
-    lv_obj_set_size(chip, 10, 26);
-    lv_obj_set_pos(chip, 16, y + 1);
-    lv_obj_set_style_bg_color(chip, c, 0);
-    lv_obj_set_style_bg_opa(chip, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(chip, 5, 0);
-    lv_obj_set_style_border_width(chip, 0, 0);
-    lv_obj_set_style_pad_all(chip, 0, 0);
-    lv_obj_set_style_shadow_width(chip, 0, 0);
-
     lv_obj_t *name = makeLabel(root, kEnergyName[i], &lv_font_montserrat_16_uml,
-                               COL_TEXT);
-    lv_obj_set_pos(name, 34, y + 8);
+                               c);
+    lv_obj_set_pos(name, EB_BAR_X, y);
+
+    p->labels[i] = makeLabel(root, "--", &lv_font_montserrat_16_uml, COL_TEXT);
+    lv_obj_set_width(p->labels[i], 120);
+    lv_obj_set_style_text_align(p->labels[i], LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_set_pos(p->labels[i], 340, y);
 
     lv_obj_t *track = lv_obj_create(root);
     lv_obj_set_size(track, EB_BAR_W, EB_BAR_H);
-    lv_obj_set_pos(track, EB_BAR_X, y + 4);
+    lv_obj_set_pos(track, EB_BAR_X, y + 22);
     lv_obj_set_style_bg_color(track, COL_CARD, 0);
     lv_obj_set_style_radius(track, 4, 0);
     lv_obj_set_style_border_width(track, 0, 0);
@@ -608,11 +608,6 @@ static void pageBuildEnergy(AppPage *p) {
     lv_obj_set_style_pad_all(fill, 0, 0);
     lv_obj_set_style_shadow_width(fill, 0, 0);
     s_ebarFill[i] = fill;
-
-    p->labels[i] = makeLabel(root, "--", &lv_font_montserrat_16_uml, COL_TEXT);
-    lv_obj_set_width(p->labels[i], 116);
-    lv_obj_set_style_text_align(p->labels[i], LV_TEXT_ALIGN_RIGHT, 0);
-    lv_obj_set_pos(p->labels[i], 348, y + 7);
   }
 
   p->labelCount = EB_LABEL_COUNT;

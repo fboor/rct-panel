@@ -94,28 +94,50 @@ RCT energy [kWh Tag/Monat/Jahr/Gesamt] PV 3.6/33.9/706.0/4448.0 |
 
 - Selector row (~44 px): four buttons `Tag | Monat | Jahr | Gesamt`; the
   active period is highlighted (portal dashboard style).
-- Five bar rows (~48 px each):
+- Five bar rows, each a label line over a full-width bar:
 
   ```
-  █ PV Erzeugung    ████████████▌      12,4 kWh
-  █ Eigenverbrauch  ███████▌            7,9 kWh
-  █ Netzeinspeisung ████▌               4,5 kWh
-  █ Netzbezug       ███                 3,0 kWh
-  █ Verbrauch       ██████████████▌    15,6 kWh
+  PV Erzeugung                              12,4 kWh
+  ████████████████████████████▌░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+  Eigenverbrauch                             7,9 kWh
+  ███████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+  Netzeinspeisung                            4,5 kWh
+  ███████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
   ```
 
-  Per row: 10 px color chip, label (German, ~110 px), bar length normalized
-  to the largest value of the shown period, value right-aligned. The chip +
-  label rows are the multi-line legend (portal look); no separate legend block
-  is needed at 480 px width.
+  Per row: name in the series color, left aligned, above its bar; value right
+  aligned on the name line; bar length normalized to the largest value of the
+  shown period. See 4.1 for why the chip variant was dropped.
 - Value formatting: < 1000 kWh → `"X,X kWh"` (1 decimal), ≥ 1000 kWh →
   `"X,XX MWh"` (2 decimals). No data yet → `--`.
 - Bars update at the 1 Hz UI tick from the snapshot; no extra polling logic.
 
 As built (constants in `GuiApp.cpp`): selector buttons 108 × 34 at y = 8, row
-pitch 56 px starting at y = 58, bar track 190 × 20 at x = 150, value column
-right-aligned at x = 348. A non-zero but tiny value keeps a 3 px stub so it does
+pitch 58 px starting at y = 56, bar track 440 × 16 at x = 20, value column
+right-aligned at x = 340. A non-zero but tiny value keeps a 3 px stub so it does
 not read as "zero".
+
+### 4.1 Legend: label above the bar
+
+First cut put a color chip + name to the left of each bar, which squeezed the
+bars into 190 px and needed a legend explanation. As built instead: the **name
+sits above its own bar, left aligned, in the series color**, with the value
+right aligned on the same line. The bar below is the same color and spans the
+full 440 px.
+
+```
+PV Erzeugung                              12,4 kWh
+██████████████████████████████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+Eigenverbrauch                            7,9 kWh
+████████████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+Netzeinspeisung                           4,5 kWh
+███████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+```
+
+Consequence: the bars are more than twice as long, the reading order is
+unambiguous (name directly above its bar), and there is no separate legend
+whose entries could be mistaken for something else. The chip objects are gone
+from the builder.
 
 ## 5. Simulator
 
