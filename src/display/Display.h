@@ -16,4 +16,10 @@ void displayLooper();
 // Handle used internally; keeps the compiler honest in gui/.
 lv_display_t *dispGetHandle();
 
+// The panel's per-channel colour correction, as applied by the flush callback.
+// A screenshot renders LVGL's own buffer, i.e. *before* this correction, so
+// running the values through the same function is what makes the file show what
+// the panel actually shows rather than what LVGL asked for.
+uint16_t dispCorrectPixel(uint16_t rgb565);
+
 #endif // DISPLAY_H

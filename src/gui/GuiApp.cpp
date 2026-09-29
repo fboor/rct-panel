@@ -219,6 +219,7 @@ enum SvLabel {
   SV_BAT_RAW,    // raw bitfield hex (muted)
   SV_FLT_LIST,   // decoded faults, one per line
   SV_SD,         // SD history log status
+  SV_SHOT,       // screenshot state ("geschrieben" / "wird geschrieben")
   SV_LABEL_COUNT,
 };
 
@@ -1007,11 +1008,137 @@ static void serviceSetupCb(lv_event_t *e) {
   restartProvisioning();
 }
 
+// ---------------------------------------------------------------------------
+// Screenshot
+//
+// The whole point is to be able to see the panel without someone having to
+// describe it, so the capture happens through LVGL's own snapshot API rather
+// than by reading the panel's framebuffer: the driver keeps that pointer to
+// itself, and LVGL's version is a defined interface.
+//
+// Buffer: 480 x 480 RGB565 = 460 800 B, so it has to be in PSRAM. Held for the
+// duration of the card write, which is seconds - far too long to sit on the
+// 8 kB GUI stack and much longer than a transient allocation should live. It is
+// therefore a single static buffer that the free() below hands out, and the
+// service page ignores further requests while a shot is in flight (see
+// sdScreenshot(), which refuses a second one rather than reading a buffer the
+// worker has already finished with).
+// ---------------------------------------------------------------------------
+static uint16_t *s_shotBuf = nullptr;
+
+// Delay between pressing the button and the capture. The button lives on the
+// Service page, so an immediate shot could only ever photograph the Service
+// page - the delay is what makes the button useful at all: press it, switch to
+// the page that misbehaves, and the picture is taken there. The deadline lives
+// outside the callback so it survives the page switch.
+#define SHOT_DELAY_MS 5000
+static uint32_t s_shotDueMs = 0; // capture armed, due at this tick; 0 = none
+
+// The actual capture, run SHOT_DELAY_MS after the button was pressed.
+static void takeShotNow() {
+  // Resolution from the display, not the literal 480: the panel is 480x480
+  // today, and a hardcoded size here would quietly truncate a future panel
+  // instead of failing. lv_display_t is opaque in LVGL 9, hence the accessors.
+  lv_display_t *disp = dispGetHandle();
+  if (disp == nullptr) {
+    return;
+  }
+  const int w = (int)lv_display_get_horizontal_resolution(disp);
+  const int h = (int)lv_display_get_vertical_resolution(disp);
+  const size_t need = (size_t)w * (size_t)h * sizeof(uint16_t);
+  if (!s_shotBuf) {
+    // Not a local array and not malloc: this outlives the call by seconds and
+    // has to be 460 kB, which is PSRAM territory.
+    s_shotBuf = (uint16_t *)heap_caps_malloc(need, MALLOC_CAP_SPIRAM);
+    if (s_shotBuf == nullptr) {
+      s_shotBuf = (uint16_t *)heap_caps_malloc(need, MALLOC_CAP_8BIT);
+    }
+    if (s_shotBuf == nullptr) {
+      Serial.printf("Screenshot: %lu B nicht freier\n", (unsigned long)need);
+      lv_label_set_text(s_pages[PAGE_SERVICE].labels[SV_SHOT],
+                        "kein Speicher");
+      return;
+    }
+  }
+
+  // RGB565 is what LVGL renders into here, so the conversion on the card side
+  // is a pure format change. Applying the panel's colour correction here as
+  // well is what makes the file match the physical panel rather than the
+  // uncorrected values LVGL holds.
+  //
+  // Not lv_snapshot_take_to_buf(): that deprecated wrapper takes an
+  // lv_image_dsc_t* to write the result descriptor into, and on success it
+  // does so unconditionally - so passing NULL, which is right here because
+  // there is no descriptor to hand out and the pixels go straight to the card,
+  // made it memcpy to address zero. lv_draw_buf_init() + the current API does
+  // the same work on the same buffer without that trap.
+  lv_draw_buf_t shot;
+  if (lv_draw_buf_init(&shot, (uint32_t)w, (uint32_t)h, LV_COLOR_FORMAT_RGB565,
+                       0, s_shotBuf, (uint32_t)need) != LV_RESULT_OK) {
+    Serial.printf("Screenshot: draw_buf %dx%d, %lu B abgelehnt\n", w, h,
+                  (unsigned long)need);
+    lv_label_set_text(s_pages[PAGE_SERVICE].labels[SV_SHOT], "fehlgeschlagen");
+    return;
+  }
+  lv_result_t rc =
+      lv_snapshot_take_to_draw_buf(lv_screen_active(), LV_COLOR_FORMAT_RGB565, &shot);
+  if (rc != LV_RESULT_OK) {
+    // The snapshot reshapes the buffer to the screen size plus twice the
+    // screen's extra draw size (shadow, outline); every shadow in this UI is
+    // explicitly 0, so the two match - this line is what tells them apart if
+    // one ever appears.
+    Serial.printf("Screenshot: Snapshot fehlgeschlagen (%d), Bildschirm %dx%d, "
+                  "Puffer %dx%d\n",
+                  (int)rc, (int)lv_obj_get_width(lv_screen_active()),
+                  (int)lv_obj_get_height(lv_screen_active()), w, h);
+    lv_label_set_text(s_pages[PAGE_SERVICE].labels[SV_SHOT], "fehlgeschlagen");
+    return;
+  }
+  const size_t px = (size_t)w * (size_t)h;
+  for (size_t i = 0; i < px; i++) {
+    s_shotBuf[i] = dispCorrectPixel(s_shotBuf[i]);
+  }
+
+  Serial.printf("Screenshot: %dx%d, %lu B an den SD-Worker\n", w, h,
+                (unsigned long)(px * sizeof(uint16_t)));
+  sdScreenshot(s_shotBuf, w, h);
+  lv_label_set_text(s_pages[PAGE_SERVICE].labels[SV_SHOT], "wird geschrieben");
+}
+
+static void shotTimerCb(lv_timer_t *t) {
+  (void)t;
+  s_shotDueMs = 0;
+  takeShotNow();
+}
+
+static void shotCb(lv_event_t *e) {
+  (void)e;
+  AppPage &sp = s_pages[PAGE_SERVICE];
+  if (s_shotDueMs != 0 || s_shotBuf != nullptr) {
+    // A countdown is running, or the card worker still has the buffer from the
+    // previous shot. A second capture would hand it memory it is finished with.
+    setText(sp.labels[SV_SHOT], "Aufnahme laeuft bereits");
+    return;
+  }
+  if (!sdMounted()) {
+    setText(sp.labels[SV_SHOT], "keine SD-Karte");
+    return;
+  }
+  s_shotDueMs = millis() + SHOT_DELAY_MS;
+  setText(sp.labels[SV_SHOT], "Aufnahme in %d s ...", SHOT_DELAY_MS / 1000);
+  // One-shot: LVGL itself deletes the timer once its repeat count reaches 0, so
+  // there is no handle to keep and nothing to free here.
+  lv_timer_t *timer = lv_timer_create(shotTimerCb, SHOT_DELAY_MS, nullptr);
+  lv_timer_set_repeat_count(timer, 1);
+}
+
 static void pageBuildService(AppPage *p) {
   lv_obj_t *root = p->root;
 
   auto sectionHead = [&](const char *text, lv_coord_t y) {
-    lv_obj_t *h = makeLabel(root, text, &lv_font_montserrat_14_uml, COL_MUTED);
+    // Same size as the page heading: on this page the section titles carry the
+    // information ("was steht hier"), the values are the small print.
+    lv_obj_t *h = makeLabel(root, text, &lv_font_montserrat_16_uml, COL_MUTED);
     lv_obj_set_pos(h, 20, y);
     return h;
   };
@@ -1057,6 +1184,42 @@ static void pageBuildService(AppPage *p) {
       makeLabel(root, sdStatusText(), &lv_font_montserrat_16_uml, COL_TEXT);
   lv_obj_set_pos(p->labels[SV_SD], 20, 260);
   lv_obj_set_width(p->labels[SV_SD], 440);
+
+  // --- Screenshot to the card ---
+  // On demand and nowhere automatic: the point is to see what the panel shows
+  // when something is wrong, which means a person has to press it while the
+  // wrong thing is on screen. Automatic shots would be the wrong direction -
+  // they would only ever photograph the states we already understand.
+  //
+  // Stacked under the setup button and in the same colour as it: the two are
+  // the only actions on this page, and they read as one group of controls
+  // instead of a button that hides among the read-outs. The capture itself runs
+  // SHOT_DELAY_MS later so the target page can be selected after pressing.
+  lv_obj_t *shot = lv_button_create(root);
+  lv_obj_set_pos(shot, 300, 48);
+  lv_obj_set_size(shot, 160, 34);
+  lv_obj_set_style_bg_color(shot, COL_ACCENT, 0);
+  lv_obj_set_style_bg_color(shot, lv_color_darken(COL_ACCENT, 40),
+                            LV_STATE_PRESSED);
+  lv_obj_set_style_radius(shot, 8, 0);
+  lv_obj_set_style_border_width(shot, 0, 0);
+  lv_obj_set_style_shadow_width(shot, 0, 0);
+  lv_obj_set_style_pad_hor(shot, 8, 0);
+  lv_obj_add_event_cb(shot, shotCb, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t *sl = lv_label_create(shot);
+  // LVGL 9's symbol set has no camera; IMAGE reads closer to "capture" here
+  // than SAVE, which suggests the file rather than taking it.
+  lv_label_set_text(sl, LV_SYMBOL_IMAGE " Screenshot");
+  lv_obj_set_style_text_font(sl, &lv_font_montserrat_16_uml, 0);
+  lv_obj_set_style_text_color(sl, FLOW_WHITE, 0);
+  lv_obj_center(sl);
+  // State ("Aufnahme in 3 s ...", "wird geschrieben", "auf /shot gespeichert")
+  // directly under its own button, left-aligned with it. The user is on another
+  // page by the time the countdown ends, so this is read after coming back.
+  p->labels[SV_SHOT] =
+      makeLabel(root, "", &lv_font_montserrat_14_uml, COL_MUTED);
+  lv_obj_set_pos(p->labels[SV_SHOT], 300, 86);
+  lv_obj_set_width(p->labels[SV_SHOT], 160);
 }
 
 // Recompute the chart Y range from the stored history ring (kW = W / 1000 on

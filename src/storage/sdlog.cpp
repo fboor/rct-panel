@@ -25,6 +25,7 @@
 
 #include "../Diag.h"
 #include <SPI.h>
+#include <esp_task_wdt.h>
 #include <esp_timer.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
@@ -100,12 +101,16 @@ void buildStatus(); // defined below, called by queueFlush()
 // The GUI thread (Arduino loop + LVGL) posts the three things it needs - write
 // a row, read the history, report status - and never waits for them.
 // --------------------------------------------------------------------------
-enum SdReqType : uint8_t { SDREQ_LOG, SDREQ_HISTORY };
+enum SdReqType : uint8_t { SDREQ_LOG, SDREQ_HISTORY, SDREQ_SHOT };
 
 struct SdReq {
   uint8_t type;
   int maxRows;       // SDREQ_HISTORY
   bool waitForClock; // SDREQ_HISTORY
+  // SDREQ_SHOT: the captured screen. Owned by the caller until the worker sets
+  // s_shotDone, which is the only thing that makes it safe to free again.
+  const uint16_t *px;
+  int w, h;
   char line[kLineCap];
   char path[kPathCap];
 };
@@ -121,6 +126,13 @@ static SdHistSample s_histOut[kHistMaxRows];
 static int s_histReady = 0; // 1 when a fresh result is waiting
 static int s_histCount = 0;  // rows in s_histOut (see sdTakeHistory)
 static bool s_histDeferred = false; // clock not ready yet, caller may retry
+// Screenshot handoff: true once the worker is done with the caller's buffer.
+static bool s_shotDone = true; // nothing in flight
+// One converted BMP scanline, reused for every row. Static, not on the stack:
+// the worker task has 4 kB and the card library already needs a good part of
+// that. Sized for kShotMaxW pixels at 3 bytes each.
+#define kShotMaxW 512
+static uint8_t s_shotRow[kShotMaxW * 3];
 
 // "202609" from the local calendar (SNTP; CET/CEST configured in main.cpp),
 // or 0 when the wall clock is not valid yet.
@@ -520,11 +532,105 @@ const char *sdStatusText() {
 
 bool sdMounted() { return s_mounted; }
 
+static void sdWorkerWriteShot(const SdReq &req) {
+  // 24-bit BMP: no compression, no palette, bottom-up. Chosen over PNG because
+  // it needs no encoder on the device - the panel has no room for one, and this
+  // is a debug image that any viewer opens.
+  //
+  // Rows must start on a 4-byte boundary. At 480 px wide a row is 1440 bytes
+  // and already aligned, but the padding is computed rather than assumed: the
+  // next screenshot would be silently skewed at a width that is not.
+  const int w = req.w;
+  const int h = req.h;
+  const size_t rowBytes = ((size_t)w * 3u + 3u) & ~(size_t)3u;
+  const size_t imgBytes = rowBytes * (size_t)h;
+
+  diagPhase("sd.shot");
+  if (!s_mounted) {
+    Serial.println(F("SD: Screenshot verworfen, keine Karte"));
+    s_shotDone = true;
+    return;
+  }
+  if (w <= 0 || h <= 0 || w > kShotMaxW || req.px == nullptr) {
+    Serial.printf("SD: Screenshot verworfen, unbrauchbare Groesse %dx%d\n", w, h);
+    s_shotDone = true;
+    return;
+  }
+  SD.mkdir("/shot");
+
+  // Next free name, so several shots in a row are all still there afterwards.
+  char path[kPathCap];
+  unsigned n = 1;
+  do {
+    snprintf(path, sizeof(path), "/shot/shot%03u.bmp", n);
+    n++;
+  } while (n <= 999 && SD.exists(path));
+
+  File f = SD.open(path, FILE_WRITE);
+  if (!f) {
+    Serial.printf("SD: Screenshot nicht schreibbar (%s)\n", path);
+    s_shotDone = true;
+    return;
+  }
+
+  uint8_t hdr[54] = {0};
+  hdr[0] = 'B';
+  hdr[1] = 'M';
+  const uint32_t fileBytes = (uint32_t)(sizeof(hdr) + imgBytes);
+  memcpy(hdr + 2, &fileBytes, 4);
+  const uint32_t dataOff = (uint32_t)sizeof(hdr);
+  memcpy(hdr + 10, &dataOff, 4);
+  const uint32_t hdrSize = 40;
+  memcpy(hdr + 14, &hdrSize, 4);
+  memcpy(hdr + 18, &w, 4);
+  memcpy(hdr + 22, &h, 4); // positive height = rows stored bottom-up
+  const uint16_t planes = 1, bpp = 24;
+  memcpy(hdr + 26, &planes, 2);
+  memcpy(hdr + 28, &bpp, 2);
+  memcpy(hdr + 34, &imgBytes, 4);
+  const uint32_t ppm = 2835; // 72 dpi, what Windows writes for a screen grab
+  memcpy(hdr + 38, &ppm, 4);
+  memcpy(hdr + 42, &ppm, 4);
+  f.write(hdr, sizeof(hdr));
+
+  // Bottom-up: BMP starts at the last scanline. The card runs at 400 kHz
+  // (spec-compliant init chosen for this marginal wiring), so a 480x480 BMP
+  // needs >14 s of transfer time - longer than the 5 s task-watchdog window.
+  // Feed the WDT from this task and let IDLE0 run every row, or the first
+  // screenshot after every boot would reboot the panel mid-write and leave
+  // a 0-byte file behind. A transfer that is truly stuck still trips the
+  // watchdog: this only legalises writes that are slow, not ones that hang.
+  for (int y = h - 1; y >= 0; y--) {
+    const uint16_t *src = req.px + (size_t)y * (size_t)w;
+    size_t n = 0;
+    for (int x = 0; x < w; x++) {
+      const uint16_t p = src[x];
+      s_shotRow[n++] = (uint8_t)((p & 0x1F) * 255u / 31u);       // B
+      s_shotRow[n++] = (uint8_t)(((p >> 5) & 0x3F) * 255u / 63u); // G
+      s_shotRow[n++] = (uint8_t)(((p >> 11) & 0x1F) * 255u / 31u); // R
+    }
+    while (n < rowBytes) {
+      s_shotRow[n++] = 0; // padding, only needed if w*3 is not 4-aligned
+    }
+    f.write(s_shotRow, rowBytes);
+    esp_task_wdt_reset();
+    vTaskDelay(1); // give IDLE0 a slice so its own WDT stays fed
+  }
+  f.close();
+
+  Serial.printf("SD: Screenshot -> %s (%dx%d, %lu Bytes)\n", path, w, h,
+                (unsigned long)fileBytes);
+  s_shotDone = true;
+}
+
 // Worker side of SDREQ_HISTORY. Formerly sdReadHistory(), which filled a
 // caller-owned buffer on the GUI task and therefore blocked it for the whole
 // scan (measured 1418 ms). Now the scan happens here and hands the rows over
 // through s_histOut; the GUI collects them whenever it is ready.
-static void sdWorkerReadHistory(int maxRows, bool waitForClock) {
+void sdWorkerReadHistory(int maxRows, bool waitForClock) {
+  // scanFile() walks whole CSV files backwards over a 400 kHz bus: the
+  // second-longest card operation, and the one the chart on the panel waits on.
+  diagPhase("sd.scan");
   int count = 0;
   bool deferred = false;
 
@@ -648,16 +754,52 @@ static void sdTask(void *) {
       case SDREQ_HISTORY:
         sdWorkerReadHistory(req.maxRows, req.waitForClock);
         break;
+      case SDREQ_SHOT:
+        sdWorkerWriteShot(req);
+        break;
       default:
         break;
       }
     }
     sdWorkerPeriodic(millis());
+    // Say "alive" for the idle pass. Without this the card worker keeps the
+    // phase of its last real job and the heartbeat reports a hang for as long
+    // as the worker does nothing - which is most of the time, by design.
+    diagBeat();
     // Nothing else to do between requests; the card duties above are already
     // throttled. 10 ms is far finer than any of those intervals.
     vTaskDelay(pdMS_TO_TICKS(10));
   }
 }
+
+void sdScreenshot(const uint16_t *rgb565, int w, int h) {
+  if (s_reqQ == nullptr || rgb565 == nullptr || w <= 0 || h <= 0) {
+    return;
+  }
+  // One at a time. A second request while the first is still being converted
+  // would be serviced from the same caller's buffer, and the caller only frees
+  // that buffer once sdTakeShotDone() says the worker is finished - so the
+  // second shot would be written from memory the first one is done with.
+  if (!s_shotDone) {
+    Serial.println(F("SD: Screenshot verworfen, der vorige laeuft noch"));
+    return;
+  }
+  SdReq req = {};
+  req.type = SDREQ_SHOT;
+  req.px = rgb565;
+  req.w = w;
+  req.h = h;
+  // Cleared before posting: the worker can pick the request up before this
+  // function returns, and the caller must never see "done" for a shot it has
+  // not handed over yet.
+  s_shotDone = false;
+  if (xQueueSend(s_reqQ, &req, 0) != pdTRUE) {
+    s_shotDone = true;
+    Serial.println(F("SD: Screenshot verworfen, Warteschlange voll"));
+  }
+}
+
+bool sdTakeShotDone() { return s_shotDone; }
 
 void sdInit() {
   if (s_reqQ != nullptr) {

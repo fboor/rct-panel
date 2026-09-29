@@ -181,6 +181,31 @@ one is running simply overwrites the result — harmless, the GUI only asks once
   ("Heute"). If energy integration is wanted, it can be derived from the
   logged powers later.
 
+### 4c. Long writes (screenshot BMP) and the task watchdog
+
+The 400 kHz bus keeps a 5-minute CSV append in milliseconds, but a **screenshot
+BMP** is 691 254 bytes (480×480 RGB565 + 54-byte header). At 400 kHz the SPI
+transfer alone needs >14 s, and the data phase of `spi_device_transmit` holds
+CPU 0 for seconds at a time. With `CONFIG_ESP_TASK_WDT_TIMEOUT_S=5` the panel
+rebooted *mid-write* (watchdog abort, `CPU 0: sd` in the panic dump), leaving a
+0-byte file behind from the truncated open().
+
+Two fixes, both verified on the board:
+
+- The row loop of `sdWorkerWriteShot` calls `esp_task_wdt_reset()` and
+  `vTaskDelay(1)` after every row, so IDLE0 gets CPU time and the TWDT is fed
+  for the ~16 s a legitimate write needs — a transfer that *really* hangs still
+  panics, because the feed happens only between rows, never inside a stuck
+  `f.write()`.
+- The stall logger in `Diag.cpp` treats the `sd.shot` phase specially: the
+  generic 4 s warning threshold would otherwise report every legitimate 16 s
+  write as a hang. The phase runs up to 20 s before it is flagged.
+
+Verified in the serial log: two consecutive screenshots completed
+(`SD: Screenshot -> /shot/shot00N.bmp (480x480, 691254 Bytes)` after ~16 s)
+with no `task_wdt` abort and no reboot. Files written before the fix under the
+same numbering (shot001–005, 0 bytes) are leftovers, not regressions.
+
 ## 5. History restore: 24 h chart survives a reboot
 
 The "Verlauf" ring buffer (`s_hist`, 288 x 5 min) lives in RAM only, so a
@@ -218,7 +243,11 @@ keeps the card off the GUI thread (section 4b).
 
 Verified on the board: TF slot in SPI mode (SCK 48 / MISO 41 / MOSI 47 /
 CS 42), 400 kHz init per SD spec, mount retry every 10 s while the card is
-absent, monthly CSV + header, `PROBE` self-test marker.
+absent, monthly CSV + header, `PROBE` self-test marker. Screenshot feature
+(Service-page button, 5 s delay, PSRAM buffer, `lv_draw_buf` snapshot, BMP
+writer in the SD worker) verified end-to-end: two complete 691 254-byte BMPs
+written in a row without the watchdog abort that the first attempt triggered
+(section 4c).
 
 Not verifiable here: pulling the card while running (no hardware access to the
 slot), and a full card. A card that is present but *not writable* was not

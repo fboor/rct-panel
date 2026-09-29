@@ -222,6 +222,8 @@ static inline uint16_t corrPixel(uint16_t p) {
                     (s_corr_g6[(p >> 5) & 0x3F] << 5) | s_corr_b5[p & 0x1F]);
 }
 
+uint16_t dispCorrectPixel(uint16_t rgb565) { return corrPixel(rgb565); }
+
 static void corrBitmap(uint16_t *fb, size_t n) {
   for (size_t i = 0; i < n; i++) {
     fb[i] = corrPixel(fb[i]);

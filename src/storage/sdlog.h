@@ -60,4 +60,20 @@ struct SdHistSample {
 void sdRequestHistory(int maxRows, bool waitForClock);
 int sdTakeHistory(SdHistSample *out, int maxRows);
 
+// --------------------------------------------------------------------------
+// Screenshot to /shot/*.bmp
+//
+// Hands a captured screen (rgb565, w*h pixels, row-major, top row first) to
+// the card worker and returns immediately. The buffer must stay valid and
+// untouched until the worker is done with it - the worker reports that by
+// logging "SD: shot ... geschrieben", and sdTakeShotDone() tells the caller
+// when it may free the buffer.
+//
+// The worker owns it because the conversion plus the write is far too slow for
+// the GUI task: 691 kB at a 400 kHz SPI clock is seconds, not milliseconds.
+// --------------------------------------------------------------------------
+void sdScreenshot(const uint16_t *rgb565, int w, int h);
+// True once the worker finished with the buffer passed to sdScreenshot().
+bool sdTakeShotDone();
+
 #endif // RCT_SDLOG_H
