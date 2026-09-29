@@ -459,7 +459,12 @@ static void energyPeriodValues(const RctSnapshot &s, int period,
       break;
   }
   out[EB_VAL_PV] = pv;
-  out[EB_VAL_FEED] = feed;
+  // The feed-in counters arrive negative on the real device (measured: -20,1 kWh
+  // on a day with 32,5 kWh production). Shown as reported, the "Netzeinspeisung"
+  // bar grew leftwards and the value read -549,7 kWh, which is not an amount of
+  // energy that was fed in. The magnitude is the fed-in energy, so the sign is
+  // dropped here - once, for every period.
+  out[EB_VAL_FEED] = feed < 0.0f ? -feed : feed;
   out[EB_VAL_GRID] = grid;
   out[EB_VAL_LOAD] = load;
   // Eigenverbrauch = Hausverbrauch minus Netzbezug, also der Anteil des
@@ -945,11 +950,13 @@ static void serviceBatteryDecode(uint32_t v, float batPower, char *out,
   }
   // Lade-/Entladerichtung aus der Leistung. Entfaellt, wenn der Zustand sie
   // bereits nennt - "Kalibrierung (Entladephase) (entlaedt)" waere doppelt.
+  // p_acc_lp is positive while discharging (measured), so the comparison is
+  // the other way round than one would guess from the register name.
   if (!namesPhase) {
     if (batPower > 50.0f) {
-      strncat(state, "  (laedt)", sizeof(state) - strlen(state) - 1);
-    } else if (batPower < -50.0f) {
       strncat(state, "  (entlaedt)", sizeof(state) - strlen(state) - 1);
+    } else if (batPower < -50.0f) {
+      strncat(state, "  (laedt)", sizeof(state) - strlen(state) - 1);
     }
   }
   strlcpy(out, state, n);
@@ -1290,11 +1297,25 @@ static void refreshCb(lv_timer_t *t) {
 
   AppPage &ov = s_pages[PAGE_OVERVIEW];
   if (ov.labels[OV_GRID_VAL]) {
-    // Derived quantities (all W; sign conventions per the rctclient docs):
-    //   grid  = p_ac_grid_sum_lp        + = Bezug (import from grid)
-    //   pv    = p_dc_lp[0]+[1]+S0      >= 0, production
-    //   bat   = p_acc_lp               + = charging
-    //   house = p_ac_load sum          measured household load
+    // Derived quantities (all W). The sign conventions below were read off the
+    // real device, not taken from the portal comments, which have them the
+    // other way round. Measured at 21:18 with the real inverter:
+    //
+    //   PV 0 W | Haus 832 W | Netz +4 W | Batterie +810 W
+    //
+    // With no production at all the battery cannot be charging, and 810 + 4
+    // balances the 832 W the house draws: positive is therefore the battery
+    // *discharging* into the house. The day counters agree independently -
+    // Einspeisung reads -20,1 kWh, i.e. the feed counter is negative, and
+    // Bezug reads 0,0 kWh while the log shows the same night-time import.
+    //
+    //   grid  = p_ac_grid_sum_lp   + = Bezug (import), - = Einspeisung
+    //   pv    = p_dc_lp[0]+[1]+S0  >= 0, production
+    //   bat   = p_acc_lp           + = discharging, - = charging
+    //   house = p_ac_load sum      measured household load, >= 0
+    //
+    // Every consumer below derives from these two, so the direction appears in
+    // exactly one place per view.
     const float gridActive = 50.0f; // W, below = Standby
     const float pvActive = 20.0f;   // W, below = no visible generation
     const float batActive = 50.0f;  // W, below = Standby
@@ -1310,12 +1331,8 @@ static void refreshCb(lv_timer_t *t) {
     // arrives with the 10 s device group, so the warning stays hidden until the
     // device has answered once - a hidden warning is the safe default.
     //
-    // g_sync.p_ac_grid_sum_lp is + = Einspeisung on the real device, not + =
-    // Bezug as the portal comment claimed: the overview showed "Bezug" while
-    // the panel was feeding the grid and vice versa, including the arrow
-    // direction and the "Netzstrom"/"Unabhängig" verdict. The sign meaning is
-    // defined once here and every consumer below derives from it.
-    const bool gridImport = pTot < 0.0f;
+    // + = Bezug, see the sign conventions above.
+    const bool gridImport = pTot > 0.0f;
     if (s.islandMode && s.islandKnown) {
       lv_obj_remove_flag(ov.labels[OV_ISLAND], LV_OBJ_FLAG_HIDDEN);
     } else {
@@ -1372,9 +1389,10 @@ static void refreshCb(lv_timer_t *t) {
         lv_obj_set_style_line_color(s_lineBat, active ? FLOW_RED : FLOW_LINE, 0);
         lv_obj_set_style_line_width(s_lineBat, active ? 4 : 2, 0);
         if (active) {
-          // charging: flow haus -> batterie (down), discharging: up to haus
+          // pBat > 0 = discharging (measured), so the arrow points up into the
+          // house; charging (pBat < 0) draws down into the battery.
           lv_label_set_text(ov.labels[OV_BAT_ARROW],
-                            pBat > 0 ? LV_SYMBOL_DOWN : LV_SYMBOL_UP);
+                            pBat > 0 ? LV_SYMBOL_UP : LV_SYMBOL_DOWN);
           lv_obj_remove_flag(ov.labels[OV_BAT_ARROW], LV_OBJ_FLAG_HIDDEN);
         } else {
           lv_obj_add_flag(ov.labels[OV_BAT_ARROW], LV_OBJ_FLAG_HIDDEN);
@@ -1431,7 +1449,7 @@ static void refreshCb(lv_timer_t *t) {
 
       if (s.haveBattery) {
         if (batFlowing) {
-          setText(ov.labels[OV_T_BAT], pBat > 0 ? "Laden" : "Entladen");
+          setText(ov.labels[OV_T_BAT], pBat > 0 ? "Entladen" : "Laden");
         } else {
           setText(ov.labels[OV_T_BAT], "Standby");
         }
@@ -1484,9 +1502,10 @@ static void refreshCb(lv_timer_t *t) {
     // beziehen (PV direkt plus Batterie). Die Einspeisung ist damit nicht
     // enthalten - sie geht nach aussen, nicht in den eigenen Verbrauch.
     float gen = s.dayPvWh;          // Erzeugt
-    float feed = s.dayFeedInWh;     // Eingespeist
+    float feed = s.dayFeedInWh;     // Eingespeist, kommt negativ vom Geraet
     float consumed = s.dayLoadWh;   // Verbrauch (household)
     float gridIn = s.dayGridLoadWh; // Bezug (grid draw)
+    if (feed < 0.0f) feed = -feed;  // Betrag, nicht Vorzeichen
     float selfUse = consumed - gridIn;
     if (selfUse < 0.0f) selfUse = 0.0f;
     // Autarkie = 1 - Bezug / Verbrauch. No load consumes nothing from the
@@ -1823,7 +1842,7 @@ void guiStartApp() {
   lv_obj_set_style_pad_bottom(content, 0, 0);
 
   // Pages. One heading per page, drawn centrally at HEAD_Y (see below).
-  static const char *titles[PAGE_COUNT] = {"Energie", "Energie", "Heute",
+  static const char *titles[PAGE_COUNT] = {"Übersicht", "Energie", "Heute",
                                           "24 h Verlauf", "Info", "Gerät",
                                           "Service"};
   void (*builders[PAGE_COUNT])(AppPage *) = {

@@ -611,15 +611,10 @@ void rctParse() {
     return v < 0.0f ? 0.0f : (v > 100.0f ? 100.0f : v);
   };
   rctState.batterySoc = pct100(rctCur[RCT_SLOT_SOC]);
-  // battery.current (OID 0x21961B58) reports with the opposite sign convention
-  // to g_sync.p_acc_lp: on the real device the current reads positive while
-  // the battery is discharging, the power positive while it charges. Showing
-  // the raw value therefore labelled a discharging battery as charging.
-  //
-  // Rather than hardcoding a negation, the sign is reconciled against the
-  // physics: for a battery P = U * I, so the sign of (U * I) must match the
-  // sign of the reported power. Whichever of the two is inconsistent, the
-  // current is flipped - and the check holds for either firmware convention.
+  // battery.current (OID 0x21961B58) is aligned with p_acc_lp by the physics
+  // instead of by a hardcoded negation: P = U * I for a battery, so the signs
+  // of U*I and P must agree. Whichever of the two is inconsistent gets flipped,
+  // and that holds for either firmware convention.
   float current = rctCur[RCT_SLOT_IBAT];
   const float voltage = rctCur[RCT_SLOT_UBAT];
   const float power = rctCur[RCT_SLOT_PBAT];
@@ -674,17 +669,23 @@ void rctParse() {
   rctState.nextCalibTs = rctRaw[RCT_SLOT_CALIB];
   rctState.batteryCycles = rctCur[RCT_SLOT_CYCLES];
   rctState.batterySoh = pct100(rctCur[RCT_SLOT_SOH]);
-  // prim_sm.island_flag is passed through 1:1 by rctmon (svalouch/rctmon,
-  // device_manager.py: OID 0x3623D82A -> inverter_grid_separated, described
-  // as "Status of the island mode"), i.e. 1 = grid separated, 0 = on grid.
-  // The raw value is logged next to the decoded one so this stays checkable.
+  // prim_sm.island_flag (OID 0x3623D82A). rctmon (svalouch/rctmon) names it
+  // inverter_grid_separated and forwards the whole value unmasked.
+  //
+  // Measured on the real device: the register read 0x00000002 while the
+  // inverter was running normally on the grid (no island), so "non-zero means
+  // islanded" is wrong - a whole-register boolean reads 0x02 as true. The
+  // register is a bitfield and only bit 0 is the island flag; 0x02 has it
+  // clear, which is what the device reported while grid-connected. rctmon
+  // (svalouch/rctmon) forwards the whole value as inverter_grid_separated
+  // without masking, so its field is truthy for this on-grid reading too.
   //
   // islandKnown distinguishes "the device said 0" from "the device has not
   // answered this OID yet" - both read as 0 in rctRaw, and the Service page
   // would otherwise claim "nein" before the first answer arrived.
   if (infoSeen & (1u << (RCT_SLOT_ISLAND - RCT_SLOT_DEVNAME))) {
     rctState.islandKnown = true;
-    rctState.islandMode = rctRaw[RCT_SLOT_ISLAND] != 0;
+    rctState.islandMode = (rctRaw[RCT_SLOT_ISLAND] & 1u) != 0;
   }
 
   // One-time bring-up log for the "Energie" page: proves the 13 accumulated
