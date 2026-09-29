@@ -37,6 +37,65 @@ from rctclient.utils import encode_value
 log = logging.getLogger("rct_sim")
 
 
+# --- accumulated energies (Wh), one row per period shown on the Energie page
+# The four drivers per period are PV (split over the two generators), feed-in
+# and grid draw. The household counter (e_load_*) is deliberately NOT one of
+# them - it is derived from the balance:
+#
+#     Verbrauch = (PV - Einspeisung) + Bezug
+#
+# Feed-in is the PV surplus, it is produced but not consumed, so it must never
+# end up inside the Verbrauch figure. Deriving the load counter instead of
+# integrating it makes that identity true by construction for every period, and
+# the five bars on the page can no longer contradict each other.
+#
+# The seeds are what a real system would already have banked when the sim
+# starts; _drift() integrates the instantaneous balance on top.
+_ENERGY = {
+    #             PV A      PV B     Einspeisung   Bezug
+    "day":   (3_180.0,     420.0,   2_140.0,    3_010.0),
+    "month": (31_800.0,  2_100.0,  18_400.0,   88_200.0),
+    "year":  (662_000.0, 44_000.0, 402_000.0,  561_000.0),
+    "total": (4_180_000.0, 268_000.0, 3_124_000.0, 8_455_000.0),
+}
+
+# period -> (PV gen A OID, PV gen B OID, load OID, feed-in OID, grid draw OID)
+_ENERGY_OIDS = {
+    "day": ("energy.e_dc_day[0]", "energy.e_dc_day[1]", "energy.e_load_day",
+            "energy.e_grid_feed_day", "energy.e_grid_load_day"),
+    "month": ("energy.e_dc_month[0]", "energy.e_dc_month[1]",
+              "energy.e_load_month", "energy.e_grid_feed_month",
+              "energy.e_grid_load_month"),
+    "year": ("energy.e_dc_year[0]", "energy.e_dc_year[1]", "energy.e_load_year",
+             "energy.e_grid_feed_year", "energy.e_grid_load_year"),
+    "total": ("energy.e_dc_total[0]", "energy.e_dc_total[1]",
+              "energy.e_load_total", "energy.e_grid_feed_total",
+              "energy.e_grid_load_total"),
+}
+
+
+# Grid outage cycle for prim_sm.island_flag (see _drift). Short first outage so
+# the overview warning icon can be checked without waiting long, then one every
+# 5 min - short enough to catch on the screen, rare enough to stay believable.
+_ISLAND_FIRST = 40.0    # s until the first outage starts
+_ISLAND_PERIOD = 300.0  # s between outages
+_ISLAND_ON = 90.0       # s per outage
+
+
+def _energy_rows():
+    """[(oid name, value)] for every energy counter, derived from _ENERGY."""
+    rows = []
+    for period, (pv_a, pv_b, feed, grid) in _ENERGY.items():
+        o_a, o_b, o_load, o_feed, o_grid = _ENERGY_OIDS[period]
+        load = (pv_a + pv_b) - feed + grid
+        rows.append((o_a, pv_a))
+        rows.append((o_b, pv_b))
+        rows.append((o_feed, feed))
+        rows.append((o_grid, grid))
+        rows.append((o_load, load))
+    return rows
+
+
 # --- value table: OID -> (object name, python value) -----------------------
 # Mirrors src/rct/RctClient.cpp slot list. battery.soc / battery.soh are
 # 0..1 fractions on the wire (this cost us a wrong "1 %" display already).
@@ -77,27 +136,6 @@ def build_values():
         "fault[1].flt": 0,
         "fault[2].flt": 0,
         "fault[3].flt": 0,
-        "energy.e_dc_day[0]": 3_180.0,
-        "energy.e_dc_day[1]": 420.0,
-        "energy.e_load_day": 8_940.0,
-        "energy.e_grid_feed_day": 2_140.0,
-        "energy.e_grid_load_day": 3_010.0,
-        # "Energie" page: month / year / lifetime accumulators. The numbers are
-        # internally consistent: load = (PV - feed-in) + grid draw for every
-        # period, so Eigenverbrauch and Verbrauch do not contradict each other.
-        "energy.e_dc_month[0]": 31_800.0,
-        "energy.e_dc_month[1]": 2_100.0,
-        "energy.e_dc_year[0]": 662_000.0,
-        "energy.e_dc_year[1]": 44_000.0,
-        "energy.e_dc_total[0]": 4_180_000.0,
-        "energy.e_dc_total[1]": 268_000.0,
-        "energy.e_load_month": 103_700.0,
-        "energy.e_load_year": 865_000.0,
-        "energy.e_load_total": 9_779_000.0,
-        "energy.e_grid_feed_month": 18_400.0,
-        "energy.e_grid_feed_year": 402_000.0,
-        "energy.e_grid_load_month": 88_200.0,
-        "energy.e_grid_load_year": 561_000.0,
         "android_description": "PS 10.0 32WB",
         "svnversion": "2.3.5689",
         "db.core_temp": 31.2,
@@ -112,12 +150,18 @@ def build_values():
     for name, val in v.items():
         oi = R.get_by_name(name)
         out[oi.object_id] = (name, val)
+    # Energy counters come from _ENERGY so the seeds and the drift share one
+    # source of truth (and the household counter stays derived).
+    for name, val in _energy_rows():
+        oi = R.get_by_name(name)
+        out[oi.object_id] = (name, val)
     return out
 
 
 VALUES = build_values()
 STATE_LOCK = threading.RLock()  # RLock: _drift() -> set_value() may re-enter
 START = time.time()
+_LAST_DRIFT = START  # dt base for the energy integration in _drift()
 
 
 def get_value(oid):
@@ -133,7 +177,11 @@ def set_value(name, val):
 
 def _drift():
     """Slow, believable changes so the 1 Hz UI and the 5 min graph move."""
-    t = time.time() - START
+    global _LAST_DRIFT
+    now = time.time()
+    t = now - START
+    dt = now - _LAST_DRIFT  # seconds since the last drift tick
+    _LAST_DRIFT = now
     # A soft 40 minute day/night for PV, plus cloud wiggles.
     pv = max(0.0, 1400.0 * math.sin(math.pi * (t % 2400.0) / 2400.0) ** 6)
     pv += 90.0 * math.sin(t / 17.0)
@@ -148,15 +196,33 @@ def _drift():
     # Battery charges from the PV surplus, discharges at night.
     soc = 0.6886 + 0.020 * math.sin(t / 1500.0)
     set_value("battery.soc", max(0.05, min(0.99, soc)))
-    bat_p = 0.75 * (pv - load) + 90.0 * math.sin(t / 23.0)
+
+    # Grid outage ("Inselbetrieb"): the inverter is cut off from the grid, so
+    # the grid meters read zero and PV plus battery have to cover the house on
+    # their own. Cycles every _ISLAND_PERIOD s for _ISLAND_ON s, starting
+    # _ISLAND_FIRST s in, so the warning icon shows up within a minute of
+    # connecting.
+    phase = (t - _ISLAND_FIRST) % _ISLAND_PERIOD
+    island = phase < _ISLAND_ON
+    set_value("prim_sm.island_flag", 1 if island else 0)
+
+    if island:
+        # No grid at all: the battery covers whatever PV does not. Same sign
+        # convention as above (negative = discharging), so the balance
+        # grid = load - pv + bat_p stays at exactly 0.
+        bat_p = pv - load
+        grid = 0.0
+    else:
+        bat_p = 0.75 * (pv - load) + 90.0 * math.sin(t / 23.0)
+        # Grid exchange = the residual of the balance (house load - PV -
+        # battery), with the battery absorbing 75 % of the surplus/deficit.
+        # Positive = Bezug (import), negative = Einspeisung (export).
+        grid = load - pv + bat_p
     set_value("g_sync.p_acc_lp", max(-2000.0, min(2000.0, bat_p)))
     set_value("battery.current", bat_p / 393.12)
-    # Grid exchange = the residual of the balance (house load - PV - battery),
-    # with the battery absorbing 75 % of the surplus/deficit. Positive = Bezug
-    # (import), negative = Einspeisung (export). p_ac_sc is the same total
-    # split across phases so the overview and the Netz detail page agree.
-    grid = load - pv + bat_p
     set_value("g_sync.p_ac_grid_sum_lp", grid)
+    # p_ac_sc is the same total split across phases so the overview and the
+    # Netz detail page agree.
     set_value("g_sync.p_ac_sc[0]", grid * 0.35)
     set_value("g_sync.p_ac_sc[1]", grid * 0.45)
     set_value("g_sync.p_ac_sc[2]", grid * 0.20)
@@ -168,13 +234,21 @@ def _drift():
     else:
         set_value("battery.bat_status", 0)        # standby
 
-    set_value("energy.e_load_day", 8_940.0 + t * 1.4)
-    set_value("energy.e_dc_day[0]", 3_180.0 + max(0.0, pv) * t / 3600.0)
-    # The month counters move with a small fraction of the day drift, so the
-    # "Monat" view of the Energie page is not completely static.
-    monthPv = max(0.0, pv) * t / 3600.0
-    set_value("energy.e_dc_month[0]", 31_800.0 + monthPv * 0.05)
-    set_value("energy.e_load_month", 103_700.0 + t * 1.4 * 0.05)
+    # Bank the last dt of the instantaneous balance into all four periods.
+    # grid > 0 is Bezug (import), grid < 0 is Einspeisung (export), and only
+    # the sign decides which counter moves - that is what makes Einspeisung the
+    # surplus. The household counter is not touched here; _energy_rows()
+    # derives it from the balance.
+    dt_h = dt / 3600.0
+    pv_gain = max(0.0, pv) * dt_h
+    grid_gain = grid * dt_h
+    for period, (pv_a, pv_b, feed, grid_draw) in list(_ENERGY.items()):
+        _ENERGY[period] = (pv_a + pv_gain, pv_b,
+                           feed + max(0.0, -grid_gain),
+                           grid_draw + max(0.0, grid_gain))
+    for name, val in _energy_rows():
+        set_value(name, val)
+
 
 
 def _drift_thread():
