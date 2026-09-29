@@ -21,9 +21,10 @@
 // answers the respective OIDs.
 //
 // Pages: 1 Energiefluss, 2 Energie (accumulated energies per period as bars,
-// selectable Tag/Monat/Jahr/Gesamt), 3 Heute (day summary), 4 Info, 5 Verlauf
-// (24 h power graph; one sample every 5 minutes, PV A+B and the S0 meter as
-// separate series), 6 Gerät (device info polled every 10 s), 7 Service.
+// selectable Tag/Monat/Jahr/Gesamt), 3 Heute (day summary), 4 Verlauf (24 h
+// power graph; one sample every 5 minutes, PV A+B and the S0 meter as separate
+// series), 5 Info (host / link / meter list), 6 Gerät (device info polled
+// every 10 s), 7 Service.
 //
 // Layout:
 //   +-----------------------------+  <- status bar (title / link badge)
@@ -87,14 +88,16 @@ static const char kPortalSolarIcon[] = "\uE044";
 // ---------------------------------------------------------------------------
 // Page model
 // ---------------------------------------------------------------------------
+// Page order. PAGE_GRAPH and PAGE_INFO sit in the order they are read: the
+// 24 h history first, the verbose Info list behind it.
 enum PageId {
   PAGE_OVERVIEW = 0,
   PAGE_ENERGY,   // accumulated energies per period (bars, portal colors)
   PAGE_HEUTE,    // current-day summary cards
-  PAGE_INFO,
-  PAGE_GRAPH,   // 24 h power history
-  PAGE_DEVICE,  // device info (Gerät)
-  PAGE_SERVICE, // battery status, faults, provisioning
+  PAGE_GRAPH,    // 24 h power history
+  PAGE_INFO,     // host / link / meter detail list
+  PAGE_DEVICE,   // device info (Gerät)
+  PAGE_SERVICE,  // battery status, faults, provisioning
   PAGE_COUNT,
 };
 
@@ -1662,8 +1665,8 @@ void guiStartApp() {
   static const char *titles[PAGE_COUNT] = {"Energiefluss", "Energie", "Heute",
                                           "Info", "Verlauf", "Gerät", "Service"};
   void (*builders[PAGE_COUNT])(AppPage *) = {
-      pageBuildOverview, pageBuildEnergy, pageBuildHeute, pageBuildInfo,
-      pageBuildGraph, pageBuildDevice, pageBuildService};
+      pageBuildOverview, pageBuildEnergy, pageBuildHeute, pageBuildGraph,
+      pageBuildInfo, pageBuildDevice, pageBuildService};
   for (int i = 0; i < PAGE_COUNT; i++) {
     s_pages[i].title = titles[i];
     s_pages[i].labelCount = 0;
