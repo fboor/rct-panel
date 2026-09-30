@@ -21,25 +21,25 @@ Sie brauchen nur **zwei Angaben**, sonst nichts weiter zu wissen:
 2. die **IP-Adresse Ihres RCT-Wechselrichters** — das Gerät zeigt sie
    gelegentlich direkt auf seinem Display an.
 
-Der **Port** ist einheitlich `8899` und bereits voreingestellt — dort ist
+Der Port ist einheitlich `8899` und bereits voreingestellt — dort ist
 nichts einzutragen.
 
 So geht's:
 
-1. **Panel anschließen** — USB-C-Kabel an ein Netzteil, das Display zeigt
+1. Panel anschließen — USB-C-Kabel an ein Netzteil, das Display zeigt
    sofort die Übersicht.
-2. **WLAN „RCT-Panel" wählen** — den Zugangspunkt erzeugt das Panel beim
+2. WLAN „RCT-Panel" wählen — den Zugangspunkt erzeugt das Panel beim
    ersten Start (oder wenn kein gespeichertes Netzwerk erreichbar ist).
-3. **Portal öffnen** — im Browser `http://192.168.4.1` aufrufen (die
+3. Portal öffnen — im Browser `http://192.168.4.1` aufrufen (die
    Konfigurationsseite öffnet sich meist von selbst).
-4. **Zwei Felder ausfüllen und speichern** — WLAN-Name/-Passwort sowie die
+4. Zwei Felder ausfüllen und speichern — WLAN-Name/-Passwort sowie die
    RCT-IP-Adresse (der Port ist bereits voreingestellt).
-5. **Fertig.** Das Panel verbindet sich mit Ihrem WLAN und zeigt die
+5. Fertig. Das Panel verbindet sich mit Ihrem WLAN und zeigt die
    Live-Daten. Der Zugangspunkt „RCT-Panel" verschwindet dabei von selbst.
 
-**So sieht es danach aus:** Oben die Statusleiste mit dem Verbindungsstatus
+So sieht es danach aus: Oben die Statusleiste mit dem Verbindungsstatus
 (`live`, grün = alles gut), in der Mitte die aktuelle Seite; unten blättern
-**◀** / **▶** durch die sieben Seiten, **⌂** springt zur Übersicht. Details
+◀ / ▶ durch die sieben Seiten, ⌂ springt zur Übersicht. Details
 zu den Seiten stehen in Kapitel 4, zur Einrichtung ab Kapitel 2.
 
 ---
@@ -64,10 +64,10 @@ die eigenen Netzwerk- und Verbindungsdaten des Panels fest).
 
 ### Datenfluss
 
-- Das Panel liest alle Live-Werte **alle 10 Sekunden** aus dem Wechselrichter.
-- Das Display aktualisiert sich **einmal pro Sekunde** mit den zuletzt
+- Das Panel liest alle Live-Werte alle 10 Sekunden aus dem Wechselrichter.
+- Das Display aktualisiert sich einmal pro Sekunde mit den zuletzt
   gelesenen Werten.
-- Der 24-Stunden-Verlauf nimmt **alle 5 Minuten** einen Messpunkt auf.
+- Der 24-Stunden-Verlauf nimmt alle 5 Minuten einen Messpunkt auf.
 - Ist der Wechselrichter nicht erreichbar, zeigt das Panel weiterhin die
   letzten Werte an, kennzeichnet den Zustand aber im Statusfeld (siehe
   Abschnitt 4) und versucht die Verbindung automatisch wiederherzustellen.
@@ -79,11 +79,11 @@ die eigenen Netzwerk- und Verbindungsdaten des Panels fest).
 ### 2.1 Erstes Einschalten
 
 1. Panel mit 5 V versorgen. Das Display startet sofort.
-2. **Ohne gespeichertes WLAN** startet das Panel selbst einen eigenen
-   WLAN-Zugangspunkt (AP) mit dem Namen **`RCT-Panel`** — auch dann, wenn
+2. Ohne gespeichertes WLAN startet das Panel selbst einen eigenen
+   WLAN-Zugangspunkt (AP) mit dem Namen `RCT-Panel` — auch dann, wenn
    kein Netzwerk erreichbar ist.
 3. Mit einem Smartphone/Laptop verbinden Sie sich mit diesem WLAN und öffnen
-   die Konfigurationsseite unter **`http://192.168.4.1`** (ein Captive-Portal
+   die Konfigurationsseite unter `http://192.168.4.1` (ein Captive-Portal
    öffnet sich meist automatisch).
 
 ### 2.2 Konfiguration im Setup-Portal
@@ -112,7 +112,7 @@ Bestätigen Sie das Formular. Das Panel speichert die Angaben dauerhaft
 
 ### 2.3 Später erneut konfigurieren
 
-- Öffnen Sie auf der Seite **Service** den Button **„Setup starten"** — das
+- Öffnen Sie auf der Seite Service den Button „Setup starten" — das
   Panel startet daraufhin wieder den Konfigurations-Zugangspunkt.
 - Oder starten Sie das Panel, während kein gespeichertes Netzwerk erreichbar
   ist (nach ca. 15 s erscheint der AP von selbst).
@@ -125,12 +125,12 @@ Bestätigen Sie das Formular. Das Panel speichert die Angaben dauerhaft
 
 Die Bedienung erfolgt per Touch:
 
-- **◀ / ▶** (linker/rechter Knopf unten): eine Seite zurück bzw. weiter.
-- **⌂** (Home-Mitte): springt zur Übersicht.
+- ◀ / ▶ (linker/rechter Knopf unten): eine Seite zurück bzw. weiter.
+- ⌂ (Home-Mitte): springt zur Übersicht.
 - Die Reihenfolge der Seiten ist fest: Übersicht → Energie → Heute →
   24 h Verlauf → Info → Akku → Service (und wieder zurück).
 
-**Statusleiste** (oben): links steht „RCT Power Panel", rechts der
+Statusleiste (oben): links steht „RCT Power Panel", rechts der
 Verbindungsstatus:
 
 | Badge | Bedeutung |
@@ -153,24 +153,24 @@ erfundenen Nullwert an.
 
 Das Flussdiagramm bildet die „Energiefluss"-Ansicht des RCT-Portals ab:
 
-- **PV** (links): Erzeugung aus Solar-Generator A und B **plus optionalem
-  externen S0-Zähler**.
-- **Haus** (Mitte): aktueller Verbrauch. Hinweis: Der Wechselrichter zieht
+- PV (links): Erzeugung aus Solar-Generator A und B plus optionalem
+  externen S0-Zähler.
+- Haus (Mitte): aktueller Verbrauch. Hinweis: Der Wechselrichter zieht
   die externe Einspeisung bereits von seiner Lastmessung ab; das Panel
-  **addiert den S0-Wert wieder hinzu**, sodass hier der tatsächliche
+  addiert den S0-Wert wieder hinzu, sodass hier der tatsächliche
   Hausverbrauch steht.
-- **Netz** (rechts): Bezug oder Einspeisung (negativer Wert = Einspeisung).
-- **Batterie** (unten): Ladezustand in Prozent (im Knoten) und aktuelle
+- Netz (rechts): Bezug oder Einspeisung (negativer Wert = Einspeisung).
+- Batterie (unten): Ladezustand in Prozent (im Knoten) und aktuelle
   Leistung unter dem Knoten.
 
-Die **Pfeile zwischen den Knoten leuchten rot** in Richtung des aktuellen
-Energieflusses. Unten zeigt eine Tabelle den Stand von **Erzeugung /
-Verbrauch / Netz / Batterie**.
+Die Pfeile zwischen den Knoten leuchten rot in Richtung des aktuellen
+Energieflusses. Unten zeigt eine Tabelle den Stand von Erzeugung /
+Verbrauch / Netz / Batterie.
 
 ### 4.2 Energie (Balken pro Zeitraum)
 
 Akkumulierte Energien als Balken — wählbar über die Tasten
-**Tag | Monat | Jahr | Gesamt**:
+Tag | Monat | Jahr | Gesamt:
 
 | Balken | Farbe | Erklärung |
 |---|---|---|
@@ -188,10 +188,10 @@ Dezimalkomma).
 
 Die Tageswerte des aktuellen Kalendertags:
 
-- **Erzeugt / Eigenverbrauch / Eingespeist** (kWh),
-- **Verbrauch / Bezug** (kWh),
-- **Autarkie** (%): = 1 − Netzbezug ÷ Hausverbrauch des Tages
-- **Eigenverbrauch** (%): Anteil der Erzeugung, der selbst genutzt wird.
+- Erzeugt / Eigenverbrauch / Eingespeist (kWh),
+- Verbrauch / Bezug (kWh),
+- Autarkie (%): = 1 − Netzbezug ÷ Hausverbrauch des Tages
+- Eigenverbrauch (%): Anteil der Erzeugung, der selbst genutzt wird.
 
 Hinweis: Entlädt sich die Batterie zur Deckung des Hausbedarfs, zählt diese
 Energie als Eigenverbrauch.
@@ -207,17 +207,17 @@ Liniendiagramm der letzten 24 Stunden (ein Punkt alle 5 Minuten, 288 Punkte):
 | PV | grün |
 | EXT (externer S0-Zähler) | blau |
 | Batterie | orange |
-| SOC (Ladezustand) | gelb — auf **eigener Achse 0–100 %**: 0 % = unterer Rand, 100 % = oberer Rand |
+| SOC (Ladezustand) | gelb — auf eigener Achse 0–100 %: 0 % = unterer Rand, 100 % = oberer Rand |
 
-- Die **Y-Achse der Leistungswerte skaliert automatisch**: Sie wächst, sobald
+- Die Y-Achse der Leistungswerte skaliert automatisch: Sie wächst, sobald
   ein neuer Höchstwert auftritt, und schrumpft wieder, sobald dieser aus dem
   24-Stunden-Fenster fällt. Links am Diagramm stehen Markierungen für
-  **Minimum, 0 und Maximum** (in kW mit Dezimalkomma).
-- **Batterie positiv** = Entladen (versorgt das Haus), **negativ** = Laden.
+  Minimum, 0 und Maximum (in kW mit Dezimalkomma).
+- Batterie positiv = Entladen (versorgt das Haus), negativ = Laden.
 - Fehlende Daten (z. B. Gerätepause) erscheinen als Lücke in den Linien; die
   Zeile unter dem Diagramm nennt die Lückenlänge („… Lücke(n), insgesamt
   … s").
-- Der Verlauf **übersteht einen Neustart**: Beim Hochfahren lädt das Panel
+- Der Verlauf übersteht einen Neustart: Beim Hochfahren lädt das Panel
   die letzten bis zu 24 Stunden von der SD-Karte zurück.
 
 ### 4.5 Info
@@ -232,29 +232,29 @@ Technische und Verbindungsdaten (Reihenfolge wie angezeigt):
 
 Alles zur Batterie:
 
-- **Batterie-SOC**: Ladezustand in %.
-- **Batterie**: Leistung / Strom / Spannung. **Batteriezentrisches
-  Vorzeichen: Laden = „+", Entladen = „−"** — also umgekehrt zum
+- Batterie-SOC: Ladezustand in %.
+- Batterie: Leistung / Strom / Spannung. Batteriezentrisches
+  Vorzeichen: Laden = „+", Entladen = „−" — also umgekehrt zum
   Flussdiagramm auf der Übersicht, wo das Entladen (Versorgung des Hauses)
   positiv ist.
-- **Batterie-Temp** · **Kalibrierung** (nächster Kalibriertermin als Datum +
-  Tages-Countdown, sobald die Uhrzeit synchronisiert ist) · **Zyklen** ·
-  **SOH** (State of Health) · **Inselbetrieb**.
+- Batterie-Temp · Kalibrierung (nächster Kalibriertermin als Datum +
+  Tages-Countdown, sobald die Uhrzeit synchronisiert ist) · Zyklen ·
+  SOH (State of Health) · Inselbetrieb.
 
 ### 4.7 Service
 
 Die einzige Seite mit Aktionen:
 
-- **„Setup starten"** (rechts oben): öffnet das Konfigurationsportal (siehe
+- „Setup starten" (rechts oben): öffnet das Konfigurationsportal (siehe
   Abschnitt 2.3).
-- **Batterie-Status**: decodierter Zustand (darunter der Rohwert).
-- **Störungen**: decodierte Fehlermeldungen des Wechselrichters (mehrere
+- Batterie-Status: decodierter Zustand (darunter der Rohwert).
+- Störungen: decodierte Fehlermeldungen des Wechselrichters (mehrere
   können gleichzeitig aktiv sein).
-- **SD-Log**: Status der SD-Aufzeichnung, z. B. `SD: OK | 16,0 GB frei` —
+- SD-Log: Status der SD-Aufzeichnung, z. B. `SD: OK | 16,0 GB frei` —
   bei gezogener Karte `SD: -- | n gepuffert` (Werte werden zwischengepuffert;
   siehe Abschnitt 5).
-- **„Screenshot"** (rechts, unter „Setup starten"): speichert nach **5
-  Sekunden** ein Bild des aktuellen Displays als BMP auf die Karte
+- „Screenshot" (rechts, unter „Setup starten"): speichert nach 5
+  Sekunden ein Bild des aktuellen Displays als BMP auf die Karte
   (`/shot/shot001.bmp`). Die 5 Sekunden erlauben, vorher zu einer anderen
   Seite zu wechseln. Praktisch, wenn Sie dem Support zeigen möchten, was das
   Panel anzeigt.
@@ -263,16 +263,16 @@ Die einzige Seite mit Aktionen:
 
 ## 5. Datenerfassung auf der SD-Karte
 
-Das Panel schreibt **automatisch alle 5 Minuten** einen Datensatz in eine
+Das Panel schreibt automatisch alle 5 Minuten einen Datensatz in eine
 CSV-Datei (nur bei verbundenem Wechselrichter, keine Nullzeilen):
 
-- **Datei:** `/hist/RCT-<Jahr><Monat>.csv` (z. B. `RCT-202609.csv`),
+- Datei: `/hist/RCT-<Jahr><Monat>.csv` (z. B. `RCT-202609.csv`),
   eine Datei pro Kalendermonat. Läuft die Uhr (SNTP) beim Start noch nicht,
   schreibt das Panel zunächst in eine Uptime-Datei und wechselt nach der
   Zeitsynchronisation automatisch auf die Monatsdatei.
-- **Umfang:** ca. 40 KB pro Tag ≈ 1,2 MB pro Monat — eine übliche Karte
+- Umfang: ca. 40 KB pro Tag ≈ 1,2 MB pro Monat — eine übliche Karte
   reicht jahrzehntelang.
-- **Karte gezogen:** Solange keine Karte steckt, werden die Zeilen in einem
+- Karte gezogen: Solange keine Karte steckt, werden die Zeilen in einem
   RAM-Puffer (ca. 1 Stunde) zwischengelagert und nach dem Einstecken
   nachgeschrieben. Die Service-Seite zeigt den Pufferstand.
 
@@ -310,7 +310,7 @@ Monatsdatei über die SNTP-Zeit.
 | Batterie auf Übersicht & Verlauf | `+` = Entladen (versorgt Haus), `−` = Laden |
 | Batterie auf der Akku-Seite | `+` = Laden, `−` = Entladen (batteriezentrisch) |
 | Batterie in der CSV (`bat`) | `+` = Laden |
-| Hausverbrauch | = gemessene Last **+ S0** (der Wechselrichter misst die Last abzüglich der externen Einspeisung) |
+| Hausverbrauch | = gemessene Last + S0 (der Wechselrichter misst die Last abzüglich der externen Einspeisung) |
 | PV gesamt | = A + B + S0 |
 
 ---
@@ -330,7 +330,7 @@ Monatsdatei über die SNTP-Zeit.
 
 ## 8. Sicherheit
 
-- Das Panel ist ein **Anzeigegerät** und greift nicht in die
+- Das Panel ist ein Anzeigegerät und greift nicht in die
   Wechselrichter-Konfiguration ein.
 - Arbeiten an elektrischen Anlagen (Wechselrichter, Zählerschrank) gehören in
   Fachhände — das Panel selbst wird nur mit Kleinspannung (5 V) versorgt.
