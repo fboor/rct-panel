@@ -10,11 +10,14 @@ zusätzlich automatisch auf einer microSD-Karte auf.
 
 ## Kurzanleitung — Inbetriebnahme in 5 Schritten
 
-Sie brauchen nur **drei Angaben**, sonst nichts weiter zu wissen:
+Sie brauchen nur **zwei Angaben**, sonst nichts weiter zu wissen:
 
 1. den **Namen und das Passwort Ihres WLAN**,
-2. die **IP-Adresse (oder den Hostnamen) Ihres RCT-Wechselrichters**,
-3. den **Port** des Wechselrichters — Standard `8899`.
+2. die **IP-Adresse Ihres RCT-Wechselrichters** — das Gerät zeigt sie
+   gelegentlich direkt auf seinem Display an.
+
+Der **Port** ist einheitlich `8899` und bereits voreingestellt — dort ist
+nichts einzutragen.
 
 So geht's:
 
@@ -31,8 +34,8 @@ So geht's:
   <figcaption>Bild: Konfigurationsportal unter http://192.168.4.1</figcaption>
 </figure>
 
-4. **Drei Felder ausfüllen und speichern** — WLAN-Name/-Passwort sowie
-   RCT-Adresse und Port (siehe die drei Angaben oben).
+4. **Zwei Felder ausfüllen und speichern** — WLAN-Name/-Passwort sowie die
+   RCT-IP-Adresse (der Port ist bereits voreingestellt).
 5. **Fertig.** Das Panel verbindet sich mit Ihrem WLAN und zeigt die
    Live-Daten. Der Zugangspunkt „RCT-Panel" verschwindet dabei von selbst.
 
