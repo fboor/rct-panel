@@ -42,6 +42,10 @@ So sieht es danach aus: Oben die Statusleiste mit dem Verbindungsstatus
 ◀ / ▶ durch die sieben Seiten, ⌂ springt zur Übersicht. Details
 zu den Seiten stehen in Kapitel 3, zur Einrichtung ab Kapitel 1.
 
+Die Messwerte liegen außerdem auf der SD-Karte und lassen sich später im
+Browser abrufen: Adresse und Code dafür stehen auf der **Service-Seite**
+(Kapitel 5).
+
 ---
 
 ## 1. Inbetriebnahme
@@ -87,7 +91,7 @@ Bestätigen Sie das Formular. Das Panel speichert die Angaben dauerhaft
 - Oder starten Sie das Panel, während kein gespeichertes Netzwerk erreichbar
   ist (nach ca. 15 s erscheint der AP von selbst).
 - Zum vollständigen Zurücksetzen auf Werkseinstellung kann der
-  NVS-Speicher gelöscht werden (Entwickler-Anleitung, Abschnitt 8).
+  NVS-Speicher gelöscht werden (Entwickler-Anleitung, Abschnitt 9).
 
 ---
 
@@ -228,6 +232,12 @@ Die einzige Seite mit Aktionen:
   (`/shot/shot001.bmp`). Die 5 Sekunden erlauben, vorher zu einer anderen
   Seite zu wechseln. Praktisch, wenn Sie dem Support zeigen möchten, was das
   Panel anzeigt.
+- Web-Oberfläche (unten): `Adresse` ist die IP-Adresse, unter der das Panel
+  seine Webseiten im Netz bereitstellt (siehe Kapitel 5), `Code` ist der
+  vierstellige Code, den diese Seiten für Änderungen verlangen. Beide Felder
+  sind nur belegt, solange das Panel im Netz ist. **Tippen Sie auf den Code**,
+  zieht das Panel sofort einen neuen — nützlich, wenn jemand über Ihre
+  Schulter mitgelesen hat.
 
 ---
 
@@ -245,6 +255,15 @@ CSV-Datei (nur bei verbundenem Wechselrichter, keine Nullzeilen):
 - Karte gezogen: Solange keine Karte steckt, werden die Zeilen in einem
   RAM-Puffer (ca. 1 Stunde) zwischengelagert und nach dem Einstecken
   nachgeschrieben. Die Service-Seite zeigt den Pufferstand.
+- Die Dateien müssen Sie nicht aus der Karte auslesen: Das Panel liefert sie
+  im Netz als Download aus (Kapitel 5).
+
+> **Hinweis:** Die Karte wird mit 4 MHz angesprochen, was die Übertragung
+> gegenüber den anfänglichen 400 kHz um etwa das Zehnfache beschleunigt.
+> Das Panel prüft nach dem Einbinden der Karte selbst, ob dieser Takt trägt
+> (512 Byte schreiben, lesen, vergleichen) und schaltet andernfalls
+> automatisch auf die langsamere, bewährte Stufe zurück. Sie müssen nichts
+> einstellen.
 
 ### CSV-Format (16 Spalten)
 
@@ -272,7 +291,87 @@ Monatsdatei über die SNTP-Zeit.
 
 ---
 
-## 5. Vorzeichen <span class="h-sub">kompakt</span>
+## 5. Web-Oberfläche <span class="h-sub">Daten abrufen, Firmware aktualisieren</span>
+
+Solange das Panel im Heimnetz ist, betreibt es auf Port 80 einen eigenen
+Webserver. Sie erreichen ihn über die Adresse, die auf der **Service-Seite**
+unter `Adresse` steht — im Beispiel `http://192.168.1.42`. Unter dem Namen
+`rct-panel.local` ist er zusätzlich erreichbar, sofern Ihr Netz solche Namen
+auflöst (das ist eine Bequemlichkeit: wenn Ihr Netz das nicht kann, nehmen Sie
+die IP-Adresse).
+
+> **Hinweis:** Es ist ausschließlich das lokale Netz erreichbar, nicht das
+> Internet. Ein Update oder ein Datenabruf findet immer zwischen einem Gerät
+> in Ihrem Netz und dem Panel statt; die Binärdatei wandert nicht über
+> fremde Server.
+
+### Seiten
+
+| Adresse | Inhalt |
+|---|---|
+| `/` | Übersicht: Netz, PV, Akku, Karte, Adresse, Wartung |
+| `/daten` | Liste der aufgezeichneten CSV-Dateien |
+| `/bilder` | Liste der gespeicherten Screenshots |
+| `/update` | Firmware aktualisieren |
+
+### Daten abrufen
+
+Auf `/daten` und `/bilder` steht je Eintrag ein Knopf:
+
+- Bei den Daten holt **„laden"** die **letzten 64 kB** der Datei — das sind
+  bei der Fünf-Minuten-Taktung etwa zwei Tage. Der Browser zeigt den
+  Fortschritt als Balken; die Übertragung ist inzwischen schnell, die letzten
+  64 kB dauern Bruchteilsecunden. Für mehr hängen Sie `?tail=0` an den Link
+  an, dann kommt die gesamte Monatsdatei (etwa 1,2 MB, gut zwei Sekunden).
+- Bei den Bildern öffnet **„anzeigen"** den Screenshot im Browser. Auch hier
+  läuft der Download mit Fortschrittsanzeige.
+
+Während ein Download läuft, bedient das Panel keine weiteren Anfragen — der
+Vorgang ist abgeschlossen, bevor der nächste startet. Das ist Absicht: so
+bleibt die Übertragung in sich abgeschlossen und ein zweiter Zugriff kann die
+Datei nicht dazwischen auf der Karte verändern.
+
+### Der Code
+
+Ansehen und Herunterladen dürfen alle im Netz. Was das Panel **verändert**,
+verlangt den vierstelligen Code:
+
+- Firmware aktualisieren (`/update`),
+- Neustart,
+- WLAN neu einrichten.
+
+Der Code steht auf der Service-Seite und wird bei jedem Start des Panels neu
+gezogen; er wird nicht gespeichert und ist nach einem Neustart ein anderer.
+Ein Neucode ziehen Sie jederzeit durch Antippen des Codes auf der
+Service-Seite. Der Code schützt vor einem Nachbarn im selben Netz, der die
+Adresse kennt — nicht vor jemandem, der das Display ablesen kann.
+
+### Firmware aktualisieren
+
+Voraussetzung ist ein Build, wie in Kapitel 9 beschrieben
+(`pio run -e esp32-s3` erzeugt `firmware.bin`).
+
+1. Panel und Rechner im selben Netz; Adresse von der Service-Seite holen.
+2. `http://<Adresse des Panels>/update` öffnen.
+3. Code eintragen, `firmware.bin` auswählen, „Firmware schreiben".
+4. Das Panel schreibt die Datei in den zweiten Speicherbereich und startet
+   neu — gespeichertes WLAN und die Wechselrichter-Konfiguration bleiben
+   erhalten. Das Display bleibt währenddessen an.
+
+> **Tipp:** Läuft ein Update schief, startet das Panel mit der bisherigen
+> Firmware weiter: Die neue Datei wird vor dem Start auf Vollständigkeit
+> geprüft, und der zweite Speicherbereich bleibt als Reserve unangetastet.
+> Ein fehlgeschlagenes Update macht das Gerät also nicht unbrauchbar.
+
+> **Hinweis:** Ist das Panel gerade nicht im Heimnetz (etwa weil das WLAN
+> umgestellt wurde), gibt es einen zweiten Weg: auf der Service-Seite „Setup
+> starten" antippen, mit dem WLAN `RCT-Panel` verbinden und dann
+> `http://192.168.4.1/update` aufrufen. Dort wird kein Code verlangt, weil
+> das Gerät in diesem Zustand ohnehin nichts anderes erreicht.
+
+---
+
+## 6. Hinweise <span class="h-sub">kompakt</span>
 
 | Größe | Konvention |
 |---|---|
@@ -285,7 +384,7 @@ Monatsdatei über die SNTP-Zeit.
 
 ---
 
-## 6. Fehlerbehebung
+## 7. Fehlerbehebung
 
 | Symptom | Ursache / Lösung |
 |---|---|
@@ -295,10 +394,14 @@ Monatsdatei über die SNTP-Zeit.
 | Kein Konfigurationsportal auffindbar | Panel ist bereits in einem Netzwerk — nutzen Sie „Setup starten" auf der Service-Seite. |
 | `SD: --` auf Service-Seite | Keine Karte erkannt oder Karte gezogen; prüfen Sie die microSD im Steckplatz (FAT32). Daten werden bis ~1 h gepuffert. |
 | Werte auf „–" | Wechselrichter liefert diesen Wert nicht (z. B. keine Batterie) — normal. |
+| Webseite lässt sich nicht öffnen | Adresse von der Service-Seite (unten, `Adresse`) im Browser eintragen; `Adresse` steht auf `–`, ist das Panel nicht im Heimnetz. |
+| „Der Code stimmt nicht" | Code von der Service-Seite; er ändert sich bei jedem Start des Panels. Antippen zieht einen neuen. |
+| Download bricht ab | Der Browser hat die Verbindung geschlossen (Ruhezustand, Netzwechsel). Der Vorgang lässt sich einfach wiederholen. |
+| `/daten` bleibt leer | Auf der Karte steht noch keine Datei — es wird erst ab dem ersten Fünf-Minuten-Wert geschrieben. |
 
 ---
 
-## 7. Sicherheit
+## 8. Sicherheit
 
 - Das Panel ist ein Anzeigegerät und greift nicht in die
   Wechselrichter-Konfiguration ein.
@@ -309,7 +412,7 @@ Monatsdatei über die SNTP-Zeit.
 
 ---
 
-## 8. Für Entwickler: Firmware aktualisieren (Kurzfassung)
+## 9. Entwickler: Firmware aktualisieren (Kurzfassung)
 
 Quellcode und Build liegen in diesem Repository (`rct-panel`). Voraussetzung:
 PlatformIO (Core 6.x).
@@ -324,13 +427,47 @@ Diagnosemeldungen (z. B. `RCT: grid ...`) erscheinen im seriellen Monitor.
 Zur Werkseinstellung zurück: `pio run -e esp32-s3 -t erase` (löscht
 gespeichertes WLAN und RCT-Konfiguration).
 
+### Update ohne USB (OTA)
+
+Neben dem Flashen per USB lässt sich die Firmware **über die Weboberfläche des
+Panels** aktualisieren — ohne Kabel am Gerät. Dafür muss das Panel nicht einmal
+im Setup-Modus sein: Es bringt die Update-Seite im Normalbetrieb selbst mit.
+
+1. Rechner und Panel im selben Heimnetz. Die Adresse steht auf der
+   Service-Seite unten, Feld `Adresse`.
+2. `http://<Adresse>/update` aufrufen — die Firmware-Update-Seite des Panels.
+3. Den vierstelligen Code eintragen (Service-Seite, Feld `Code`), die zuvor mit
+   `pio run -e esp32-s3` gebaute `firmware.bin` auswählen, „Firmware
+   schreiben".
+4. Das Panel schreibt die Datei in den zweiten App-Slot und startet neu.
+   Gespeichertes WLAN und die RCT-Konfiguration bleiben erhalten; das Display
+   bleibt an, die Seiten im Browser sind während des Schreibens nicht bedienbar.
+
+Warum der Code, und warum er vorher geprüft wird: Ein Update verändert das
+Gerät, alles andere auf diesen Seiten liest nur. Weil der WebServer die
+Formularfelder der Reihe nach auswertet, steht das Code-Feld im HTML vor dem
+Dateifeld — bei falschem Code wird **kein einziges Byte** in den Flash
+geschrieben. Der Updater löscht seinen Zielbereich ohnehin erst schreibend
+Block für Block, deshalb bleibt das Display währenddessen in Betrieb; ein
+fehlgeschlagenes Update bootet anschließend die alte Firmware (Prüfsumme/Image-
+Kennung, zweiter Slot unangetastet).
+
+**Rückfallweg, wenn das Panel nicht im Heimnetz ist** (WLAN umgestellt,
+falsche Adresse, Gerät gerade in einem anderen Netz): Service-Seite antippen →
+„Setup starten" → mit dem WLAN `RCT-Panel` verbinden → `http://192.168.4.1/update`.
+In diesem Zustand wird kein Code verlangt, weil das Gerät dort ohnehin nichts
+anderes erreichbar ist; es gibt nur das Konfigurationsportal.
+
+Beide Wege bleiben im lokalen Netz. Ein Update über das Internet ist bewusst
+nicht möglich — die Binärdatei kommt aus dem Netz direkt auf das Gerät.
+
 > **Hinweis:** Zum Flashen verbinden Sie das Panel per USB mit dem Rechner
 > und starten den Build mit Upload (siehe oben). Das Gerät startet danach
 > automatisch neu; die SD-Aufzeichnung stört der Vorgang nicht.
 
 ---
 
-## 9. Technische Daten
+## 10. Technische Daten
 
 | Bezeichnung | Technische Daten |
 |---|---|
@@ -338,11 +475,12 @@ gespeichertes WLAN und RCT-Konfiguration).
 | Bedienung | kapazitives Touchpanel (GT911) |
 | Prozessor | ESP32-S3, Dual-Core |
 | Speicher | 16 MB Flash, 8 MB PSRAM |
-| Datenspeicher | microSD/TF-Karte, FAT32 (Steckplatz auf der Platine) |
+| Datenspeicher | microSD/TF-Karte, FAT32 (Steckplatz auf der Platine), SPI 4 MHz mit Selbsttest, Rückfall auf 400 kHz |
 | Stromversorgung | USB-C, 5 V DC |
 | WLAN | IEEE 802.11 b/g/n (2,4 GHz) |
 | Datenabfrage | RCT-Wechselrichter über TCP (Port 8899) |
 | Datenaufzeichnung | alle 5 Minuten als CSV (ca. 40 KB pro Tag) |
+| Weboberfläche | HTTP-Server im lokalen Netz (Port 80): Status, CSV-/Bild-Download, Firmware-Update; änderende Funktionen mit 4-stelligem Code |
 
 Das Panel zeigt ausschließlich Messwerte an — es **verändert keine
 Einstellungen am Wechselrichter** (eine Ausnahme: der Setup-Modus legt nur
@@ -361,4 +499,5 @@ die eigenen Netzwerk- und Verbindungsdaten des Panels fest).
 ---
 
 *Stand: September 2026. Das Handbuch beschreibt die Firmware ab Commit
-`91d4b5b` (inclusive).*
+`7eb6e6f` (inclusive) — Weboberfläche im Normalbetrieb und SD-Karte mit
+4 MHz.*
