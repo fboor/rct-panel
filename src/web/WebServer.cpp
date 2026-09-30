@@ -545,7 +545,7 @@ void renderList(const char *title, const char *nav, const char *dir, bool csv,
              "Seite l&auml;dt sich in ein paar Sekunden einmal neu, dann steht "
              "die neue Datei oben.</div>");
     } else {
-      b += F("<div class=\"note\">Die Aufnahme zeigt genau diese Seite. Das "
+      b += F("<div class=\"note\">Die Aufnahme zeigt die aktuelle Seite. Das "
              "Bild landet als <code>shot...bmp</code> auf der Karte; die Seite "
              "l&auml;dt sich danach einmal neu.</div>");
     }

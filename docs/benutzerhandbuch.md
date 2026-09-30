@@ -80,8 +80,8 @@ Bestätigen Sie das Formular. Das Panel speichert die Angaben dauerhaft
 > korrigieren können.
 
 <figure class="portal-shot">
-  <div class="portal-shot-ph">Platzhalter: Screenshot des Webportals (Screenshot folgt)</div>
-  <figcaption>Bild 2: Konfigurationsportal unter http://192.168.4.1</figcaption>
+  <img src="img/setup-portal.png" alt="Konfigurationsportal unter http://192.168.4.1: Felder für WLAN-Name/Passwort, rct_host und rct_port, plus Hinweis zum Wechsel ins Heimnetz">
+  <figcaption>Bild 2: Konfigurationsportal unter http://192.168.4.1 mit den Feldern für WLAN und RCT-Adresse</figcaption>
 </figure>
 
 ### 1.3 Später erneut konfigurieren
@@ -373,11 +373,11 @@ Auf `/daten` und `/bilder` steht je Eintrag ein Knopf:
   läuft der Download mit Fortschrittsanzeige.
 
 Unter der Bildliste steht ein Knopf **„Screenshot auslösen"**: er nimmt ein Bild
-desselben Fensters auf, in dem Sie gerade sind, und legt es wie die Panel-Taste
-als BMP auf die Karte. Der Knopf verlangt den Code (unten). Das Schreiben dauert
-etwa 3 bis 5 Sekunden; danach lädt sich die Seite **einmal** neu und die neue
-Datei steht in der Liste. Ohne die Wartezeit des Panels, denn im Browser sind Sie
-bereits auf der Seite, die aufgenommen werden soll.
+der aktuellen Seite auf und legt es wie die Panel-Taste als BMP auf die Karte. Der
+Knopf verlangt den Code (unten). Das Schreiben dauert etwa 3 bis 5 Sekunden;
+danach lädt sich die Seite **einmal** neu und die neue Datei steht in der Liste.
+Ohne die Wartezeit des Panels, denn im Browser sind Sie bereits auf der Seite,
+die aufgenommen werden soll.
 
 Während ein Download läuft, bedient das Panel keine weiteren Anfragen — der
 Vorgang ist abgeschlossen, bevor der nächste startet. Das ist Absicht: so
