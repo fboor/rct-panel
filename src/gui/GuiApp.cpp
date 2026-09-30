@@ -228,15 +228,17 @@ enum SvLabel {
 // holds 288 samples (= exactly 24 h). Values are W, mirrored as float for the
 // Y autoscale and fed to the LVGL chart as int32. S0 is kept as its own series
 // (not merged into the PV A+B total), mirroring the portal's separate "+EXT."
-// node. Battery/grid may be negative (discharge / feed-in).
+// node. Battery/grid may be negative (discharge / feed-in). The last series,
+// SOC, is a percent value on its own chart axis (0..100), scaled to fill the
+// whole chart height.
 static const int HIST_POINTS = 288;              // 288 * 5 min = 24 h
-static const int HIST_SERIES = 5;                // grid, house, PV, EXT, battery
+static const int HIST_SERIES = 6;                // grid, house(+ext), PV, EXT, battery, SOC
 static const uint32_t HIST_INTERVAL_MS = 300000; // 5 min
 static const uint32_t HIST_SEED_WINDOW_MS = 60000; // boot grace without a card
 static const uint32_t kHistColor[HIST_SERIES] = {0xCA0C0F, 0xA45EE5, 0x3EC97A,
-                                                 0x2E93E5, 0xF0A202};
+                                                 0x2E93E5, 0xF0A202, 0xEBD300};
 static const char *const kHistName[HIST_SERIES] = {"Netz", "Verbrauch", "PV",
-                                                   "EXT", "Batterie"};
+                                                   "EXT", "Batterie", "SOC"};
 static const int LEGEND_GAP = 24; // space between two legend entries
 static lv_obj_t *s_chart = nullptr;
 static lv_chart_series_t *s_chartSer[HIST_SERIES] = {nullptr};
@@ -1248,7 +1250,7 @@ static void updateChartRange() {
     const int slot = (start + p) % HIST_POINTS;
     if (!s_histOk[slot]) continue; // gap marker, nothing was measured
     const float *row = &s_hist[slot * HIST_SERIES];
-    for (int i = 0; i < HIST_SERIES; i++) {
+    for (int i = 0; i < HIST_SERIES - 1; i++) { // SOC: own 0..100 axis
       float v = row[i];
       if (first) {
         loW = hiW = v;
@@ -1326,9 +1328,14 @@ static void pageBuildGraph(AppPage *p) {
   lv_chart_set_update_mode(s_chart, LV_CHART_UPDATE_MODE_SHIFT);
   lv_chart_set_div_line_count(s_chart, 4, 5);
   lv_chart_set_axis_range(s_chart, LV_CHART_AXIS_PRIMARY_Y, 0, 3000);
+  // SOC is a percent value: it gets its own axis so 0 % maps to the bottom and
+  // 100 % to the top of the chart, independent of the power autoscale.
+  lv_chart_set_axis_range(s_chart, LV_CHART_AXIS_SECONDARY_Y, 0, 100);
   for (int i = 0; i < HIST_SERIES; i++) {
-    s_chartSer[i] = lv_chart_add_series(s_chart, lv_color_hex(kHistColor[i]),
-                                        LV_CHART_AXIS_PRIMARY_Y);
+    s_chartSer[i] = lv_chart_add_series(
+        s_chart, lv_color_hex(kHistColor[i]),
+        i == HIST_SERIES - 1 ? LV_CHART_AXIS_SECONDARY_Y
+                             : LV_CHART_AXIS_PRIMARY_Y);
     lv_chart_set_all_values(s_chart, s_chartSer[i], LV_CHART_POINT_NONE);
   }
   // --- Gap summary ---
@@ -1510,7 +1517,11 @@ static void refreshCb(lv_timer_t *t) {
     //   grid  = p_ac_grid_sum_lp   + = Bezug (import), - = Einspeisung
     //   pv    = p_dc_lp[0]+[1]+S0  >= 0, production
     //   bat   = p_acc_lp           + = discharging, - = charging
-    //   house = p_ac_load sum      measured household load, >= 0
+    //   house = p_ac_load sum + S0 total household consumption, >= 0
+    //
+    // (The inverter's load meter reads demand already minus the S0 generator,
+    // so the correction adds the external power back - see the S0 handling in
+    // the Verlauf sampler, which follows the same rule.)
     //
     // Every consumer below derives from these two, so the direction appears in
     // exactly one place per view.
@@ -1521,7 +1532,7 @@ static void refreshCb(lv_timer_t *t) {
     float pTot = s.gridPowerSum;
     float pvTotal = s.pvPower[0] + s.pvPower[1] + s.s0Power;
     float pBat = s.batteryPower;
-    float house = s.loadPower[0] + s.loadPower[1] + s.loadPower[2];
+    float house = s.loadPower[0] + s.loadPower[1] + s.loadPower[2] + s.s0Power;
     bool has = s.haveData;
 
     // --- Grid ---
@@ -1615,7 +1626,7 @@ static void refreshCb(lv_timer_t *t) {
       lv_obj_add_flag(ov.labels[OV_BAT_ARROW], LV_OBJ_FLAG_HIDDEN);
     }
 
-    // --- Haus (household load measured by the Power Sensor) ---
+    // --- Haus (total household demand: Power Sensor + S0 generator) ---
     if (has && house >= 5.0f) {
       setText(ov.labels[OV_HOUSE_VAL], "%.2f kW", house / 1000.0f);
       lv_obj_set_style_text_color(ov.labels[OV_HOUSE_VAL], FLOW_RED, 0);
@@ -1952,10 +1963,14 @@ static void refreshCb(lv_timer_t *t) {
         s_lastHistMs = now;
         float v[HIST_SERIES] = {0.0f};
         v[0] = s.gridPowerSum;                                    // Netz
-        v[1] = s.loadPower[0] + s.loadPower[1] + s.loadPower[2]; // Haus
+        // Verbrauch: the inverter's load meter already subtracted the S0
+        // generator, so household demand is meter + external (same rule as the
+        // SD restore, see sdlog.cpp parseLine).
+        v[1] = s.loadPower[0] + s.loadPower[1] + s.loadPower[2] + s.s0Power;
         v[2] = s.pvPower[0] + s.pvPower[1];                      // PV A+B
         v[3] = s.s0Power;                                        // S0
         v[4] = s.batteryPower;                                   // Bat
+        v[5] = s.batterySoc;                                     // SOC %
         // Wall clock if it is up, else 0. A 0 timestamp disables gap detection
         // for this sample rather than inventing a time: before SNTP there is
         // nothing to compare against, and millis() restarts every boot anyway.

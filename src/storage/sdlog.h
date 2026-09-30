@@ -34,8 +34,9 @@ bool sdMounted();
 
 // --------------------------------------------------------------------------
 // History restore for the 24 h "Verlauf" page. One CSV row per log sample;
-// the five power values mirror the chart series order (Netz, Haus, PV, S0,
-// Bat) as sums over the logged phases/inputs, in W.
+// the six values mirror the chart series order (Netz, Verbrauch, PV, S0,
+// Bat, SOC); the first five are power sums over the logged phases/inputs in W,
+// the sixth is the battery state of charge in percent.
 //
 // Asynchronous, because the scan reads whole CSV files (measured 1418 ms) and
 // must not run on the GUI thread:
@@ -54,7 +55,7 @@ bool sdMounted();
 // --------------------------------------------------------------------------
 struct SdHistSample {
   uint32_t ts; // unix seconds of the row
-  float v[5];  // {grid, house, pv, s0, battery} in W
+  float v[6];  // {grid, house, pv, s0, battery, soc} - soc in %, rest in W
 };
 
 void sdRequestHistory(int maxRows, bool waitForClock);

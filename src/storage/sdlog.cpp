@@ -300,11 +300,15 @@ static bool parseLine(const char *line, SdHistSample *s) {
     return false;
   }
   s->ts = (uint32_t)ts;
-  s->v[0] = g1 + g2 + g3; // Netz
-  s->v[1] = l1 + l2 + l3; // Haus
-  s->v[2] = pvA + pvB;    // PV A+B
-  s->v[3] = s0;           // S0
-  s->v[4] = bat;          // Bat
+  s->v[0] = g1 + g2 + g3;           // Netz
+  // Verbrauch: the inverter's meter reads the household demand already minus
+  // the S0 generator, so the true consumption is meter + external. Same rule
+  // the live sampler in GuiApp uses.
+  s->v[1] = l1 + l2 + l3 + s0;      // Verbrauch (meter + external)
+  s->v[2] = pvA + pvB;              // PV A+B
+  s->v[3] = s0;                     // S0
+  s->v[4] = bat;                    // Bat
+  s->v[5] = soc;                    // SOC %
   return true;
 }
 

@@ -213,8 +213,12 @@ reboot used to leave the chart empty until it had refilled. The SD log now
 feeds it back at boot:
 
 - The worker's history scan (`SDREQ_HISTORY`, section 4b) reads the newest
-  ≤ 288 CSV rows and maps them to the chart series: `Netz = grid_l1+l2+l3`, `Haus = load_l1+l2+l3`, `PV = pv_a+pv_b`,
-  `S0`, `Bat` — exactly what the live sampler stores.
+  ≤ 288 CSV rows and maps them to the chart series: `Netz = grid_l1+l2+l3`, `Verbrauch = load_l1+l2+l3 + S0`
+  (the inverter's load meter reads demand minus the external generator, so the
+  external power is added back), `PV = pv_a+pv_b`, `S0`, `Bat`, `SOC` — exactly
+  what the live sampler stores. SOC is a percent value on its own chart axis
+  (`LV_CHART_AXIS_SECONDARY_Y`, 0..100), so 0 % is the bottom and 100 % the top
+  of the chart regardless of the power autoscale.
 - The rows are replayed through the **same** writer (`histPush()`) as live
   samples, so ring cursor and the LVGL series cursor stay in lockstep and the
   chart looks exactly like a continuous recording.
