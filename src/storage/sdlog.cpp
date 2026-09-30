@@ -187,22 +187,32 @@ const char *uptimeKey() {
 // when nothing changed or the card is gone.
 bool updatePath() {
   const char *key = monthKey();
+  const bool haveClock = key != nullptr;
   if (key == nullptr) {
     key = uptimeKey();
   }
   if (s_pathValid && strcmp(s_pathKey, key) == 0) {
     return true;
   }
+  const bool hadPath = s_pathValid;
   // Paths must be absolute: the VFS layer rejects anything not starting with
   // "/" (the volume is mounted at /sd).
   snprintf(s_path, sizeof(s_path), "/hist/RCT-%s.csv", key);
-  if (!s_pathValid && strncmp(key, "UPT-", 4) == 0) {
+  if (!s_pathValid && !haveClock) {
     // First sample before the clock synced: keep the plain name without the
     // misleading "RCT-" prefix.
     snprintf(s_path, sizeof(s_path), "/hist/%s.csv", key);
   }
   strlcpy(s_pathKey, key, sizeof(s_pathKey));
   s_pathValid = true;
+  // A change of the file name is worth a line of its own. The usual reason is the
+  // clock arriving a few seconds after the mount, which turns the provisional
+  // "UPT-<days>.csv" into the month file - and a card holding both names looks
+  // like a leftover from something else unless the log says where it came from.
+  if (hadPath) {
+    Serial.printf("SD: Datei %s (Uhr jetzt %s)\n", s_path,
+                  haveClock ? "gueltig" : "noch nicht gueltig");
+  }
   return true;
 }
 
@@ -274,8 +284,11 @@ bool probeMount(float *kbsOut) {
   }
   if (kbsOut != nullptr) {
     // Both directions of the round trip count as payload here: the figure is
-    // the card's throughput, not the file system's.
-    *kbsOut = dt > 0 ? (float)(2.0 * (double)kProbeBytes / (double)dt) : 0.0f;
+    // the card's throughput, not the file system's. esp_timer_get_time() counts
+    // microseconds, so the conversion is bytes * 1000 / dt - without that the
+    // result is a thousand times too small and every card reads as "0 kB/s".
+    *kbsOut = dt > 0 ? (float)(2.0 * (double)kProbeBytes * 1000.0 / (double)dt)
+                    : 0.0f;
   }
   return true;
 }
@@ -651,13 +664,19 @@ static void sdWorkerPeriodic(uint32_t now) {
   s_probePending = probeOk;
   updatePath(); // fill s_path, otherwise the log line below stays empty
   buildStatus();
-  Serial.printf("SD: mounted at %lu Hz, self-test %.0f kB/s, %.1f GB free (%s)\n",
+  Serial.printf("SD: mounted at %lu Hz, self-test %.1f kB/s, %.1f GB free (%s)\n",
                 (unsigned long)hz, (double)kbs,
                 (double)(SD.totalBytes() - SD.usedBytes()) / 1.0e9, s_path);
   if (!s_queue.empty()) {
     s_nextQueueRetryMs = millis(); // flush parked rows right away
     queueFlush();
   }
+  // Fill both listing caches now that there is something to list. Doing this in
+  // sdInit() instead would queue the request before the mount and cache the
+  // "no card" answer, and the first page view would come up empty until it was
+  // asked a second time.
+  sdRequestListing("/hist");
+  sdRequestListing("/shot");
 }
 
 // Worker side of SDREQ_LOG: actually touch the card, or park the row.
@@ -1002,6 +1021,10 @@ uint8_t *s_streamBuf = nullptr;
 // holds ~60 entries. A full card of screenshots (999 by the naming scheme)
 // exceeds it - the page says so rather than pretending the list is complete.
 constexpr size_t kListingCap = 2048;
+// One slot per directory the web interface lists (/hist and /shot).
+constexpr int kListCacheCount = 2;
+// How long a listing is served as it is before the worker reads the card again.
+constexpr uint32_t kListingMaxAgeMs = 5000;
 
 struct StreamState {
   bool active = false;  // worker holds an open file
@@ -1016,9 +1039,32 @@ struct StreamState {
 StreamState s_stream;
 File s_streamFile; // worker-only: opened by SDREQ_STREAM, closed on done/abort
 
-// Guarded by s_lock.
-char s_listing[kListingCap];
-int s_listingLen = -1; // -1 nothing fresh, -2 failed
+// One cached directory listing per directory the web interface shows. The worker
+// fills it, the web task only reads it: the card is the worker's alone, and a
+// request is answered in the same pass it arrives in. Guarded by s_lock.
+struct ListCache {
+  char path[16];
+  char *text;
+  int len;       // >= 0 filled, -1 not filled yet, -2 read failed
+  uint32_t atMs; // when it was filled
+};
+ListCache s_cache[kListCacheCount];
+char *s_listPool = nullptr;
+
+ListCache *cacheFor(const char *path) {
+  for (int i = 0; i < kListCacheCount; i++) {
+    if (s_cache[i].path[0] != '\0' && strcmp(s_cache[i].path, path) == 0) {
+      return &s_cache[i];
+    }
+  }
+  for (int i = 0; i < kListCacheCount; i++) {
+    if (s_cache[i].path[0] == '\0') {
+      strlcpy(s_cache[i].path, path, sizeof(s_cache[i].path));
+      return &s_cache[i];
+    }
+  }
+  return nullptr; // both slots taken by other directories
+}
 
 // Worker side of SDREQ_STREAM: open, position, announce.
 static void sdWorkerOpenStream(const SdReq &req) {
@@ -1066,10 +1112,15 @@ static void sdWorkerOpenStream(const SdReq &req) {
                 (unsigned)s_stream.total, (unsigned)start);
 }
 
-// Worker side of SDREQ_LIST: one directory, formatted in place.
+// Worker side of SDREQ_LIST: one directory into its cache, formatted in place.
 static void sdWorkerListDir(const SdReq &req) {
+  ListCache *c = cacheFor(req.path);
+  if (c == nullptr) {
+    return;
+  }
   if (!s_mounted) {
-    s_listingLen = -2;
+    c->len = -2;
+    c->atMs = millis();
     return;
   }
   diagPhase("sd.listdir");
@@ -1089,9 +1140,17 @@ static void sdWorkerListDir(const SdReq &req) {
         e.close();
         continue;
       }
+      // PROBE is the panel's own self-test marker, not a data file. It has to
+      // stay on the card until the first row was written (that is what it
+      // proves), so it is filtered out here rather than deleted earlier - a user
+      // should not find a download called PROBE next to the month files.
+      if (strcmp(e.name(), "PROBE") == 0) {
+        e.close();
+        continue;
+      }
       // name|size|epoch, one per line. The pipe is safe: FAT names cannot
       // contain it, and the web server splits on it without parsing.
-      const int w = snprintf(s_listing + used, kListingCap - used, "%s|%u|%u\n",
+      const int w = snprintf(c->text + used, kListingCap - used, "%s|%u|%u\n",
                              e.name(), (unsigned)e.size(),
                              (unsigned long)e.getLastWrite());
       e.close();
@@ -1103,7 +1162,10 @@ static void sdWorkerListDir(const SdReq &req) {
     }
     dir.close();
   }
-  s_listingLen = n > 0 ? (int)used : -2;
+  // An empty directory is an answer, not a failure: the page says so, and it can
+  // do that without the card. -2 stays reserved for "no card or read error".
+  c->len = n > 0 ? (int)used : 0;
+  c->atMs = millis();
   xSemaphoreGive(s_lock);
 }
 
@@ -1127,17 +1189,31 @@ void sdRequestStream(const char *path, uint32_t tailBytes) {
   }
 }
 
+// Ask for a fresh listing, but only if the cached one is missing or older than
+// kListingMaxAgeMs. A page reload therefore shows a new file within seconds
+// without every visit re-reading the directory.
 void sdRequestListing(const char *path) {
   if (s_reqQ == nullptr || path == nullptr) {
     return;
+  }
+  ListCache *c = cacheFor(path);
+  if (c != nullptr) {
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    const bool fresh = c->len >= 0 &&
+                       (int32_t)(millis() - c->atMs) < kListingMaxAgeMs;
+    xSemaphoreGive(s_lock);
+    if (fresh) {
+      return;
+    }
   }
   SdReq req;
   memset(&req, 0, sizeof(req));
   req.type = SDREQ_LIST;
   strlcpy(req.path, path, sizeof(req.path));
-  if (xQueueSend(s_reqQ, &req, 0) != pdTRUE) {
+  if (xQueueSend(s_reqQ, &req, 0) != pdTRUE && c != nullptr) {
     xSemaphoreTake(s_lock, portMAX_DELAY);
-    s_listingLen = -2;
+    c->len = -2;
+    c->atMs = millis();
     xSemaphoreGive(s_lock);
   }
 }
@@ -1204,19 +1280,27 @@ void sdStopStream() {
 // Collect a directory listing. Returns the number of bytes written into out
 // (lines "name|size|epoch"), -1 while the worker is still busy, and -2 when the
 // card is not mounted or the directory is empty.
-int sdTakeListing(char *out, size_t cap) {
-  if (out == nullptr || s_lock == nullptr) {
-    return -2;
+// The cached listing, copied out. Returns the number of bytes, 0 for an empty
+// directory, or kListingUnavailable if the card cannot be read. A cache that is
+// still cold answers kListingUnavailable too: it only happens between boot and
+// the worker's first pass, and the caller shows the same "SD-Karte liess sich
+// nicht lesen" page it would show for a missing card.
+int sdListingText(const char *path, char *out, size_t cap) {
+  if (out == nullptr || cap == 0 || s_lock == nullptr) {
+    return kListingUnavailable;
   }
-  int rc = -1;
+  ListCache *c = cacheFor(path);
+  if (c == nullptr) {
+    return kListingUnavailable;
+  }
   xSemaphoreTake(s_lock, portMAX_DELAY);
-  if (s_listingLen >= 0) {
-    const size_t n = (size_t)s_listingLen < cap ? (size_t)s_listingLen : cap;
-    memcpy(out, s_listing, n);
+  int rc = kListingUnavailable;
+  if (c->len >= 0) {
+    const size_t n = (size_t)c->len < cap ? (size_t)c->len : cap;
+    if (n > 0) {
+      memcpy(out, c->text, n);
+    }
     rc = (int)n;
-    s_listingLen = -1;
-  } else if (s_listingLen == -2) {
-    rc = -2;
   }
   xSemaphoreGive(s_lock);
   return rc;
@@ -1378,6 +1462,26 @@ void sdInit() {
                   (unsigned)kStreamChunk, (unsigned)psramFree);
   } else {
     Serial.println(F("SD: no stream buffer, web file download disabled"));
+  }
+  // Listing cache pool: one chunk of kListingCap per cache entry, all in internal
+  // RAM (a few kB). The directory text is small (max ~2 kB total) and read by
+  // the web task without card access.
+  s_listPool = (char *)malloc(kListingCap * kListCacheCount);
+  if (s_listPool != nullptr) {
+    for (int i = 0; i < kListCacheCount; i++) {
+      s_cache[i].text = s_listPool + i * kListingCap;
+      s_cache[i].path[0] = '\0';
+      s_cache[i].len = -1;
+      s_cache[i].atMs = 0;
+    }
+  } else {
+    for (int i = 0; i < kListCacheCount; i++) {
+      s_cache[i].text = nullptr;
+      s_cache[i].path[0] = '\0';
+      s_cache[i].len = -2;
+      s_cache[i].atMs = 0;
+    }
+    Serial.println(F("SD: no listing cache, /daten and /bilder disabled"));
   }
   buildStatus();
   // Priority 1, the same as the Arduino loop task: the card work then shares

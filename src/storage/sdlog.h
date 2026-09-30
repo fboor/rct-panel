@@ -120,12 +120,19 @@ int sdTakeStreamChunk(uint8_t *out, uint32_t max);
 bool sdStreamFailed();
 void sdStopStream();
 
-// Ask for a directory listing ("/hist" or "/shot") and collect it.
-// Output is one line per entry, "name|size|epoch", in directory order. Ask
-// again while the return is -1; -2 means the card is not mounted or the
-// directory is empty, and a value >= 0 is the number of bytes written into out.
+// Directory listing for the web interface ("/hist" or "/shot"), one line per
+// entry as "name|size|epoch" in directory order.
+//
+// The card belongs to the worker task, so it fills a cache and the caller reads
+// that: sdRequestListing() asks for a refresh (a no-op while the cache is younger
+// than a few seconds), sdListingText() hands out the cached text in the same pass.
+// Its return is the number of bytes written into out, 0 for an empty directory,
+// or kListingUnavailable if the card cannot be read or the cache is still cold.
 void sdRequestListing(const char *path);
-int sdTakeListing(char *out, size_t cap);
+int sdListingText(const char *path, char *out, size_t cap);
+
+// Return value of sdListingText() that means "no answer available".
+#define kListingUnavailable (-1)
 
 // SPI clock the card is currently mounted at, in Hz (0 when no card). Shown on
 // the web interface's overview: 4000000 is the normal case, 400000 means the
