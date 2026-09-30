@@ -21,8 +21,8 @@ nichts einzutragen.
 
 So geht's:
 
-1. **Panel anschließen** — 5-V-Versorgung, das Display zeigt sofort die
-   Übersicht.
+1. **Panel anschließen** — USB-C-Kabel an ein Netzteil, das Display zeigt
+   sofort die Übersicht.
 2. **WLAN „RCT-Panel" wählen** — beim ersten Start (oder wenn kein
    gespeichertes Netzwerk erreichbar ist) erzeugt das Panel einen eigenen
    WLAN-Zugangspunkt mit diesem Namen.
@@ -47,15 +47,19 @@ die Details zur Einrichtung ab Kapitel 2.
 
 ---
 
-## 1. Geräteüberblick
+## 1. Technische Daten
 
-| Baustein | Details |
+| Bezeichnung | Technische Daten |
 |---|---|
-| Anzeige | 4" IPS-Touchdisplay, 480 × 480 Pixel (ST7701 RGB), kapazitiv (GT911) |
-| Rechner | ESP32-S3 (16 MB Flash, 8 MB PSRAM) |
-| Speicher | microSD/TF-Karte (FAT32) im Steckplatz der Platine |
-| Anschluss | WLAN (802.11), TCP-Verbindung zum RCT-Wechselrichter |
-| Spannung | 5-V-Versorgung des Boards (Kleinspannung) |
+| Anzeige | 4" IPS-Farbdisplay, 480 × 480 Pixel (ST7701 RGB) |
+| Bedienung | kapazitives Touchpanel (GT911) |
+| Prozessor | ESP32-S3, Dual-Core |
+| Speicher | 16 MB Flash, 8 MB PSRAM |
+| Datenspeicher | microSD/TF-Karte, FAT32 (Steckplatz auf der Platine) |
+| Stromversorgung | USB-C, 5 V DC |
+| WLAN | IEEE 802.11 b/g/n (2,4 GHz) |
+| Datenabfrage | RCT-Wechselrichter über TCP (Port 8899) |
+| Datenaufzeichnung | alle 5 Minuten als CSV (ca. 40 KB pro Tag) |
 
 Das Panel zeigt ausschließlich Messwerte an — es **verändert keine
 Einstellungen am Wechselrichter** (eine Ausnahme: der Setup-Modus legt nur
