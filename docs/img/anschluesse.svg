@@ -3,7 +3,7 @@
     <clipPath id="scr"><rect x="43" y="83" width="284" height="284" rx="14"/></clipPath>
   </defs>
 
-  <!-- ================= FRONT VIEW (links, gleiche Hoehe wie Legende) ================= -->
+  <!-- ================= FRONT VIEW (links) ================= -->
   <rect x="25" y="65" width="320" height="320" rx="16" fill="#2a3040" stroke="#ffffff14" stroke-width="1.5"/>
   <rect x="43" y="83" width="284" height="284" rx="14" fill="#0d1722" stroke="#00000055" stroke-width="1.2"/>
   <g clip-path="url(#scr)">
@@ -26,30 +26,30 @@
   </g>
   <text x="185" y="410" fill="#56616e" font-size="13" text-anchor="middle">Vorderseite</text>
 
-  <!-- ================= LEGEND (Mitte, Zahlen beidseitig am Text) ================= -->
-  <rect x="390" y="30" width="380" height="320" rx="14" fill="#eef5fb" stroke="#b9d3ec" stroke-width="1.5"/>
-  <text x="416" y="66" fill="#0b3d6b" font-size="26" font-weight="700">Schnittstellen</text>
-  <line x1="416" y1="78" x2="744" y2="78" stroke="#b9d3ec" stroke-width="1.5"/>
+  <!-- ================= LEGEND (Mitte, gleiche Hoehe wie Ansichten) ================= -->
+  <rect x="390" y="65" width="380" height="320" rx="14" fill="#eef5fb" stroke="#b9d3ec" stroke-width="1.5"/>
+  <text x="416" y="101" fill="#0b3d6b" font-size="26" font-weight="700">Schnittstellen</text>
+  <line x1="416" y1="113" x2="744" y2="113" stroke="#b9d3ec" stroke-width="1.5"/>
 
   <!-- row 1: touch  (Zahl LINKS, Vorderseite ist links) -->
-  <circle cx="422" cy="140" r="18" fill="#0b6bcb"/>
-  <text x="422" y="147" fill="#ffffff" font-size="21" font-weight="700" text-anchor="middle">1</text>
-  <text x="450" y="135" fill="#0b3d6b" font-size="24" font-weight="600">Touch-Display</text>
-  <text x="450" y="160" fill="#44525f" font-size="16.5">kapazitiv · 480 × 480 px</text>
+  <circle cx="422" cy="175" r="18" fill="#0b6bcb"/>
+  <text x="422" y="182" fill="#ffffff" font-size="21" font-weight="700" text-anchor="middle">1</text>
+  <text x="450" y="170" fill="#0b3d6b" font-size="24" font-weight="600">Touch-Display</text>
+  <text x="450" y="195" fill="#44525f" font-size="16.5">kapazitiv · 480 × 480 px</text>
 
-  <!-- row 2: microSD  (Zahl RECHTS, Rueckseite ist rechts) -->
-  <text x="408" y="225" fill="#0b3d6b" font-size="24" font-weight="600">microSD (TF)</text>
-  <text x="408" y="250" fill="#44525f" font-size="16.5">Steckplatz auf der Rückseite</text>
-  <circle cx="740" cy="230" r="18" fill="#0b6bcb"/>
-  <text x="740" y="237" fill="#ffffff" font-size="21" font-weight="700" text-anchor="middle">2</text>
+  <!-- row 2: microSD  (Zahl RECHTS, rueckseite rechts; lt. Foto: linke Kante, oben) -->
+  <text x="408" y="260" fill="#0b3d6b" font-size="24" font-weight="600">microSD (TF)</text>
+  <text x="408" y="285" fill="#44525f" font-size="16.5">Steckplatz an der Kante</text>
+  <circle cx="740" cy="265" r="18" fill="#0b6bcb"/>
+  <text x="740" y="272" fill="#ffffff" font-size="21" font-weight="700" text-anchor="middle">2</text>
 
-  <!-- row 3: usb-c  (Zahl RECHTS) -->
-  <text x="408" y="315" fill="#0b3d6b" font-size="24" font-weight="600">USB-C</text>
-  <text x="408" y="340" fill="#44525f" font-size="16.5">Stromversorgung (5 V)</text>
-  <circle cx="740" cy="320" r="18" fill="#0b6bcb"/>
-  <text x="740" y="327" fill="#ffffff" font-size="21" font-weight="700" text-anchor="middle">3</text>
+  <!-- row 3: usb-c  (Zahl RECHTS; lt. Foto: linke Kante, unten) -->
+  <text x="408" y="350" fill="#0b3d6b" font-size="24" font-weight="600">USB-C</text>
+  <text x="408" y="375" fill="#44525f" font-size="16.5">Stromversorgung (5 V)</text>
+  <circle cx="740" cy="355" r="18" fill="#0b6bcb"/>
+  <text x="740" y="362" fill="#ffffff" font-size="21" font-weight="700" text-anchor="middle">3</text>
 
-  <!-- ================= BACK VIEW (rechts, gleiche Hoehe wie Legende) ================= -->
+  <!-- ================= BACK VIEW (rechts; Schnittstellen nach Foto: USB-C + microSD an der linken Kante) ================= -->
   <rect x="820" y="65" width="320" height="320" rx="16" fill="#191f2a" stroke="#ffffff0d" stroke-width="1.5"/>
   <line x1="821" y1="66" x2="1139" y2="66" stroke="#ffffff22" stroke-width="2" stroke-linecap="round"/>
   <circle cx="836" cy="81" r="4.5" fill="#2c3440" stroke="#00000040"/>
@@ -57,40 +57,40 @@
   <circle cx="836" cy="369" r="4.5" fill="#2c3440" stroke="#00000040"/>
   <circle cx="1124" cy="369" r="4.5" fill="#2c3440" stroke="#00000040"/>
 
-  <!-- USB-C connector straddling the top edge -->
-  <rect x="961" y="49" width="28" height="32" rx="6" fill="#3a4350"/>
-  <rect x="966" y="53" width="18" height="24" rx="4" fill="#06080c"/>
-  <line x1="971" y1="59" x2="971" y2="71" stroke="#9fb4c7" stroke-width="1.5"/>
-  <line x1="979" y1="59" x2="979" y2="71" stroke="#9fb4c7" stroke-width="1.5"/>
+  <!-- microSD / TF slot, linke Kante oben (lt. Foto "TF Card Socket") -->
+  <rect x="814" y="150" width="26" height="24" rx="3" fill="#05070b"/>
+  <rect x="772" y="152" width="68" height="20" rx="2" fill="#0b6bcb" stroke="#084a8f" stroke-width="1"/>
+  <rect x="818" y="154" width="14" height="16" fill="#d9a520"/>
+
+  <!-- ESP32-S3 module (Mitte, lt. Foto "ESP32-S3-N16R8") -->
+  <rect x="860" y="170" width="100" height="54" rx="6" fill="#bcc3ca"/>
+  <rect x="882" y="188" width="56" height="20" rx="3" fill="#6e7782"/>
+  <text x="910" y="250" fill="#8f9aa8" font-size="14" text-anchor="middle">ESP32-S3</text>
+  <text x="910" y="272" fill="#56616e" font-size="12" text-anchor="middle">ESP32-S3 4848S040</text>
+
+  <!-- USB-C, linke Kante unten (lt. Foto "USB Type-C") -->
+  <rect x="806" y="300" width="28" height="34" rx="6" fill="#3a4350"/>
+  <rect x="810" y="304" width="20" height="26" rx="4" fill="#06080c"/>
+  <line x1="817" y1="310" x2="817" y2="322" stroke="#9fb4c7" stroke-width="1.5"/>
+  <line x1="823" y1="310" x2="823" y2="322" stroke="#9fb4c7" stroke-width="1.5"/>
 
   <!-- antenna zone (top right) -->
   <rect x="1086" y="88" width="50" height="42" rx="6" fill="#202835"/>
   <path d="M1094,118 L1106,94 L1118,112 L1130,94" fill="none" stroke="#39434f" stroke-width="1.6"/>
   <path d="M1094,128 L1106,104 L1118,122 L1130,104" fill="none" stroke="#39434f" stroke-width="1.6"/>
 
-  <!-- ESP32-S3 module -->
-  <rect x="880" y="140" width="100" height="54" rx="6" fill="#bcc3ca"/>
-  <rect x="902" y="158" width="56" height="20" rx="3" fill="#6e7782"/>
-  <text x="930" y="220" fill="#8f9aa8" font-size="14" text-anchor="middle">ESP32-S3</text>
-  <text x="930" y="242" fill="#56616e" font-size="12" text-anchor="middle">ESP32-S3 4848S040</text>
-
-  <!-- microSD / TF slot at the left edge of the back view, card sticking out sideways -->
-  <rect x="814" y="240" width="26" height="24" rx="3" fill="#05070b"/>
-  <rect x="770" y="242" width="66" height="20" rx="2" fill="#0b6bcb" stroke="#084a8f" stroke-width="1"/>
-  <rect x="818" y="244" width="14" height="16" fill="#d9a520"/>
-
   <text x="975" y="410" fill="#56616e" font-size="13" text-anchor="middle">Rückseite</text>
 
-  <!-- ================= LEADERS (enden am Rand der Kreise) ================= -->
+  <!-- ================= LEADERS (ansetzen am Kreisrand) ================= -->
   <g stroke-linecap="round" fill="none">
-    <!-- 1: Vorderseite (links) zum linken Badge-Rand -->
-    <path d="M345,225 L410,153" stroke="#ffffff" stroke-width="4.5" opacity="0.9"/>
-    <path d="M345,225 L410,153" stroke="#0b6bcb" stroke-width="1.8"/>
-    <!-- 2: microSD zum rechten Badge-Rand -->
-    <path d="M774,252 L755,240" stroke="#ffffff" stroke-width="4.5" opacity="0.9"/>
-    <path d="M774,252 L755,240" stroke="#0b6bcb" stroke-width="1.8"/>
-    <!-- 3: usb-c, ueber die Oberkante in den Spalt und unten an das rechte Badge-Rand -->
-    <path d="M975,54 L790,54 L790,320 L722,320" stroke="#ffffff" stroke-width="4.5" opacity="0.9"/>
-    <path d="M975,54 L790,54 L790,320 L722,320" stroke="#0b6bcb" stroke-width="1.8"/>
+    <!-- 1: Vorderseite (links) -> linkes Badge, ansetzen am linken Rand -->
+    <path d="M345,225 L407,185" stroke="#ffffff" stroke-width="4.5" opacity="0.9"/>
+    <path d="M345,225 L407,185" stroke="#0b6bcb" stroke-width="1.8"/>
+    <!-- 2: microSD -> rechtes Badge, ansetzen am rechten Rand -->
+    <path d="M780,162 L780,265 L758,265" stroke="#ffffff" stroke-width="4.5" opacity="0.9"/>
+    <path d="M780,162 L780,265 L758,265" stroke="#0b6bcb" stroke-width="1.8"/>
+    <!-- 3: usb-c -> rechtes Badge, ansetzen am rechten Rand -->
+    <path d="M812,330 L812,355 L758,355" stroke="#ffffff" stroke-width="4.5" opacity="0.9"/>
+    <path d="M812,330 L812,355 L758,355" stroke="#0b6bcb" stroke-width="1.8"/>
   </g>
 </svg>
