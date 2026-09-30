@@ -81,6 +81,12 @@ _ISLAND_FIRST = 40.0    # s until the first outage starts
 _ISLAND_PERIOD = 300.0  # s between outages
 _ISLAND_ON = 90.0       # s per outage
 
+# Household base load in W. Only ~1/4 of the load/pv mismatch reaches the grid
+# meter (see _drift), so the default only produces about 270 W of grid draw -
+# below the relay's 500 W default threshold. --lastung raises the household
+# when the Netzbezug function is to be tested.
+_LOAD_BASE = 654.0
+
 
 def _energy_rows():
     """[(oid name, value)] for every energy counter, derived from _ENERGY."""
@@ -94,6 +100,24 @@ def _energy_rows():
         rows.append((o_grid, grid))
         rows.append((o_load, load))
     return rows
+
+
+# The device also keeps counters for an external generator (the S0 meter). Both
+# the plain and the _sum variant of every period exist, and the firmware polls
+# six of the eight (e_ext_day_sum, e_ext_month_sum, e_ext_year_sum,
+# e_ext_total_sum, e_ext_day, e_ext_month - see rctOids[] in RctClient.cpp).
+# All eight are answered so a variant cannot be missed later: the cost of a
+# wrong id here is a silently missing row in the CSV, not a visible error.
+_EXT_NAMES = ("energy.e_ext_day", "energy.e_ext_day_sum",
+              "energy.e_ext_month", "energy.e_ext_month_sum",
+              "energy.e_ext_year", "energy.e_ext_year_sum",
+              "energy.e_ext_total", "energy.e_ext_total_sum")
+
+
+def _ext_rows():
+    """[(oid name, value)] for the external-generator counters (all 0, see the
+    io_board.s0_external_power comment in build_values)."""
+    return [(name, 0.0) for name in _EXT_NAMES]
 
 
 # --- value table: OID -> (object name, python value) -----------------------
@@ -122,6 +146,13 @@ def build_values():
         "g_sync.p_ac_load[2]": 61.0,
         "dc_conv.dc_conv_struct[0].p_dc_lp": 640.0,  # PV generator A
         "dc_conv.dc_conv_struct[1].p_dc_lp": 0.0,    # PV generator B
+        # S0 (the house's own grid meter) stays 0 in the sim: any non-zero value
+        # would have to be woven into _drift's balance identity to keep "PV
+        # gesamt = A + B + S0" and "Hausverbrauch = Last + S0" true, and a
+        # constant that only pretends to be an external generator teaches the
+        # wrong thing. The energy counters the device keeps for it follow: they
+        # are answered (the firmware asks for all six, see _ext_rows), because
+        # an unanswered read shows up on the panel as a gap in the S0 bar.
         "io_board.s0_external_power": 0.0,
         "battery.soc": 0.6886,             # 68.86 %
         "battery.current": 1.71,
@@ -155,10 +186,14 @@ def build_values():
     for name, val in _energy_rows():
         oi = R.get_by_name(name)
         out[oi.object_id] = (name, val)
+    for name, val in _ext_rows():
+        oi = R.get_by_name(name)
+        out[oi.object_id] = (name, val)
     return out
 
 
 VALUES = build_values()
+_NO_VALUE_WARNED = set()       # ids already complained about, see respond()
 STATE_LOCK = threading.RLock()  # RLock: _drift() -> set_value() may re-enter
 START = time.time()
 _LAST_DRIFT = START  # dt base for the energy integration in _drift()
@@ -188,7 +223,7 @@ def _drift():
     pv = max(0.0, pv)
     set_value("dc_conv.dc_conv_struct[0].p_dc_lp", pv)
 
-    load = 654.0 + 180.0 * math.sin(t / 60.0) + 40.0 * math.sin(t / 7.0)
+    load = _LOAD_BASE + 180.0 * math.sin(t / 60.0) + 40.0 * math.sin(t / 7.0)
     set_value("g_sync.p_ac_load[0]", max(40.0, load * 0.28))
     set_value("g_sync.p_ac_load[1]", max(40.0, load * 0.58))
     set_value("g_sync.p_ac_load[2]", max(20.0, load * 0.14))
@@ -316,6 +351,17 @@ def respond(conn, frame):
         return
     if frame.command != Command.READ:
         return
+    if frame.id not in VALUES:
+        # Known to the registry, but the sim has no value for it. Say so once
+        # per id instead of raising: raising here kills the answer for every
+        # later read in this burst (the firmware asks for ~55 values back to
+        # back), and the missing value should show up as one clear complaint
+        # rather than a traceback that hides which ids are missing.
+        if frame.id not in _NO_VALUE_WARNED:
+            _NO_VALUE_WARNED.add(frame.id)
+            log.error("read of 0x%08X (%s): no value in the sim's table",
+                      frame.id, oi.name)
+        return
     dt = oi.response_data_type
     value = get_value(frame.id)
     payload = encode_value(dt, value)
@@ -336,7 +382,19 @@ def main():
         help="comma-separated fault[0..3].flt hex values to simulate, "
         "e.g. --faults 0x00000040,0,0,0 (bit 6 = Uzk+ over limit)",
     )
+    ap.add_argument(
+        "--lastung",
+        type=float,
+        default=1.0,
+        help="household base load as a multiple of 654 W (default 1.0). "
+        "Only about a quarter of the load/pv mismatch reaches the grid "
+        "meter, so --lastung 4 is what makes the grid draw exceed the "
+        "relay's 500 W default threshold.",
+    )
     args = ap.parse_args()
+
+    global _LOAD_BASE
+    _LOAD_BASE = 654.0 * max(0.0, args.lastung)
 
     if args.faults:
         parts = [int(x, 16) for x in args.faults.split(",")]
