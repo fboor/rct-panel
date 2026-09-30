@@ -24,13 +24,13 @@ teilen sich Port 80 und das Radio, nie gleichzeitig.
 
 | Route           | Art                | Zweck                                             |
 | --------------- | ------------------ | ------------------------------------------------- |
-| `/`             | GET                | Übersicht: Netz, PV, Akku, Karte, Adresse, Wartung |
+| `/`             | GET                | Übersicht: Netz, PV, Akku, Karte, Ausgang, Adresse, Wartung |
 | `/daten`        | GET                | Liste der CSV-Dateien in `/hist`                    |
 | `/daten/<name>` | GET                | eine CSV-Datei, `?tail=<bytes>` für die letzten n Bytes |
 | `/bilder`       | GET                | Liste der Screenshots in `/shot`                   |
 | `/bilder/<name>`| GET                | ein Screenshot (BMP)                               |
 | `/update`       | GET / POST         | Firmware-Update                                    |
-| `/aktion`       | POST               | Neustart, WLAN neu einrichten (beide mit Code)     |
+| `/aktion`       | POST               | `was=neustart`, `was=setup`, `was=ausgang`, `was=test` (alle mit Code) |
 
 Alles andere: 404-Seite.
 
@@ -42,6 +42,8 @@ Alles, was das Panel verändert, verlangt den 4-stelligen Code:
 * Firmware-Update (`/update`)
 * Neustart (`/aktion`)
 * WLAN neu einrichten (`/aktion`)
+* Funktion und Schwelle des Schaltausgangs (`/aktion?was=ausgang`)
+* Test des Schaltausgangs (`/aktion?was=test`)
 
 Der Code wird bei jedem Start neu gezogen (`esp_random()`), steht auf der
 Panel-Seite **Service** und ist dort tippbar: ein neuer Code ziehen, wenn jemand
@@ -122,6 +124,23 @@ bootet das Panel die alte Firmware.
 
 Abgelehnt wird vor dem ersten geschriebenen Byte: Datei ohne `.bin`, und eine
 Größe außerhalb 1 Byte ... 7 340 032 Byte (die app-Partition).
+
+## Schaltausgang
+
+Die Startseite trägt oben Zustand und Funktion des Ausgangs, darunter das
+Formular: Auswahlfeld für die Funktion (5 Werte), Zahlenfeld für die Schwelle in
+Watt, und zwei Knöpfe - `was=ausgang` (übernehmen) und `was=test` (5 s an,
+5 s aus). Die Regeln dahinter stehen in `docs/relay.md`.
+
+`was=test` antwortet sofort und startet den Test im Hintergrund: der Browser
+würde 20 s lang auf eine Antwort warten, die er nicht braucht. Ein zweiter
+Teststart während eines laufenden Tests ist ein 409, kein zweiter Test.
+
+`was=ausgang` liest beide Felder und speichert die Schwelle auch dann, wenn die
+gewählte Funktion keine hat - so steht der Wert beim Zurückwechseln auf die
+Schwellwertfunktionen noch da. Die Service-Seite kann dieselbe Funktion durch
+Antippen wählen, aber keine Schwelle: Zahlen in Watt brauchen eine Tastatur, und
+das Panel hat nur ein Touchscreen.
 
 ## Puffer und Speicher
 

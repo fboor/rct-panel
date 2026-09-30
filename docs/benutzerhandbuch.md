@@ -91,7 +91,7 @@ Bestätigen Sie das Formular. Das Panel speichert die Angaben dauerhaft
 - Oder starten Sie das Panel, während kein gespeichertes Netzwerk erreichbar
   ist (nach ca. 15 s erscheint der AP von selbst).
 - Zum vollständigen Zurücksetzen auf Werkseinstellung kann der
-  NVS-Speicher gelöscht werden (Entwickler-Anleitung, Abschnitt 9).
+  NVS-Speicher gelöscht werden (Entwickler-Anleitung, Abschnitt 10).
 
 ---
 
@@ -232,12 +232,17 @@ Die einzige Seite mit Aktionen:
   (`/shot/shot001.bmp`). Die 5 Sekunden erlauben, vorher zu einer anderen
   Seite zu wechseln. Praktisch, wenn Sie dem Support zeigen möchten, was das
   Panel anzeigt.
-- Web-Oberfläche (unten): `Adresse` ist die IP-Adresse, unter der das Panel
-  seine Webseiten im Netz bereitstellt (siehe Kapitel 5), `Code` ist der
-  vierstellige Code, den diese Seiten für Änderungen verlangen. Beide Felder
-  sind nur belegt, solange das Panel im Netz ist. **Tippen Sie auf den Code**,
-  zieht das Panel sofort einen neuen — nützlich, wenn jemand über Ihre
-  Schulter mitgelesen hat.
+- Web-Oberfläche (rechts, unter den beiden Knöpfen): Darunter steht die
+  IP-Adresse, unter der das Panel seine Webseiten im Netz bereitstellt (siehe
+  Kapitel 5), darunter der vierstellige Code, den diese Seiten für Änderungen
+  verlangen. Beide Felder sind nur belegt, solange das Panel im Netz ist.
+  **Tippen Sie auf den Code**, zieht das Panel sofort einen neuen — nützlich,
+  wenn jemand über Ihre Schulter mitgelesen hat.
+- Ausgang (unten): die Steckdose am Relais-Port. `Ausgang` nennt die
+  eingestellte Funktion mit ihrer Schwelle in Watt; **Tippen Sie darauf**,
+  wechselt die Funktion. Darunter steht, was gerade passiert (`AN · 512 W
+  jetzt`). Der Knopf daneben prüft für 20 Sekunden, ob am Port überhaupt
+  etwas schaltet. Siehe Kapitel 6.
 
 ---
 
@@ -309,7 +314,7 @@ die IP-Adresse).
 
 | Adresse | Inhalt |
 |---|---|
-| `/` | Übersicht: Netz, PV, Akku, Karte, Adresse, Wartung |
+| `/` | Übersicht: Netz, PV, Akku, Karte, Ausgang, Adresse, Wartung |
 | `/daten` | Liste der aufgezeichneten CSV-Dateien |
 | `/bilder` | Liste der gespeicherten Screenshots |
 | `/update` | Firmware aktualisieren |
@@ -338,7 +343,8 @@ verlangt den vierstelligen Code:
 
 - Firmware aktualisieren (`/update`),
 - Neustart,
-- WLAN neu einrichten.
+- WLAN neu einrichten,
+- Funktion und Schwelle des Schaltausgangs.
 
 Der Code steht auf der Service-Seite und wird bei jedem Start des Panels neu
 gezogen; er wird nicht gespeichert und ist nach einem Neustart ein anderer.
@@ -346,9 +352,16 @@ Ein Neucode ziehen Sie jederzeit durch Antippen des Codes auf der
 Service-Seite. Der Code schützt vor einem Nachbarn im selben Netz, der die
 Adresse kennt — nicht vor jemandem, der das Display ablesen kann.
 
+### Der Schaltausgang
+
+Oben auf der Übersichtsseite steht der Schaltausgang (Steckdose) mit
+aktuellem Zustand und Funktion. Darunter wählen Sie die Funktion und die
+Schwelle und übernehmen sie — hinter dem Code, denn es ändert das Panel.
+Ausführlich beschrieben ist der Ausgang in Kapitel 6.
+
 ### Firmware aktualisieren
 
-Voraussetzung ist ein Build, wie in Kapitel 9 beschrieben
+Voraussetzung ist ein Build, wie in Kapitel 10 beschrieben
 (`pio run -e esp32-s3` erzeugt `firmware.bin`).
 
 1. Panel und Rechner im selben Netz; Adresse von der Service-Seite holen.
@@ -371,7 +384,83 @@ Voraussetzung ist ein Build, wie in Kapitel 9 beschrieben
 
 ---
 
-## 6. Hinweise <span class="h-sub">kompakt</span>
+## 6. Der Schaltausgang <span class="h-sub">Steckdose automatisch schalten</span>
+
+Am Relais-Port des Panels (Aufdruck „1Way") sitzt ein potentialfreier
+Schaltkontakt: kein eigener Transformator, sondern ein Relais, das Ihren
+Verbrauch direkt schaltet. Damit das Panel mehr kann als anzeigen, folgt der
+Ausgang einer Regel, die Sie wählen.
+
+### Die fünf Funktionen
+
+| Portal-Nr. | Funktion | Schaltet ein, wenn |
+|---|---|---|
+| 0 | **Aus** (Vorgabe) | nie |
+| 1 | **Netzbezug** | der Bezug aus dem Netz über der Schwelle liegt |
+| 2 | **Überschuss** | der PV-Überschuss über der Schwelle liegt |
+| 3 | **Störung** | der Wechselrichter eine Störung meldet |
+| 4 | **Inselbetrieb** | das Netz getrennt ist (die Anlage läuft im Inselbetrieb weiter) |
+
+> **Hinweis:** *Überschuss* heißt hier: was die beiden PV-Stränge und die
+> anderen Generatoren erzeugen, minus den Hausverbrauch. Energie von einem
+> fremden S0-Zähler zählt nicht als Ihr Überschuss — sonst würde das Panel eine
+> Last einschalten, die von einem anderen Generator bezahlt wird.
+
+### Einstellen
+
+Drei Wege, alle drei gleichwertig:
+
+1. **Auf dem Panel:** Service-Seite, Feld `Ausgang` antippen — jedes Antippen
+   springt zur nächsten Funktion (`Aus` → `Netzbezug` → `Überschuss` →
+   `Störung` → `Inselbetrieb` → `Aus`). Die gewählte Funktion bleibt auch nach
+   einem Neustart erhalten.
+2. **In der Weboberfläche** (Kapitel 5): Auswahlfeld für die Funktion und ein
+   Zahlenfeld für die Schwelle in Watt. Das ist der einzige Weg, eine Schwelle
+   in Watt bequem einzugeben — für das Tippen auf Zahlen braucht es eine
+   Tastatur.
+3. **Im Setup-Portal:** die Felder `relay_mode` (0 bis 4, siehe Tabelle) und
+   `relay_w` (Watt). Für den Fall, dass das Panel gar nicht im Heimnetz ist.
+
+### Das Zeitverhalten
+
+Damit der Ausgang nicht flattert, arbeitet er mit zwei Zeitfenstern und einer
+Hysterese:
+
+- **20 Sekunden** muss die Bedingung über der Schwelle liegen, dann schaltet
+  der Ausgang ein.
+- **Mindestens 60 Sekunden** bleibt er nach dem Einschalten an — auch wenn die
+  Bedingung in der Zwischenzeit unterschritten wird.
+- Die **Hysterese** beträgt 20 % der Schwelle: bei 500 W schaltet der Ausgang
+  bei 500 W ein und bei 400 W wieder aus. Ohne das würde ein Wert, der genau auf
+  der Schwelle steht, alle zehn Sekunden umschalten.
+- Keine Daten vom Wechselrichter (länger als zwei Minuten) heißt: **aus**. Ein
+  Ausgang, der wegen eines verschwundenen Wechselrichters eingeschaltet
+  bliebe, wäre die schlechtere Variante.
+
+### Anzeige und Test
+
+Auf der Service-Seite zeigt das Panel darunter, was gerade passiert:
+`AN · 512 W jetzt` oder `AUS · 120 W jetzt`. Die Zahl ist der Wert, gegen den
+verglichen wird — ohne sie wäre die Schwelle in Watt eine Zahl, die niemand
+sinnvoll einstellen kann.
+
+Der Knopf **„Test: 5 s an, 5 s aus"** schaltet den Ausgang zweimal ein und
+aus, unabhängig von der Regel und ohne Daten vom Wechselrichter. Damit lässt
+sich prüfen, ob am Port überhaupt etwas passiert.
+
+> **Tipp:** Der Ausgang ist beim Start **immer aus**, und die Voreinstellung ist
+> die Funktion `Aus`. Sie müssen also nichts tun, damit beim Einschalten
+> nichts passiert — erst eine Auswahl macht ihn zu einem Automaten.
+
+> **Hinweis:** Der Ausgang ist ein Automat, kein Schutz. Er schaltet nach
+> Messwerten und ist weder Fehlerstromschutz noch Überlastschutz. Wenn Sie
+> eine Speicherheizung oder eine Wärmepumpe damit betreiben, prüfen Sie die
+> Grenzen des Kontakts (siehe Kapitel 11) und die Absicherung des
+> Anschlusses — Anschlussarbeiten an der Steckdose gehören in Fachhände.
+
+---
+
+## 7. Hinweise <span class="h-sub">kompakt</span>
 
 | Größe | Konvention |
 |---|---|
@@ -384,7 +473,7 @@ Voraussetzung ist ein Build, wie in Kapitel 9 beschrieben
 
 ---
 
-## 7. Fehlerbehebung
+## 8. Fehlerbehebung
 
 | Symptom | Ursache / Lösung |
 |---|---|
@@ -398,21 +487,35 @@ Voraussetzung ist ein Build, wie in Kapitel 9 beschrieben
 | „Der Code stimmt nicht" | Code von der Service-Seite; er ändert sich bei jedem Start des Panels. Antippen zieht einen neuen. |
 | Download bricht ab | Der Browser hat die Verbindung geschlossen (Ruhezustand, Netzwechsel). Der Vorgang lässt sich einfach wiederholen. |
 | `/daten` bleibt leer | Auf der Karte steht noch keine Datei — es wird erst ab dem ersten Fünf-Minuten-Wert geschrieben. |
+| Ausgang schaltet nicht | Erst die Funktion prüfen (Service-Seite, Feld `Ausgang`): `Aus` schaltet nie. Bei `Netzbezug`/`Überschuss` muss der Wert die Schwelle 20 s lang übersteigen — die angezeigte Zahl ist der Wert, der gerade verglichen wird. |
+| Ausgang schaltet ständig | Schwelle zu niedrig angesetzt. Der Wert pendelt um die Schwelle, weil 20 % Hysterese zu wenig sind, wenn die Last grob springt. Schwelle erhöhen. |
+| Ausgang war 2 Minuten lang aus | Der Wechselrichter war nicht erreichbar. Ohne Daten schaltet der Ausgang aus — das ist Absicht, siehe Kapitel 6. |
+| Ausgang schaltet nach dem Neustart nicht | Er schaltet 20 Sekunden nach dem Start frühestens ein. Das Display zeigt aber sofort, welche Funktion eingestellt ist. |
 
 ---
 
-## 8. Sicherheit
+## 9. Sicherheit
 
 - Das Panel ist ein Anzeigegerät und greift nicht in die
   Wechselrichter-Konfiguration ein.
 - Arbeiten an elektrischen Anlagen (Wechselrichter, Zählerschrank) gehören in
   Fachhände — das Panel selbst wird nur mit Kleinspannung (5 V) versorgt.
+- Der Schaltausgang ist ein potentialfreier Relaiskontakt, kein elektronischer
+  Schalter. Die Grenzen (Kontaktbelastbarkeit, Anlaufstrom von Motoren und
+  Leuchtstoffmitteln) stehen in Kapitel 11; ein Relais ist nicht für alles
+  ausgelegt, was ein Verbrauch anfordert.
+- Der Ausgang folgt Messwerten. Er ist **kein** Fehlerstromschutz, **kein**
+  Überlastschutz und **keine** Garantie, dass eine angeschlossene Last
+  ausschließlich mit Solarstrom läuft.
+- Der Code der Weboberfläche schützt vor einem Nachbarn im selben Netz. Er ist
+  kein Passwort und kein Schutz gegen jemanden mit physischem Zugang zum
+  Gerät.
 - Die angezeigten Werte dienen der Beobachtung; für abrechnungsrelevante
   Daten gilt das Portal des Herstellers.
 
 ---
 
-## 9. Entwickler: Firmware aktualisieren (Kurzfassung)
+## 10. Entwickler: Firmware aktualisieren (Kurzfassung)
 
 Quellcode und Build liegen in diesem Repository (`rct-panel`). Voraussetzung:
 PlatformIO (Core 6.x).
@@ -467,7 +570,7 @@ nicht möglich — die Binärdatei kommt aus dem Netz direkt auf das Gerät.
 
 ---
 
-## 10. Technische Daten
+## 11. Technische Daten
 
 | Bezeichnung | Technische Daten |
 |---|---|
@@ -481,6 +584,9 @@ nicht möglich — die Binärdatei kommt aus dem Netz direkt auf das Gerät.
 | Datenabfrage | RCT-Wechselrichter über TCP (Port 8899) |
 | Datenaufzeichnung | alle 5 Minuten als CSV (ca. 40 KB pro Tag) |
 | Weboberfläche | HTTP-Server im lokalen Netz (Port 80): Status, CSV-/Bild-Download, Firmware-Update; änderende Funktionen mit 4-stelligem Code |
+| Schaltausgang | potentialfreier Relaiskontakt am Port „1Way" (GPIO 40), 5 wählbare Funktionen, 20 s Einschaltverzögerung, 60 s Mindesthaltezeit, 20 % Hysterese; aus bei jedem Start |
+| Kontaktbelastbarkeit | siehe Aufdruck am Relais-Port bzw. Datenblatt des verbauten Relais (Ohm/VA, Anlaufstrom bei Motoren und Leuchtstoffmitteln beachten) |
+| Ausgang-verhalten bei Datenausfall | schaltet aus, wenn der Wechselrichter länger als 2 min keine Daten liefert |
 
 Das Panel zeigt ausschließlich Messwerte an — es **verändert keine
 Einstellungen am Wechselrichter** (eine Ausnahme: der Setup-Modus legt nur
@@ -495,6 +601,9 @@ die eigenen Netzwerk- und Verbindungsdaten des Panels fest).
 - Ist der Wechselrichter nicht erreichbar, zeigt das Panel weiterhin die
   letzten Werte an, kennzeichnet den Zustand aber im Statusfeld (siehe
   Abschnitt 2) und versucht die Verbindung automatisch wiederherzustellen.
+- Der Schaltausgang prüft seine Regel einmal pro Sekunde gegen die zuletzt
+  gelesenen Werte und schaltet bei 20 Sekunden Überschreiten der Schwelle ein
+  bzw. nach frühestens 60 Sekunden wieder aus.
 
 ---
 

@@ -26,11 +26,13 @@
 
 #include "../Diag.h"
 #include "../config/Configuration.h"
+#include "../output/Relay.h"
 #include "../rct/RctTypes.h"
 #include "../storage/sdlog.h"
 #include "pages.h"
 
 #include <ESPmDNS.h>
+#include <math.h>
 #include <string.h>
 #include <Update.h>
 #include <WebServer.h>
@@ -52,6 +54,14 @@ static const uint32_t kMaxFirmware = 7340032u;
 // "tail=..." is clamped to this. A month of CSV at 5-minute rows is about
 // 300 kB, so 1 MB covers every file this panel can produce.
 static const uint32_t kMaxTail = 1048576u;
+
+// The functions the switched output can follow, in the order of RelayMode and
+// therefore in the order the panel cycles through them. The same text is used
+// for the read-out and for the select, so the two can never disagree.
+static const char *const kRelayModeName[kRelayModeCount] = {
+    "Aus (schaltet nie)", "Netzbezug &uuml;ber Schwelle",
+    "&Uuml;berschuss &uuml;ber Schwelle", "St&ouml;rung am Wechselrichter",
+    "Inselbetrieb (Netz getrennt)"};
 
 namespace {
 
@@ -217,7 +227,7 @@ void handleRoot() {
   const RctSnapshot &s = rctState;
   char v[40];
   String b;
-  b.reserve(2400);
+  b.reserve(3000);
 
   b += F("<div class=\"big\">");
   auto card = [&b, &v](const char *label, const char *value) {
@@ -279,6 +289,59 @@ void handleRoot() {
   row("Adresse hier", ip);
   row("Als Name", s_mdnsStarted ? "rct-panel.local" : "-");
   b += F("</table>");
+
+  // The switched output. Its state belongs with the other read-outs, but
+  // changing the function is a write and therefore behind the code - the same
+  // rule the update follows. The panel display can cycle the function by
+  // tapping, which is the quicker way; this form is where the threshold in
+  // watts goes, and where the test sits next to the thing it tests.
+  b += F("<h2>Ausgang</h2><table>");
+  {
+    const RelayMode m = relayMode();
+    const bool hasThreshold =
+        (m == RelayMode::GridDraw || m == RelayMode::PvSurplus);
+    row("Funktion", kRelayModeName[(int)m]);
+    if (relayTestRunning()) {
+      row("Zustand", "Test l&auml;uft");
+    } else if (hasThreshold) {
+      snprintf(v, sizeof(v), "%s &middot; %d W jetzt", relayIsOn() ? "ein" : "aus",
+               (int)lroundf(relayTriggerValue()));
+      row("Zustand", v);
+    } else {
+      row("Zustand", relayIsOn() ? "ein" : "aus");
+    }
+  }
+  b += F("</table>");
+  b += F("<div class=\"note\">Der Ausgang schaltet ein, wenn der Wert 20 s "
+         "lang &uuml;ber der Schwelle liegt, und bleibt nach dem Einschalten "
+         "mindestens 60 s an. &Uuml;berschuss hei&szlig;t PV minus "
+         "Hausverbrauch (mit S0). Ist der Wechselrichter zwei Minuten lang "
+         "nicht erreichbar, schaltet der Ausgang aus.</div>");
+  b += F("<form action=\"/aktion\" method=\"POST\">");
+  b += F("<input type=\"text\" name=\"code\" inputmode=\"numeric\" "
+         "maxlength=\"4\" placeholder=\"Code\">");
+  b += F("<select name=\"funktion\">");
+  for (int i = 0; i < kRelayModeCount; i++) {
+    b += F("<option value=\"");
+    b += i;
+    b += F("\"");
+    if ((int)relayMode() == i) {
+      b += F(" selected");
+    }
+    b += F(">");
+    b += kRelayModeName[i];
+    b += F("</option>");
+  }
+  b += F("</select>");
+  b += F("<input type=\"number\" name=\"schwelle\" min=\"0\" max=\"5000\" "
+         "step=\"50\" value=\"");
+  b += relayThreshold();
+  b += F("\" title=\"Schwelle in Watt\">");
+  b += F("<button class=\"btn\" name=\"was\" value=\"ausgang\">"
+         "&Uuml;bernehmen</button> ");
+  b += F("<button class=\"btn gray\" name=\"was\" value=\"test\">"
+         "Test: 5 s an, 5 s aus</button>");
+  b += F("</form>");
 
   b += F("<h2>Wartung</h2>");
   b += F("<div class=\"note\">Update, Neustart und WLAN-Einrichtung "
@@ -773,6 +836,36 @@ void handleAction() {
     delay(500);
     webStop(); // frees port 80 and the radio for the portal
     restartProvisioning();
+    return;
+  }
+  if (was == "test") {
+    // Drives the output, so it belongs behind the code like everything else that
+    // touches the panel. The answer is sent first: the test runs 20 s and the
+    // panel keeps drawing, but the browser should not wait for it.
+    const bool started = relayStartTest();
+    Serial.printf("Web: Ausgang-Test %s\n", started ? "gestartet" : "laeuft schon");
+    sendMsg(started ? 200 : 409,
+            started ? "Test laeuft: 5 s ein, 5 s aus, zweimal."
+                    : "Ein Test laeuft bereits.");
+    return;
+  }
+  if (was == "ausgang") {
+    // Both fields belong to the same form; the select decides the function, the
+    // number its threshold. The threshold is stored even for a function that has
+    // none, so switching back to a threshold function keeps the value.
+    const String f = s_server.arg("funktion");
+    const int m = f.toInt();
+    const int w = s_server.arg("schwelle").toInt();
+    if (m < 0 || m >= kRelayModeCount) {
+      sendMsg(400, "Unbekannte Funktion.");
+      return;
+    }
+    relaySetThreshold(w);
+    relaySetMode((RelayMode)m);
+    Serial.printf("Web: Ausgang auf '%s', Schwelle %d W\n",
+                  kRelayModeName[m], relayThreshold());
+    sendMsg(200, "&Uuml;bernommen. Das Panel zeigt die neue Funktion auf der "
+                 "Seite Service.");
     return;
   }
   sendMsg(400, "Unbekannte Aktion.");

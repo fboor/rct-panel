@@ -72,7 +72,8 @@ ul.plain li .g b{display:block;word-break:break-all}
 ul.plain li .m{color:#5a6672;font-size:13px;white-space:nowrap}
 form{margin:0}
 input[type=file]{display:block;width:100%;margin:10px 0;padding:11px;background:#fff;border:1px solid #dfe3e8;border-radius:8px}
-input[type=text]{width:100%;padding:11px;margin:10px 0;border:1px solid #dfe3e8;border-radius:8px;font-size:16px}
+input[type=text],input[type=number],select{width:100%;padding:11px;margin:10px 0;border:1px solid #dfe3e8;border-radius:8px;font-size:16px;background:#fff}
+.btn+.btn{margin-left:8px}
 code{background:#e8ebef;padding:1px 5px;border-radius:4px;font-size:14px}
 )" ;
 

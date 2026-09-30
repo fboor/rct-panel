@@ -1,0 +1,17 @@
+#!/bin/sh
+# Host test for the switched output.
+#
+# src/output/Relay.cpp is compiled as-is against the stubs in stubs/, so what
+# is tested is the shipped code, not a copy of it. The stub is deliberately
+# small: millis() comes from a global, digitalWrite() writes to a variable the
+# test can read, and Preferences keeps the last value per key in RAM.
+#
+# Checks the things that cannot be checked on the bench: the 20 s on-delay, the
+# 60 s minimum hold, the 20 % hysteresis band, "no data means off", the S0
+# handling of the surplus rule, the test sequence, the mode cycle and the NVS
+# round-trip including out-of-range values.
+set -e
+cd "$(dirname "$0")/../.."
+g++ -std=c++17 -Wall -Itools/relay_test/stubs -Isrc \
+    -o /tmp/relay_test tools/relay_test/test_relay.cpp
+exec /tmp/relay_test

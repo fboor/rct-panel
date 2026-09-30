@@ -19,6 +19,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "Configuration.h"
 
+#include "../output/Relay.h"
 #include "../web/WebServer.h"
 #include <Preferences.h>
 #include <WiFiManager.h>
@@ -71,6 +72,25 @@ static WiFiManagerParameter p_rct_port("rct_port",
                                        "<b>RCT port</b><br><code>8899</code> default",
                                        rct_port, 6);
 
+// The switched output, as two number fields. A <select> is not reachable here:
+// WiFiManagerParameter renders an <input> from the ID it is given (see
+// WiFiManager.cpp, HTTP_FORM_PARAM), and a parameter with no ID is emitted as
+// raw HTML but never receives its value back on save. So the portal gets
+// numbers with the list spelled out, and the places where this is actually
+// pleasant to set - tapping the function on the Service page, and the form on
+// the panel's own web page - get a select or a tap instead.
+static WiFiManagerParameter p_relay_mode(
+    "relay_mode",
+    "<b>Output function</b><br>0=off (default) &middot; 1=grid draw &middot; "
+    "2=PV surplus &middot; 3=fault &middot; 4=island. Easier to set on the "
+    "panel (Service page) or in its web interface.",
+    "0", 2, "type=\"number\" min=\"0\" max=\"4\"");
+static WiFiManagerParameter p_relay_w(
+    "relay_w",
+    "<b>Output threshold</b><br>in watts, 0-5000; used by functions 1 and 2. "
+    "Default 500.",
+    "500", 5, "type=\"number\" min=\"0\" max=\"5000\" step=\"50\"");
+
 void readConfig() {
   prefs.begin("config", false);
   strncpy(rct_host, prefs.getString("rct_host", rct_host).c_str(),
@@ -112,6 +132,14 @@ static void startProvisioningAp() {
   // save would re-submit the stale compile-time host and clobber NVS.
   p_rct_host.setValue(rct_host, sizeof(rct_host) - 1);
   p_rct_port.setValue(rct_port, sizeof(rct_port) - 1);
+  // Same reason for the output fields: their defaults are also compile-time
+  // constants, and a portal save submits whatever the form holds.
+  char relayModeStr[4];
+  char relayWStr[8];
+  snprintf(relayModeStr, sizeof(relayModeStr), "%d", (int)relayMode());
+  snprintf(relayWStr, sizeof(relayWStr), "%d", relayThreshold());
+  p_relay_mode.setValue(relayModeStr, strlen(relayModeStr));
+  p_relay_w.setValue(relayWStr, strlen(relayWStr));
   // Modem sleep can make the ESP32-S3 softAP drop beacons/associations; keep
   // the radio fully awake while the panel is acting as the provisioning AP.
   WiFi.setSleep(false);
@@ -159,6 +187,19 @@ static void finishWifiUp() {
     strcpy(rct_host, p_rct_host.getValue());
     strcpy(rct_port, p_rct_port.getValue());
     saveConfig();
+    // The switched output goes with it - this is the only way to reach these
+    // settings when the panel is not in the home network and its own web
+    // interface is therefore not reachable. Out-of-range input is ignored
+    // rather than clamped, so a typo cannot silently pick a different
+    // function; relaySetThreshold() clamps on its own because a number with a
+    // stray character is still a number.
+    const int m = atoi(p_relay_mode.getValue());
+    if (m >= 0 && m < kRelayModeCount) {
+      relaySetMode((RelayMode)m);
+    } else {
+      Serial.printf("Portal: relay_mode '%s' ignoriert\n", p_relay_mode.getValue());
+    }
+    relaySetThreshold(atoi(p_relay_w.getValue()));
     shouldSaveConfig = false;
   } else {
     // Background reconnect: the parameter buffers still hold the compile-time
@@ -184,17 +225,24 @@ static void finishWifiUp() {
 void networkSetup() {
   readConfig();
 
-  // TEMP (dev/test): point the panel at the local RCT simulator instead of
-  // the stored host so live values can be verified. Remove for production; the
-  // real host then comes from NVS / the provisioning portal again.
+  // Dev/test only: point the panel at a local RCT simulator instead of the
+  // stored host, so live values can be verified without the real device. The
+  // real host comes from NVS / the provisioning portal.
+  //
+  // This is a build flag and not a source edit, because forgetting to remove it
+  // would ship a panel that talks to an address that does not exist:
+  //   pio run -e esp32-s3 -t upload --project-option "build_flags=-DRCT_SIM_HOST=192.168.1.83"
+#ifdef RCT_SIM_HOST
+  strncpy(rct_host, RCT_SIM_HOST, sizeof(rct_host) - 1);
+  rct_host[sizeof(rct_host) - 1] = '\0';
+  strcpy(rct_port, "8899");
+  Serial.printf("RCT: Simulator-Host %s:%s (Build-Flag RCT_SIM_HOST)\n", rct_host,
+                rct_port);
+#endif
   // Real device, read-only. The panel sends exactly two kinds of frame:
   // READ requests (type 0x01, one per OID) and the 0x3c poll request, which
   // asks the device to volunteer its values. It never builds a WRITE frame
   // (type 0x02), so no setting on the device can be altered from here.
-  strcpy(rct_host, "192.168.1.83");
-  strcpy(rct_port, "8899");
-  Serial.printf("RCT: using simulator host %s:%s (TEMP override)\n", rct_host,
-                rct_port);
 
   wm.setDebugOutput(false);
   wm.setTitle("RCT Panel");
@@ -202,6 +250,8 @@ void networkSetup() {
   wm.addParameter(&section_rct);
   wm.addParameter(&p_rct_host);
   wm.addParameter(&p_rct_port);
+  wm.addParameter(&p_relay_mode);
+  wm.addParameter(&p_relay_w);
   // Portals must stay cooperative with the GUI loop instead of running
   // WiFiManager's internal blocking loop (the library default): we pump the
   // captive portal web server from networkUpdate()/loop() instead.

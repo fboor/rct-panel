@@ -13,6 +13,7 @@
 #include "display/Display.h"
 #include "display/Touch.h"
 #include "gui/GuiApp.h"
+#include "output/Relay.h"
 #include "rct/RctClient.h"
 #include "storage/sdlog.h"
 #include "web/WebServer.h"
@@ -37,6 +38,11 @@ void setup() {
   // Started first, so a hang during the rest of the boot is reported too.
   diagStart();
   lv_log_register_print_cb(lvLogPrint);
+
+  // Before anything else touches hardware: the switched output is driven to its
+  // off level while the rest of the board is still coming up. Everything that
+  // follows can only ever open it, never leave it undefined (see Relay.h).
+  relayInit();
 
   if (!displayInit()) {
     Serial.println(F("FATAL: display init failed, halting"));
@@ -157,6 +163,12 @@ void loop() {
     lastRct = now;
     rctParse(); // marks its own phases: rct.connect / rct.poll
   }
+
+  // Switched output: evaluates its rule at 1 Hz on the values rctParse() just
+  // refreshed. Costs a few comparisons; the timings it waits for (20 s on-delay,
+  // 60 s minimum hold) are far longer than a poll interval.
+  diagPhase("relay.update");
+  relayUpdate();
 
   // SD history: one CSV row per 5 minutes (see docs/sd-history.md). The card
   // work itself happens in the SD worker task; these calls only format and post.

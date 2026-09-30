@@ -47,6 +47,7 @@
 #include "../Diag.h"
 #include "../display/Display.h"
 #include "../display/Touch.h"
+#include "../output/Relay.h"
 #include "../rct/RctTypes.h"
 #include "../storage/sdlog.h"
 #include "../web/WebServer.h"
@@ -227,6 +228,8 @@ enum SvLabel {
   SV_SHOT,       // screenshot state ("geschrieben" / "wird geschrieben")
   SV_WEB,        // panel's own address (web interface, normal operation)
   SV_CODE,       // 4-digit code for the web interface's write actions
+  SV_RELAY,      // function the switched output follows (tappable)
+  SV_RELAY_ST,   // what it is doing now, with the value it watches
   SV_LABEL_COUNT,
 };
 
@@ -1007,11 +1010,20 @@ static void serviceBatteryDecode(uint32_t v, float batPower, char *out,
   strlcpy(out, state, n);
 }
 
-// Active faults -> "F<n> <description>" lines, capped at kMax so the list
-// stays inside the reserved text area; surplus faults are summarized. Returns
-// the total number of active faults (0 = none).
+// Active faults -> "F<n> <description>" lines, capped so the list stays inside
+// the text area reserved for it; surplus faults are summarized. Returns the
+// total number of active faults (0 = none).
+//
+// The cap is a *character* budget, not a row count, because the label is
+// narrower than the page (280 px next to the web block) and a fault text of
+// 40-odd characters therefore wraps onto a second line. kCharsPerLine is
+// measured from the 14 px font: 280 px fit about 38 characters. kMaxLines is
+// derived from the space the block actually has - 142 to 236 px at 18 px per
+// line - so the list can never reach the "SD-Log" heading below it.
 static int serviceFaultText(const uint32_t *bits, char *out, size_t n) {
-  const int kMax = 10; // reserved rows on the page (14 px font ~18 px/row)
+  const size_t kCharsPerLine = 38;
+  const size_t kMaxLines = 5;
+  const size_t budget = kCharsPerLine * kMaxLines;
   out[0] = '\0';
   size_t used = 0;
   int count = 0;
@@ -1019,8 +1031,8 @@ static int serviceFaultText(const uint32_t *bits, char *out, size_t n) {
   for (int bit = 0; bit < 128; bit++) {
     if (bits[bit / 32] & (1u << (bit % 32))) {
       count++;
-      if (shown >= kMax) {
-        continue;
+      if (used + 4 + strlen(kFaultDe[bit]) > budget) {
+        continue; // would push the list into the heading below
       }
       int w = snprintf(out + used, n - used, "F%d %s\n", bit, kFaultDe[bit]);
       if (w <= 0 || (size_t)w >= n - used) {
@@ -1054,6 +1066,34 @@ static void webCodeNewCb(lv_event_t *e) {
     return;
   }
   webNewCode();
+}
+
+// Tap on the output's function: the next one in the list. Stored immediately,
+// because a function that silently came back after the next power cut would be
+// the more surprising behaviour.
+static void relayModeCb(lv_event_t *e) {
+  (void)e;
+  relayCycleMode();
+}
+
+// "Test 5 s an / 5 s aus": the check that this really is the right pin and the
+// right polarity, without a browser and without data from the inverter. Pressed
+// again while it runs, it does nothing.
+static void relayTestCb(lv_event_t *e) {
+  (void)e;
+  relayStartTest();
+}
+
+// Function name plus the threshold it compares against, for the one row that
+// shows both. The threshold only means something for the two modes that have
+// one; the other two show their name alone.
+static void relayModeText(char *out, size_t n) {
+  const RelayMode m = relayMode();
+  if (m == RelayMode::GridDraw || m == RelayMode::PvSurplus) {
+    snprintf(out, n, "%s > %d W", relayModeName(m), relayThreshold());
+  } else {
+    snprintf(out, n, "%s", relayModeName(m));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1188,11 +1228,13 @@ static void shotCb(lv_event_t *e) {
 static void pageBuildService(AppPage *p) {
   lv_obj_t *root = p->root;
 
-  auto sectionHead = [&](const char *text, lv_coord_t y) {
+  auto sectionHead = [&](const char *text, lv_coord_t y, lv_coord_t x = 20) {
     // Same size as the page heading: on this page the section titles carry the
-    // information ("was steht hier"), the values are the small print.
+    // information ("was steht hier"), the values are the small print. The
+    // column is a parameter because the right one is used as well - see the web
+    // block further down.
     lv_obj_t *h = makeLabel(root, text, &lv_font_montserrat_16_uml, COL_MUTED);
-    lv_obj_set_pos(h, 20, y);
+    lv_obj_set_pos(h, x, y);
     return h;
   };
 
@@ -1230,7 +1272,10 @@ static void pageBuildService(AppPage *p) {
   p->labels[SV_FLT_LIST] =
       makeLabel(root, "--", &lv_font_montserrat_14_uml, COL_TEXT);
   lv_obj_set_pos(p->labels[SV_FLT_LIST], 20, 142);
-  lv_obj_set_width(p->labels[SV_FLT_LIST], 440);
+  // 280 px, not the full 440: the web block moved into the right column, and a
+  // fault text that runs under it is worse than one that wraps. The list is
+  // capped in characters accordingly (serviceFaultText).
+  lv_obj_set_width(p->labels[SV_FLT_LIST], 280);
   p->labelCount = SV_LABEL_COUNT;
 
   // --- SD history log (status only; the writer lives in storage/sdlog.cpp) ---
@@ -1277,39 +1322,84 @@ static void pageBuildService(AppPage *p) {
   lv_obj_set_width(p->labels[SV_SHOT], 160);
 
   // --- Web interface (address + the code that guards its write actions) ---
-  // Here and not on the Info page: that one is full at 14 rows, and this is
-  // maintenance information in any case - the same group as the setup button
-  // above, which is the fallback path into the same web interface.
+  // In the right column, under the two buttons: this is the same web interface
+  // the setup button leads to, so address and code belong next to it rather
+  // than in the lower half, which the output block now uses. It is not on the
+  // Info page either - that one is full at 14 rows, and this is maintenance
+  // information in any case.
   //
   // The code is a value, not a setting, so it is shown as text and tappable:
   // pressing it draws a new one, which is the answer to "someone read it over
   // my shoulder" (the code changes per boot anyway, so this is a convenience
   // rather than a security measure - what it really protects is a network
   // neighbour who guessed the address).
-  (void)sectionHead("Web-Oberfläche", 290);
-  lv_obj_t *webName = makeLabel(root, "Adresse:", &lv_font_montserrat_14_uml,
-                                COL_MUTED);
-  lv_obj_set_pos(webName, 20, 314);
+  (void)sectionHead("Web-Oberfläche", 118, 300);
   p->labels[SV_WEB] =
       makeLabel(root, "-", &lv_font_montserrat_14_uml, COL_TEXT);
-  lv_obj_set_pos(p->labels[SV_WEB], 120, 314);
-  lv_obj_t *codeName = makeLabel(root, "Code:", &lv_font_montserrat_14_uml,
-                                 COL_MUTED);
-  lv_obj_set_pos(codeName, 20, 336);
-  p->labels[SV_CODE] = makeLabel(root, "----", &lv_font_montserrat_14_uml,
+  lv_obj_set_pos(p->labels[SV_WEB], 300, 140);
+  p->labels[SV_CODE] = makeLabel(root, "Code: ----", &lv_font_montserrat_14_uml,
                                  COL_TEXT);
-  lv_obj_set_pos(p->labels[SV_CODE], 120, 336);
+  lv_obj_set_pos(p->labels[SV_CODE], 300, 162);
   // Wide, so the target is a line and not four digits.
-  lv_obj_set_width(p->labels[SV_CODE], 200);
+  lv_obj_set_width(p->labels[SV_CODE], 140);
   lv_obj_set_style_bg_color(p->labels[SV_CODE], lv_color_hex(0xe8ebef), 0);
   lv_obj_set_style_radius(p->labels[SV_CODE], 6, 0);
   lv_obj_set_style_pad_hor(p->labels[SV_CODE], 8, 0);
   lv_obj_add_flag(p->labels[SV_CODE], LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(p->labels[SV_CODE], webCodeNewCb, LV_EVENT_CLICKED,
                       nullptr);
-  lv_obj_t *hint = makeLabel(root, "antippen = neuer Code",
-                             &lv_font_montserrat_14_uml, COL_MUTED);
-  lv_obj_set_pos(hint, 230, 336);
+  lv_obj_t *hint = makeLabel(root, "antippen = neu", &lv_font_montserrat_14_uml,
+                             COL_MUTED);
+  lv_obj_set_pos(hint, 300, 184);
+
+  // --- Switched output ("Ausgang") ---
+  // The function it follows is a setting, but the setting that is changed most
+  // often is "which of these do I actually want" - so it is a tap here rather
+  // than a form in the web interface. Both are available; the tap is the quick
+  // one, the web page is where the threshold in watts is entered.
+  (void)sectionHead("Ausgang", 288);
+  p->labels[SV_RELAY] = makeLabel(root, "Aus", &lv_font_montserrat_14_uml,
+                                   COL_TEXT);
+  lv_obj_set_pos(p->labels[SV_RELAY], 20, 310);
+  lv_obj_set_width(p->labels[SV_RELAY], 220);
+  lv_obj_set_style_bg_color(p->labels[SV_RELAY], lv_color_hex(0xe8ebef), 0);
+  lv_obj_set_style_radius(p->labels[SV_RELAY], 6, 0);
+  lv_obj_set_style_pad_hor(p->labels[SV_RELAY], 8, 0);
+  lv_obj_add_flag(p->labels[SV_RELAY], LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(p->labels[SV_RELAY], relayModeCb, LV_EVENT_CLICKED,
+                      nullptr);
+  lv_obj_t *modeHint = makeLabel(root, "antippen = wechseln",
+                                 &lv_font_montserrat_14_uml, COL_MUTED);
+  lv_obj_set_pos(modeHint, 250, 310);
+  // What the output is doing, and the value it compares against its threshold -
+  // without that number a threshold in watts is a number nobody can set sensibly.
+  p->labels[SV_RELAY_ST] =
+      makeLabel(root, "", &lv_font_montserrat_14_uml, COL_MUTED);
+  lv_obj_set_pos(p->labels[SV_RELAY_ST], 20, 336);
+  lv_obj_set_width(p->labels[SV_RELAY_ST], 260);
+
+  // Test button, on the same line as the state it overrules. 5 s on, 5 s off,
+  // twice: long enough to hear or see, short enough not to leave a load running
+  // if nobody is watching. It ignores the rule, which is the point - the rule
+  // needs data from the inverter, the test must work without it.
+  //
+  // 26 px tall, not 30: the row it sits in ends at 362, the last pixel the
+  // content area has.
+  lv_obj_t *test = lv_button_create(root);
+  lv_obj_set_pos(test, 300, 336);
+  lv_obj_set_size(test, 160, 26);
+  lv_obj_set_style_bg_color(test, COL_BAR, 0);
+  lv_obj_set_style_bg_color(test, COL_ACCENT, LV_STATE_PRESSED);
+  lv_obj_set_style_radius(test, 8, 0);
+  lv_obj_set_style_border_width(test, 0, 0);
+  lv_obj_set_style_shadow_width(test, 0, 0);
+  lv_obj_set_style_pad_hor(test, 8, 0);
+  lv_obj_add_event_cb(test, relayTestCb, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t *tl = lv_label_create(test);
+  lv_label_set_text(tl, "Test: 5 s an, 5 s aus");
+  lv_obj_set_style_text_font(tl, &lv_font_montserrat_14_uml, 0);
+  lv_obj_set_style_text_color(tl, FLOW_WHITE, 0);
+  lv_obj_center(tl);
 }
 
 // Format one scale marker value: "0" or kW with comma decimal ("2,5",
@@ -2046,6 +2136,35 @@ static void refreshCb(lv_timer_t *t) {
     }
   }
 
+  // Switched output: the function it follows, and what it is doing right now.
+  // Both are read on the same 1 s tick as everything else on this page. The
+  // relay's own timings (20 s on-delay, 60 s minimum hold) are much longer, so
+  // this refresh exists to show the measured value next to the threshold it is
+  // compared against - not to switch anything.
+  if (sv.labels[SV_RELAY]) {
+    char mode[48];
+    relayModeText(mode, sizeof(mode));
+    setText(sv.labels[SV_RELAY], "%s", mode);
+
+    if (sv.labels[SV_RELAY_ST]) {
+      const RelayMode m = relayMode();
+      if (relayTestRunning()) {
+        setText(sv.labels[SV_RELAY_ST], "Test laeuft");
+      } else if (m == RelayMode::Off) {
+        setText(sv.labels[SV_RELAY_ST], "nichts geschaltet");
+      } else if (m == RelayMode::GridDraw || m == RelayMode::PvSurplus) {
+        setText(sv.labels[SV_RELAY_ST], "%s · %d W jetzt",
+                relayIsOn() ? "AN" : "AUS",
+                (int)lroundf(relayTriggerValue()));
+      } else {
+        setText(sv.labels[SV_RELAY_ST], "%s · %s", relayIsOn() ? "AN" : "AUS",
+                relayModeName(m));
+      }
+      lv_obj_set_style_text_color(sv.labels[SV_RELAY_ST],
+                                  relayIsOn() ? COL_OK : COL_MUTED, 0);
+    }
+  }
+
   // Web interface: address and code. Both exist only in normal operation, and
   // both are read on every 1 s tick so the code also shows up directly after a
   // tap without waiting for a page change.
@@ -2054,12 +2173,12 @@ static void refreshCb(lv_timer_t *t) {
       char ip[20];
       strlcpy(ip, WiFi.localIP().toString().c_str(), sizeof(ip));
       setText(sv.labels[SV_WEB], "%s", ip);
-      setText(sv.labels[SV_CODE], "%s", webCode(nullptr));
+      setText(sv.labels[SV_CODE], "Code: %s", webCode(nullptr));
     } else if (s_webWasUp) {
       // The server is gone (provisioning started, or the link dropped): clear
       // the code, which is no longer valid for anything.
       setText(sv.labels[SV_WEB], "-");
-      setText(sv.labels[SV_CODE], "----");
+      setText(sv.labels[SV_CODE], "Code: ----");
     }
   }
   s_webWasUp = webRunning();
