@@ -24,13 +24,19 @@
 // flash again. Nothing else has to change, because every switch goes through
 // relayWrite() in Relay.cpp.
 //
+// Measured on the wall, on this board's own relay port (2026-09-30): the pin
+// sits HIGH while the output is idle and the output follows a HIGH, so the
+// module is high-level triggered. That is the setting below. relayInit() prints
+// both levels into the log, so the setting that is actually compiled in can be
+// read off the serial line without a meter.
+//
 // The one hardware caveat: an active-low module is *on* while the pin floats,
 // and between reset and relayInit() the pin is an input. On the board's own
 // relay port the surrounding hardware decides this; on a module wired by hand
 // put 10 kOhm from the pin to 3V3. An active-high module has the mirrored
 // problem, where a floating pin is the safe state - but it should still get
 // 10 kOhm to GND so it cannot pick up noise while the firmware boots.
-#define RELAY_ACTIVE_LOW 1
+#define RELAY_ACTIVE_LOW 0
 
 #if RELAY_ACTIVE_LOW
 #define RELAY_LEVEL_ON LOW

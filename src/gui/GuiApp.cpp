@@ -43,6 +43,7 @@
 
 #include "GuiApp.h"
 
+#include "../NumFmt.h"
 #include "../config/Configuration.h"
 #include "../Diag.h"
 #include "../display/Display.h"
@@ -221,8 +222,10 @@ enum DevLabel {
 
 // Service page label indices.
 enum SvLabel {
-  SV_BAT_STATUS = 0, // decoded battery status (white, font 16)
-  SV_BAT_RAW,    // raw bitfield hex (muted)
+  // Decoded battery status with the raw register value in brackets behind it
+  // ("Unterspannung (0x00000200)"): the hex belongs to the state, so it reads
+  // as one line instead of a second one that has to be matched up.
+  SV_BAT_STATUS = 0,
   SV_FLT_LIST,   // decoded faults, one per line
   SV_SD,         // SD history log status
   SV_SHOT,       // screenshot state ("geschrieben" / "wird geschrieben")
@@ -314,12 +317,16 @@ static uint32_t s_apTestUntil = 0; // boot test deadline (ms), 0 = none
 // LVGL's built-in printf gates %f behind LV_USE_FLOAT (which we keep off to
 // avoid switching lv_value_precise_t/lv_point_precise_t to float), so every
 // "%.2f kW" would otherwise print as a literal 'f'.
+//
+// The sign rule from NumFmt.h applies here too: a value that rounds to zero is
+// shown without its minus.
 static void setText(lv_obj_t *label, const char *fmt, ...) {
   char buf[64];
   va_list ap;
   va_start(ap, fmt);
   vsnprintf(buf, sizeof(buf), fmt, ap);
   va_end(ap);
+  numDropNegZero(buf);
   lv_label_set_text(label, buf);
 }
 
@@ -338,6 +345,7 @@ static void setNum(lv_obj_t *label, const char *fmt, ...) {
       *q = ',';
     }
   }
+  numDropNegZero(buf);
   lv_label_set_text(label, buf);
 }
 
@@ -449,14 +457,9 @@ static const int EB_ROW_H = 58;     // label (20) + gap (4) + bar (16) + air (18
 static void setEnergyValue(lv_obj_t *label, float wh) {
   char buf[32];
   if (wh < 1000000.0f) {
-    snprintf(buf, sizeof(buf), "%.1f kWh", wh / 1000.0f);
+    fmtNumComma(buf, sizeof(buf), "%.1f kWh", (double)(wh / 1000.0f));
   } else {
-    snprintf(buf, sizeof(buf), "%.2f MWh", wh / 1000000.0f);
-  }
-  for (char *p = buf; *p; p++) {
-    if (*p == '.') {
-      *p = ',';
-    }
+    fmtNumComma(buf, sizeof(buf), "%.2f MWh", (double)(wh / 1000000.0f));
   }
   lv_label_set_text(label, buf);
 }
@@ -1057,15 +1060,18 @@ static void serviceSetupCb(lv_event_t *e) {
   restartProvisioning();
 }
 
-// Tap on the web code: draw a new one. Only useful in normal operation (without
-// a web server there is no code and nothing to guard), so the tap does nothing
-// visible then - the page shows "--" in that state.
+// Tap on the web code: draw a new one and show it right away. The 1 s refresh
+// would get there a refresh later, and whoever taps and then reads the display
+// would still see the old code - the new one only appears after the next tick,
+// which is exactly the moment the code is wanted. Only useful in normal
+// operation (without a web server there is no code and nothing to guard), so the
+// tap does nothing visible then - the page shows "--" in that state.
 static void webCodeNewCb(lv_event_t *e) {
-  (void)e;
+  lv_obj_t *chip = (lv_obj_t *)lv_event_get_target(e);
   if (!webRunning()) {
     return;
   }
-  webNewCode();
+  setText(chip, "Code: %s", webNewCode());
 }
 
 // Tap on the output's function: the next one in the list. Stored immediately,
@@ -1076,12 +1082,20 @@ static void relayModeCb(lv_event_t *e) {
   relayCycleMode();
 }
 
+// Forward declaration: the callbacks above sit next to the widgets they belong
+// to, the update function further down where it can be read on its own.
+static void serviceRelayState();
+
 // "Test 5 s an / 5 s aus": the check that this really is the right pin and the
 // right polarity, without a browser and without data from the inverter. Pressed
 // again while it runs, it does nothing.
 static void relayTestCb(lv_event_t *e) {
   (void)e;
-  relayStartTest();
+  if (relayStartTest()) {
+    // Show "Test: AN" in the same tap, not on the next refresh - the whole point
+    // of the button is to watch it switch every 5 s.
+    serviceRelayState();
+  }
 }
 
 // Function name plus the threshold it compares against, for the one row that
@@ -1094,6 +1108,44 @@ static void relayModeText(char *out, size_t n) {
   } else {
     snprintf(out, n, "%s", relayModeName(m));
   }
+}
+
+// What the output is doing right now, next to what it follows. Separate from the
+// 1 s page refresh because the state it shows changes on its own schedule: the
+// 5 s test flips every 5 s, and a line that lags a refresh behind a relay that
+// has already switched says the opposite of what is happening. relayUpdate()
+// calls guiRelayStateChanged() the moment it switches, so the panel is up to date
+// within the same pass; the 1 s refresh still runs, for the measured value.
+static void serviceRelayState() {
+  AppPage &sv = s_pages[PAGE_SERVICE];
+  lv_obj_t *st = sv.labels[SV_RELAY_ST];
+  if (st == nullptr) {
+    return;
+  }
+  const RelayMode m = relayMode();
+  if (relayTestRunning()) {
+    // While the test runs, what it is doing is the point: "AN" and "AUS" every
+    // 5 s, not the mode it is temporarily overriding.
+    setText(st, "Test: %s", relayIsOn() ? "AN" : "AUS");
+    lv_obj_set_style_text_color(st, relayIsOn() ? COL_OK : COL_MUTED, 0);
+    return;
+  }
+  if (m == RelayMode::Off) {
+    setText(st, "nichts geschaltet");
+  } else if (m == RelayMode::GridDraw || m == RelayMode::PvSurplus) {
+    setText(st, "%s · %d W jetzt", relayIsOn() ? "AN" : "AUS",
+            (int)lroundf(relayTriggerValue()));
+  } else {
+    setText(st, "%s · %s", relayIsOn() ? "AN" : "AUS", relayModeName(m));
+  }
+  lv_obj_set_style_text_color(st, relayIsOn() ? COL_OK : COL_MUTED, 0);
+}
+
+void guiRelayStateChanged() {
+  // relayUpdate() only ever switches on its own 1 Hz pass, so this is called
+  // from the loop task just after it did - the same task and the same LVGL
+  // context the refresh timer uses. Nothing here may block.
+  serviceRelayState();
 }
 
 // ---------------------------------------------------------------------------
@@ -1259,42 +1311,45 @@ static void pageBuildService(AppPage *p) {
   // --- Battery status (decoded from battery.bat_status) ---
   sectionHead("Batterie-Status", 36);
   // Value deliberately one step smaller than the section title, so the decoded
-  // state reads as data under a heading rather than competing with it.
+  // state reads as data under a heading rather than competing with it. The raw
+  // register value rides along in brackets ("Unterspannung (0x00000200)"):
+  // same line, so the two cannot be read apart, and free of a line of its own.
+  // Full page width, because the longest state plus the hex still fits
+  // (40 characters, ~290 px) and a wrap would push everything below down.
   p->labels[SV_BAT_STATUS] =
       makeLabel(root, "--", &lv_font_montserrat_14_uml, COL_TEXT);
   lv_obj_set_pos(p->labels[SV_BAT_STATUS], 20, 58);
-  // The panel's own address, on the second line of the same block: it is the
-  // one thing needed to open the web interface, and the top left is where the
-  // eye starts. The raw bitfield moves to the right of the same line as the
-  // hex it is - it is a read-out for a second look, not something to read
-  // before the address.
+  lv_obj_set_width(p->labels[SV_BAT_STATUS], 440);
+  // The panel's own address on the second line: it is the one thing needed to
+  // open the web interface, and the top left is where the eye starts. Without a
+  // network it says so - a bare dash looks like an idle reading.
   p->labels[SV_WEB] =
       makeLabel(root, "-", &lv_font_montserrat_14_uml, COL_TEXT);
   lv_obj_set_pos(p->labels[SV_WEB], 20, 88);
-  lv_obj_set_width(p->labels[SV_WEB], 190);
-  p->labels[SV_BAT_RAW] =
-      makeLabel(root, "", &lv_font_montserrat_14_uml, COL_MUTED);
-  lv_obj_set_pos(p->labels[SV_BAT_RAW], 210, 88);
-  lv_obj_set_width(p->labels[SV_BAT_RAW], 80);
-  lv_obj_set_style_text_align(p->labels[SV_BAT_RAW], LV_TEXT_ALIGN_RIGHT, 0);
-
-  // --- Faults (decoded, multi-line; several can be active at once) ---
-  sectionHead("Störungen", 118);
-  p->labels[SV_FLT_LIST] =
-      makeLabel(root, "--", &lv_font_montserrat_14_uml, COL_TEXT);
-  lv_obj_set_pos(p->labels[SV_FLT_LIST], 20, 142);
-  // 280 px, not the full 440: the web block moved into the right column, and a
-  // fault text that runs under it is worse than one that wraps. The list is
-  // capped in characters accordingly (serviceFaultText).
-  lv_obj_set_width(p->labels[SV_FLT_LIST], 280);
-  p->labelCount = SV_LABEL_COUNT;
+  lv_obj_set_width(p->labels[SV_WEB], 200);
 
   // --- SD history log (status only; the writer lives in storage/sdlog.cpp) ---
-  (void)sectionHead("SD-Log", 236);
+  // Above the faults, not below them: SD-Log is a single line, the fault list
+  // runs over five, and next to each other they read as one field with two
+  // headings. This order also puts the two things most often looked at ("is the
+  // card working", "is something wrong") above the detail.
+  (void)sectionHead("SD-Log", 116);
   p->labels[SV_SD] =
       makeLabel(root, sdStatusText(), &lv_font_montserrat_16_uml, COL_TEXT);
-  lv_obj_set_pos(p->labels[SV_SD], 20, 260);
+  lv_obj_set_pos(p->labels[SV_SD], 20, 138);
   lv_obj_set_width(p->labels[SV_SD], 440);
+
+  // --- Faults (decoded, multi-line; several can be active at once) ---
+  sectionHead("Störungen", 184);
+  p->labels[SV_FLT_LIST] =
+      makeLabel(root, "--", &lv_font_montserrat_14_uml, COL_TEXT);
+  lv_obj_set_pos(p->labels[SV_FLT_LIST], 20, 208);
+  // 280 px, not the full 440: the right column carries the web and output
+  // blocks down to the bottom, and a fault text running under them is worse than
+  // one that wraps. The list is capped in characters accordingly
+  // (serviceFaultText).
+  lv_obj_set_width(p->labels[SV_FLT_LIST], 280);
+  p->labelCount = SV_LABEL_COUNT;
 
   // --- Screenshot to the card ---
   // On demand and nowhere automatic: the point is to see what the panel shows
@@ -1344,58 +1399,74 @@ static void pageBuildService(AppPage *p) {
   // my shoulder" (the code changes per boot anyway, so this is a convenience
   // rather than a security measure - what it really protects is a network
   // neighbour who guessed the address).
+  //
+  // Drawn as a button-like row: filled in the bar colour, in the accent colour
+  // while pressed. The obvious earlier attempt - a light chip on this dark
+  // page - had to be undone: light text on a near-white field is white on
+  // white, so the code was there and could not be read. The pressed colour is
+  // there for the same reason: a tap that changes nothing visible reads as a
+  // field that does not work.
   (void)sectionHead("Web-Oberfläche", 118, 300);
   p->labels[SV_CODE] = makeLabel(root, "Code: ----", &lv_font_montserrat_14_uml,
                                  COL_TEXT);
   lv_obj_set_pos(p->labels[SV_CODE], 300, 140);
-  // Wide, so the target is a line and not four digits.
-  lv_obj_set_width(p->labels[SV_CODE], 140);
-  lv_obj_set_style_bg_color(p->labels[SV_CODE], lv_color_hex(0xe8ebef), 0);
+  lv_obj_set_width(p->labels[SV_CODE], 160);
+  lv_obj_set_style_text_align(p->labels[SV_CODE], LV_TEXT_ALIGN_CENTER, 0);
+  // Vertical padding instead of a fixed height: the box grows with the text and
+  // is 26 px tall either way.
+  lv_obj_set_style_pad_ver(p->labels[SV_CODE], 4, 0);
+  lv_obj_set_style_bg_color(p->labels[SV_CODE], COL_BAR, 0);
   lv_obj_set_style_bg_opa(p->labels[SV_CODE], LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_color(p->labels[SV_CODE], COL_ACCENT, LV_STATE_PRESSED);
   lv_obj_set_style_radius(p->labels[SV_CODE], 6, 0);
-  lv_obj_set_style_pad_hor(p->labels[SV_CODE], 8, 0);
   lv_obj_add_flag(p->labels[SV_CODE], LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(p->labels[SV_CODE], webCodeNewCb, LV_EVENT_CLICKED,
                       nullptr);
   lv_obj_t *hint = makeLabel(root, "antippen = neu", &lv_font_montserrat_14_uml,
                              COL_MUTED);
-  lv_obj_set_pos(hint, 300, 162);
+  lv_obj_set_pos(hint, 300, 172);
 
   // --- Switched output ("Ausgang") ---
   // The function it follows is a setting, but the setting that is changed most
   // often is "which of these do I actually want" - so it is a tap here rather
   // than a form in the web interface. Both are available; the tap is the quick
   // one, the web page is where the threshold in watts is entered.
-  (void)sectionHead("Ausgang", 288);
+  //
+  // The whole block sits in the right column under the code, so the page reads
+  // as two columns that each begin with their heading instead of one full-width
+  // row that runs down into the navigation bar. Function and threshold share one
+  // tappable row for the same reason they sit side by side on the web page:
+  // the threshold belongs to the function.
+  (void)sectionHead("Ausgang", 204, 300);
   p->labels[SV_RELAY] = makeLabel(root, "Aus", &lv_font_montserrat_14_uml,
                                    COL_TEXT);
-  lv_obj_set_pos(p->labels[SV_RELAY], 20, 310);
-  lv_obj_set_width(p->labels[SV_RELAY], 220);
-  lv_obj_set_style_bg_color(p->labels[SV_RELAY], lv_color_hex(0xe8ebef), 0);
+  lv_obj_set_pos(p->labels[SV_RELAY], 300, 226);
+  lv_obj_set_width(p->labels[SV_RELAY], 160);
+  lv_obj_set_style_text_align(p->labels[SV_RELAY], LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_pad_ver(p->labels[SV_RELAY], 4, 0);
+  lv_obj_set_style_bg_color(p->labels[SV_RELAY], COL_BAR, 0);
+  lv_obj_set_style_bg_opa(p->labels[SV_RELAY], LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_color(p->labels[SV_RELAY], COL_ACCENT, LV_STATE_PRESSED);
   lv_obj_set_style_radius(p->labels[SV_RELAY], 6, 0);
-  lv_obj_set_style_pad_hor(p->labels[SV_RELAY], 8, 0);
   lv_obj_add_flag(p->labels[SV_RELAY], LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(p->labels[SV_RELAY], relayModeCb, LV_EVENT_CLICKED,
                       nullptr);
-  lv_obj_t *modeHint = makeLabel(root, "antippen = wechseln",
-                                 &lv_font_montserrat_14_uml, COL_MUTED);
-  lv_obj_set_pos(modeHint, 250, 310);
   // What the output is doing, and the value it compares against its threshold -
   // without that number a threshold in watts is a number nobody can set sensibly.
   p->labels[SV_RELAY_ST] =
       makeLabel(root, "", &lv_font_montserrat_14_uml, COL_MUTED);
-  lv_obj_set_pos(p->labels[SV_RELAY_ST], 20, 336);
-  lv_obj_set_width(p->labels[SV_RELAY_ST], 260);
+  lv_obj_set_pos(p->labels[SV_RELAY_ST], 300, 278);
+  lv_obj_set_width(p->labels[SV_RELAY_ST], 160);
 
-  // Test button, on the same line as the state it overrules. 5 s on, 5 s off,
+  // Test button, on its own line under the state it overrules. 5 s on, 5 s off,
   // twice: long enough to hear or see, short enough not to leave a load running
   // if nobody is watching. It ignores the rule, which is the point - the rule
   // needs data from the inverter, the test must work without it.
   //
-  // 26 px tall, not 30: the row it sits in ends at 362, the last pixel the
-  // content area has.
+  // 26 px tall, and it ends at 328: the content area reaches 364, so the last
+  // row keeps 36 px of air above the navigation bar instead of sitting on it.
   lv_obj_t *test = lv_button_create(root);
-  lv_obj_set_pos(test, 300, 336);
+  lv_obj_set_pos(test, 300, 302);
   lv_obj_set_size(test, 160, 26);
   lv_obj_set_style_bg_color(test, COL_BAR, 0);
   lv_obj_set_style_bg_color(test, COL_ACCENT, LV_STATE_PRESSED);
@@ -1419,10 +1490,7 @@ static void setScaleVal(lv_obj_t *l, float v) {
     return;
   }
   char b[16];
-  snprintf(b, sizeof(b), "%.1f", v / 1000.0f);
-  for (char *q = b; *q; q++) {
-    if (*q == '.') *q = ',';
-  }
+  fmtNumComma(b, sizeof(b), "%.1f", (double)(v / 1000.0f));
   lv_label_set_text(l, b);
 }
 
@@ -2092,17 +2160,17 @@ static void refreshCb(lv_timer_t *t) {
   if (sv.labels[SV_BAT_STATUS]) {
     if (!s.haveBattery) {
       lv_label_set_text(sv.labels[SV_BAT_STATUS], "keine Batterie");
-      lv_label_set_text(sv.labels[SV_BAT_RAW], "");
     } else if (!s.haveData) {
       lv_label_set_text(sv.labels[SV_BAT_STATUS], "--");
-      lv_label_set_text(sv.labels[SV_BAT_RAW], "");
     } else {
+      // Decoded state and raw register value on one line: "Unterspannung
+      // (0x00000200)". The hex is what makes an unexplained state readable -
+      // it is the register a support question can be asked about - and a
+      // second line for it would have to be matched up by eye.
       char tmp[64];
       serviceBatteryDecode(s.batteryStatus, s.batteryPower, tmp, sizeof(tmp));
-      lv_label_set_text(sv.labels[SV_BAT_STATUS], tmp);
-      // Just the hex: the heading says what the value is, and the line is
-      // shared with the panel's own address.
-      setText(sv.labels[SV_BAT_RAW], "0x%08X", s.batteryStatus);
+      setText(sv.labels[SV_BAT_STATUS], "%s (0x%08lX)", tmp,
+              (unsigned long)s.batteryStatus);
     }
 
     if (!s.haveData) {
@@ -2156,24 +2224,7 @@ static void refreshCb(lv_timer_t *t) {
     char mode[48];
     relayModeText(mode, sizeof(mode));
     setText(sv.labels[SV_RELAY], "%s", mode);
-
-    if (sv.labels[SV_RELAY_ST]) {
-      const RelayMode m = relayMode();
-      if (relayTestRunning()) {
-        setText(sv.labels[SV_RELAY_ST], "Test laeuft");
-      } else if (m == RelayMode::Off) {
-        setText(sv.labels[SV_RELAY_ST], "nichts geschaltet");
-      } else if (m == RelayMode::GridDraw || m == RelayMode::PvSurplus) {
-        setText(sv.labels[SV_RELAY_ST], "%s · %d W jetzt",
-                relayIsOn() ? "AN" : "AUS",
-                (int)lroundf(relayTriggerValue()));
-      } else {
-        setText(sv.labels[SV_RELAY_ST], "%s · %s", relayIsOn() ? "AN" : "AUS",
-                relayModeName(m));
-      }
-      lv_obj_set_style_text_color(sv.labels[SV_RELAY_ST],
-                                  relayIsOn() ? COL_OK : COL_MUTED, 0);
-    }
+    serviceRelayState();
   }
 
   // Web interface: the panel's own address (top left, under the battery status)

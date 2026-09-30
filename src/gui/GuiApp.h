@@ -14,4 +14,9 @@ void guiSetSplashText(const char *text);
 // 1 Hz data refresh timer.
 void guiStartApp();
 
+// The switched output changed state - refresh what the Service page shows about
+// it right away instead of on the next 1 Hz tick. Called from relayUpdate() in
+// loop(), the same task the refresh timer runs in, so no locking is needed.
+void guiRelayStateChanged();
+
 #endif // GUI_APP_H

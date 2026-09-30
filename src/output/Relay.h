@@ -52,7 +52,12 @@ void relaySaveConfig();
 
 // Evaluate the rule and apply it. Call from loop(); internally it runs at 1 Hz,
 // which is finer than the 10 s poll of the values it reads.
-void relayUpdate();
+//
+// Returns true when the output changed while doing so. The caller passes that
+// on to the display: a relay that switches now and shows its state a second
+// later reads as a display that does not work, and the 5 s test is meant to be
+// watched.
+bool relayUpdate();
 
 // The function the output follows, and its name for the display.
 RelayMode relayMode();

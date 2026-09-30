@@ -210,12 +210,18 @@ void relayInit() {
   relayLoadConfig();
   static const char *const kLogName[kRelayModeCount] = {
       "Aus", "Netzbezug", "Ueberschuss", "Stoerung", "Inselbetrieb"};
-  Serial.printf("Relais GPIO %d: Funktion '%s', Schwelle %d W, Aus bei Start\n",
-                (int)RELAY_PIN, kLogName[(int)s_mode], s_threshold);
+  // The levels belong in the log: whether this build's polarity is the one the
+  // module needs is a measurement, and the test button only answers it by ear.
+  Serial.printf("Relais GPIO %d: Funktion '%s', Schwelle %d W, Aus bei Start "
+                "(ein = Pin %s, aus = Pin %s)\n",
+                (int)RELAY_PIN, kLogName[(int)s_mode], s_threshold,
+                RELAY_LEVEL_ON == HIGH ? "HIGH" : "LOW",
+                RELAY_LEVEL_OFF == HIGH ? "HIGH" : "LOW");
 }
 
-void relayUpdate() {
+bool relayUpdate() {
   const uint32_t now = millis();
+  const bool before = s_on;
 
   if (s_testPhase >= 0) {
     // The test owns the output: it is the answer to "which pin, which
@@ -232,11 +238,11 @@ void relayUpdate() {
         relayWrite((s_testPhase % 2) == 0);
       }
     }
-    return;
+    return s_on != before;
   }
 
   if ((int32_t)(now - s_lastEvalMs) < (int32_t)EVAL_MS) {
-    return;
+    return false;
   }
   s_lastEvalMs = now;
 
@@ -250,13 +256,14 @@ void relayUpdate() {
       relayWrite(true);
       s_switchedOnMs = now;
     }
-    return;
+    return s_on != before;
   }
 
   s_wantSinceMs = 0;
   if (s_on && (int32_t)(now - s_switchedOnMs) >= (int32_t)MIN_HOLD_MS) {
     relayWrite(false);
   }
+  return s_on != before;
 }
 
 bool relayStartTest() {

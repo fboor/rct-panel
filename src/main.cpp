@@ -93,6 +93,15 @@ static void lvAdvance(uint32_t now) {
   }
 }
 
+// Hand the display back while something else holds this task: advance LVGL's
+// clock and flush. Installed as the yield hook for the inverter poll and for the
+// web interface's file downloads, so both keep the panel alive without knowing
+// anything about the display.
+static void panelYield() {
+  lvAdvance(millis());
+  displayLooper();
+}
+
 void loop() {
   static uint32_t loopStart = 0;
   uint32_t now = millis();
@@ -112,17 +121,15 @@ void loop() {
   diagPhase("lvgl");
   displayLooper(); // lv_timer_handler() -> flush -> esp_lcd
 
-  // rctParse() has to wait for the device's answers, up to 2 s for an OID that
-  // does not respond. Same task as LVGL, so it hands rendering back to us
-  // through this hook - otherwise the whole panel froze for two seconds on
-  // every such poll.
+  // rctParse() has to wait for the device's answers, and a file download from the
+  // web interface is pumped out of its handler. Both block this task, which is
+  // also LVGL's, so they hand rendering back to us through a hook - otherwise the
+  // panel stands still for as long as the wait lasts.
   static bool hookInstalled = false;
   if (!hookInstalled) {
     hookInstalled = true;
-    rctSetYieldHook([]() {
-      lvAdvance(millis());
-      displayLooper();
-    });
+    rctSetYieldHook(panelYield);
+    webSetYieldHook(panelYield);
   }
 
   // Pump the Wi-Fi state machine on every loop. This runs the captive portal's
@@ -168,7 +175,12 @@ void loop() {
   // refreshed. Costs a few comparisons; the timings it waits for (20 s on-delay,
   // 60 s minimum hold) are far longer than a poll interval.
   diagPhase("relay.update");
-  relayUpdate();
+  if (relayUpdate()) {
+    // It switched: show that now. The 1 Hz refresh would get here up to a second
+    // late, and a relay that has already changed state while the display still
+    // shows the old one is the worst way to watch the 5 s test.
+    guiRelayStateChanged();
+  }
 
   // SD history: one CSV row per 5 minutes (see docs/sd-history.md). The card
   // work itself happens in the SD worker task; these calls only format and post.
