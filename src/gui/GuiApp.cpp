@@ -66,8 +66,9 @@
 
 // First row y on the "Info" / "Gerät" list pages, below the heading.
 #define ROW_Y0 40
-// Row pitch there. 12 rows must fit in CONTENT_H: 40 + 11*26 + 20 = 346 < 364.
-#define ROW_PITCH 26
+// Row pitch there. 14 rows must fit in CONTENT_H: 40 + 13*22 + 20 = 346 < 364
+// (16 px font has a 20 px line box, so 22 leaves 2 px of air per row).
+#define ROW_PITCH 22
 
 // ---------------------------------------------------------------------------
 // Palette (from the RCT Portal Energiefluss: white nodes, red active flows)
@@ -144,9 +145,11 @@ enum InfoLabel {
   INF_L2,
   INF_L3,
   INF_PV,   // PV total (A + B + S0)
-  INF_HOUSE,
-  INF_SOC,  // battery SOC
-  INF_BAT,  // battery power / current / voltage
+  INF_NAME, // device name (moved here from the Akku page)
+  INF_SW,   // control software version
+  INF_CORE, // core temperature
+  INF_HTEMP, // heat sink temperature
+  INF_FREQ, // grid frequency L1
   INF_LABEL_COUNT,
 };
 
@@ -198,18 +201,17 @@ enum GhLabel {
   GH_LABEL_COUNT,
 };
 
-// Device info (Gerät) page label indices.
+// Akku (battery) page label indices: everything battery-specific moved here
+// from the old "Gerät" page (name/software/temperatures went the other way to
+// Info). Renamed "Gerät" -> "Akku" as requested.
 enum DevLabel {
-  DEV_NAME = 0, // device name
-  DEV_SW,       // control software version
-  DEV_CORE,     // core temperature
-  DEV_BTEMP,    // battery temperature
-  DEV_HTEMP,    // heat sink temperature
-  DEV_CALIB,    // next battery calibration
-  DEV_CYCLES,   // charge/discharge cycles
-  DEV_FREQ,     // grid frequency L1
-  DEV_SOH,      // battery state of health
-  DEV_ISLAND,   // island (grid-separated) mode
+  DEV_SOC = 0,   // battery SOC (from Info)
+  DEV_BAT,       // battery power / current / voltage (from Info)
+  DEV_BTEMP,     // battery temperature
+  DEV_CALIB,     // next battery calibration
+  DEV_CYCLES,    // charge/discharge cycles
+  DEV_SOH,       // battery state of health
+  DEV_ISLAND,    // island (grid-separated) mode
   DEV_LABEL_COUNT,
 };
 
@@ -755,13 +757,14 @@ static void makeRow(AppPage *p, lv_obj_t *root, int i, const char *name,
 
 static void pageBuildInfo(AppPage *p) {
   static const char *const names[INF_LABEL_COUNT] = {
-      "RCT host:", "RCT port:", "Link:",     "Last data:",
-      "Uptime:",   "Netz L1:",  "Netz L2:",  "Netz L3:",
-      "PV:",       "Verbrauch:", "Batterie SOC:", "Batterie:",
+      "RCT host:", "RCT port:", "Link:",      "Last data:",
+      "Uptime:",   "Netz L1:",  "Netz L2:",   "Netz L3:",
+      "PV:",       "Name:",     "Software:",  "Kern:",
+      "Kühlkörper:", "Netzfrequenz:",
   };
   static const char *const values[INF_LABEL_COUNT] = {
       "--", "--", "--", "-- s", "-- s", "-- kW", "-- kW", "-- kW",
-      "-- kW", "-- kW", "-- %", "--",
+      "-- kW", "--", "--", "-- °C", "-- °C", "-- Hz",
   };
   for (int i = 0; i < INF_LABEL_COUNT; i++) {
     makeRow(p, p->root, i, names[i], values[i]);
@@ -769,18 +772,17 @@ static void pageBuildInfo(AppPage *p) {
   p->labelCount = INF_LABEL_COUNT;
 }
 
-// Device info page (portal "Gerätedetails"): name / software version /
-// temperatures / next calibration / cycles / grid frequency / SOH / island
-// mode. Same two-column row layout as the Info page.
+// Battery ("Akku") page: SOC / battery power / temperature / next calibration
+// / cycles / SOH / island mode - everything battery-specific, moved here from
+// the old "Gerät" page. Same two-column row layout as the Info page.
 static void pageBuildDevice(AppPage *p) {
   static const char *const names[DEV_LABEL_COUNT] = {
-      "Name:",      "Software:",  "Kern:",       "Batterie:",
-      "Kühlkörper:", "Kalibrierung:", "Zyklen:",  "Netzfrequenz:",
-      "SOH:",       "Inselbetrieb:",
+      "Batterie-SOC:", "Batterie:",     "Batterie-Temp:", "Kalibrierung:",
+      "Zyklen:",       "SOH:",          "Inselbetrieb:",
   };
   static const char *const values[DEV_LABEL_COUNT] = {
-      "--", "--", "-- °C", "-- °C", "-- °C", "--",
-      "--", "-- Hz", "-- %", "--",
+      "-- %", "--", "-- °C", "--",
+      "--", "-- %", "--",
   };
   for (int i = 0; i < DEV_LABEL_COUNT; i++) {
     makeRow(p, p->root, i, names[i], values[i]);
@@ -1308,8 +1310,8 @@ static void pageBuildGraph(AppPage *p) {
   // until real 5-minute samples arrive (no fake zero history after boot).
   s_chart = lv_chart_create(root);
   lv_obj_set_pos(s_chart, 12, 52);
-  // 52 + 280 = 332, leaving room for the gap summary below it inside
-  // CONTENT_H (364) - a 14 px font needs ~18 px including its descenders.
+  // 52 + 280 = 332, and the gap summary sits directly under the chart at
+  // 336..~354 so it stays inside CONTENT_H (364) - no scrolling to read it.
   lv_obj_set_size(s_chart, 456, 280);
   lv_obj_set_style_bg_color(s_chart, COL_CARD, 0);
   lv_obj_set_style_radius(s_chart, 10, 0);
@@ -1344,7 +1346,7 @@ static void pageBuildGraph(AppPage *p) {
   // to read as "the value dipped" if nobody states that no value was measured.
   p->labels[GH_GAPS] =
       makeLabel(root, "", &lv_font_montserrat_14_uml, COL_MUTED);
-  lv_obj_set_pos(p->labels[GH_GAPS], 20, 358);
+  lv_obj_set_pos(p->labels[GH_GAPS], 20, 336); // 4 px under the chart
   lv_obj_set_width(p->labels[GH_GAPS], 440);
 
   p->labelCount = GH_LABEL_COUNT;
@@ -1776,27 +1778,29 @@ static void refreshCb(lv_timer_t *t) {
     setNum(inf.labels[INF_L2], "%.3f kW", s.gridPower[1] / 1000.0f);
     setNum(inf.labels[INF_L3], "%.3f kW", s.gridPower[2] / 1000.0f);
     float pvTotal = s.pvPower[0] + s.pvPower[1] + s.s0Power;
-    float house = s.loadPower[0] + s.loadPower[1] + s.loadPower[2];
     setNum(inf.labels[INF_PV], "%.3f kW", pvTotal / 1000.0f);
-    setNum(inf.labels[INF_HOUSE], "%.3f kW", house / 1000.0f);
-    setNum(inf.labels[INF_SOC], "%.0f %%", s.batterySoc);
-    // %+ keeps the sign column stable, so A and V stay put when the battery
-    // switches between charging and discharging.
-    setNum(inf.labels[INF_BAT], "%+.3f kW  %.1f A  %.1f V",
-           s.batteryPower / 1000.0f, s.batteryCurrent, s.batteryVoltage);
+    // Device identity moved here when the "Gerät" page became "Akku".
+    const char *dash = "--";
+    setText(inf.labels[INF_NAME], "%s",
+            s.deviceName[0] ? s.deviceName : dash);
+    setText(inf.labels[INF_SW], "%s",
+            s.firmwareVersion[0] ? s.firmwareVersion : dash);
+    if (s.haveData) {
+      setNum(inf.labels[INF_CORE], "%.1f °C", s.coreTemp);
+      setNum(inf.labels[INF_HTEMP], "%.1f °C", s.heatSinkTemp);
+      setNum(inf.labels[INF_FREQ], "%.2f Hz", s.gridFrequency[0]);
+    }
   }
 
   AppPage &dev = s_pages[PAGE_DEVICE];
-  if (dev.labels[DEV_NAME]) {
-    const char *dash = "--";
-    setText(dev.labels[DEV_NAME], "%s",
-            s.deviceName[0] ? s.deviceName : dash);
-    setText(dev.labels[DEV_SW], "%s",
-            s.firmwareVersion[0] ? s.firmwareVersion : dash);
+  if (dev.labels[DEV_SOC]) {
     if (s.haveData) {
-      setNum(dev.labels[DEV_CORE], "%.1f °C", s.coreTemp);
+      setNum(dev.labels[DEV_SOC], "%.0f %%", s.batterySoc);
+      // %+ keeps the sign column stable, so A and V stay put when the battery
+      // switches between charging and discharging.
+      setNum(dev.labels[DEV_BAT], "%+.3f kW  %.1f A  %.1f V",
+             s.batteryPower / 1000.0f, s.batteryCurrent, s.batteryVoltage);
       setNum(dev.labels[DEV_BTEMP], "%.1f °C", s.batteryTemp);
-      setNum(dev.labels[DEV_HTEMP], "%.1f °C", s.heatSinkTemp);
 
       // Next calibration: the inverter reports a Unix timestamp; turn it
       // into a date plus a day countdown once SNTP has a valid wall clock.
@@ -1824,7 +1828,6 @@ static void refreshCb(lv_timer_t *t) {
       }
 
       setNum(dev.labels[DEV_CYCLES], "%.0f", s.batteryCycles);
-      setNum(dev.labels[DEV_FREQ], "%.2f Hz", s.gridFrequency[0]);
       setNum(dev.labels[DEV_SOH], "%.1f %%", s.batterySoh);
       setText(dev.labels[DEV_ISLAND], "%s",
               s.islandKnown ? (s.islandMode ? "ja" : "nein") : "--");
@@ -2108,7 +2111,7 @@ void guiStartApp() {
 
   // Pages. One heading per page, drawn centrally at HEAD_Y (see below).
   static const char *titles[PAGE_COUNT] = {"Übersicht", "Energie", "Heute",
-                                          "24 h Verlauf", "Info", "Gerät",
+                                          "24 h Verlauf", "Info", "Akku",
                                           "Service"};
   void (*builders[PAGE_COUNT])(AppPage *) = {
       pageBuildOverview, pageBuildEnergy, pageBuildHeute, pageBuildGraph,
