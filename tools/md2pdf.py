@@ -66,7 +66,7 @@ figure.portal-shot figcaption { font-size: 9pt; color: #5a6672;
   margin-top: 3pt; text-align: center; }
 figure.ports-shot { margin: 10pt 0 12pt 0; page-break-inside: avoid;
   text-align: center; }
-figure.ports-shot img { width: 60%; }
+figure.ports-shot img { width: 70%; }
 figure.ports-shot figcaption { font-size: 9pt; color: #5a6672;
   margin-top: 4pt; }
 """

@@ -1,102 +1,107 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="760" height="330" viewBox="0 0 760 330" font-family="DejaVu Sans, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="420" viewBox="0 0 980 420" font-family="DejaVu Sans, sans-serif">
   <defs>
-    <clipPath id="scr"><rect x="50" y="30" width="264" height="264" rx="14"/></clipPath>
+    <clipPath id="scr"><rect x="228" y="46" width="203" height="203" rx="16"/></clipPath>
   </defs>
 
-  <!-- ground shadow -->
-  <ellipse cx="228" cy="362" rx="215" ry="26" fill="#00000026"/>
+  <!-- ground shadows -->
+  <ellipse cx="330" cy="284" rx="130" ry="14" fill="#00000022"/>
+  <ellipse cx="617" cy="284" rx="130" ry="14" fill="#00000022"/>
 
-  <!-- device: right face -->
-  <path d="M332,12 L378,58 L378,358 L332,312 Z" fill="#202633" stroke="#00000028" stroke-width="1.5"/>
-  <!-- device: bottom face -->
-  <path d="M32,312 L78,358 L378,358 L332,312 Z" fill="#191f2a" stroke="#00000028" stroke-width="1.5"/>
-  <!-- device: front face (bezel) -->
-  <rect x="32" y="12" width="300" height="300" rx="10" fill="#2a3040" stroke="#ffffff14" stroke-width="1.5"/>
-  <!-- top edge highlight -->
-  <line x1="33" y1="13" x2="331" y2="13" stroke="#ffffff30" stroke-width="2" stroke-linecap="round"/>
+  <!-- ================= FRONT VIEW (Vorderseite: Display) ================= -->
+  <rect x="212" y="30" width="235" height="235" rx="12" fill="#2a3040" stroke="#ffffff14" stroke-width="1.5"/>
+  <line x1="213" y1="31" x2="446" y2="31" stroke="#ffffff30" stroke-width="2" stroke-linecap="round"/>
 
-  <!-- USB-C on the right face (u = depth 0..1, v = height 0..1) -->
-  <g transform="matrix(46,46,0,300,332,12)">
-    <rect x="0.30" y="0.78" width="0.40" height="0.09" fill="#3a4350"/>
-    <rect x="0.32" y="0.795" width="0.36" height="0.06" fill="#06080c"/>
-    <line x1="0.44" y1="0.80" x2="0.44" y2="0.85" stroke="#9fb4c7" stroke-width="0.018"/>
-    <line x1="0.56" y1="0.80" x2="0.56" y2="0.85" stroke="#9fb4c7" stroke-width="0.018"/>
-  </g>
+  <!-- USB-C at the bottom edge (down-facing socket) -->
+  <rect x="314" y="258" width="32" height="14" rx="7" fill="#3a4350"/>
+  <rect x="318" y="260" width="24" height="12" rx="6" fill="#06080c"/>
+  <line x1="327" y1="263" x2="327" y2="269" stroke="#9fb4c7" stroke-width="1.5"/>
+  <line x1="333" y1="263" x2="333" y2="269" stroke="#9fb4c7" stroke-width="1.5"/>
 
-  <!-- screen -->
-  <rect x="50" y="30" width="264" height="264" rx="14" fill="#0d1722" stroke="#00000055" stroke-width="1.5"/>
+  <!-- screen: near-edge-to-edge glass -->
+  <rect x="228" y="46" width="203" height="203" rx="16" fill="#0d1722" stroke="#00000055" stroke-width="1.5"/>
   <g clip-path="url(#scr)">
     <!-- status bar -->
-    <rect x="48" y="28" width="268" height="28" fill="#16232f"/>
-    <text x="64" y="47" fill="#e8edf2" font-size="16" font-weight="600">RCT Power Panel</text>
-    <rect x="270" y="37" width="36" height="14" rx="7" fill="#1f9d55"/>
-    <text x="288" y="47" fill="#ffffff" font-size="10.5" text-anchor="middle">live</text>
+    <rect x="226" y="44" width="207" height="22" fill="#16232f"/>
+    <text x="240" y="60" fill="#e8edf2" font-size="12" font-weight="600">RCT Power Panel</text>
+    <rect x="388" y="50" width="34" height="12" rx="6" fill="#1f9d55"/>
+    <text x="405" y="59" fill="#ffffff" font-size="9" text-anchor="middle">live</text>
     <!-- chart grid -->
     <g stroke="#ffffff0c" stroke-width="1">
-      <line x1="50" y1="96" x2="314" y2="96"/>
-      <line x1="50" y1="132" x2="314" y2="132"/>
-      <line x1="50" y1="168" x2="314" y2="168"/>
-      <line x1="50" y1="204" x2="314" y2="204"/>
-      <line x1="50" y1="240" x2="314" y2="240"/>
+      <line x1="228" y1="100" x2="431" y2="100"/>
+      <line x1="228" y1="130" x2="431" y2="130"/>
+      <line x1="228" y1="160" x2="431" y2="160"/>
+      <line x1="228" y1="190" x2="431" y2="190"/>
     </g>
     <!-- chart series -->
-    <polyline points="50,236 95,212 140,224 185,158 230,120 275,140 314,116" fill="none" stroke="#ca0c0f" stroke-width="2.6" stroke-linejoin="round"/>
-    <polyline points="50,246 95,196 140,142 185,106 230,96 275,112 314,84" fill="none" stroke="#3ec97a" stroke-width="2.6" stroke-linejoin="round"/>
-    <polyline points="50,252 140,226 230,210 314,200" fill="none" stroke="#2e93e5" stroke-width="2.6" stroke-linejoin="round"/>
-    <polyline points="50,264 95,244 185,232 314,238" fill="none" stroke="#f0a202" stroke-width="2.6" stroke-linejoin="round"/>
+    <polyline points="228,192 262,174 302,184 337,142 372,114 402,128 431,110" fill="none" stroke="#ca0c0f" stroke-width="2.4" stroke-linejoin="round"/>
+    <polyline points="228,202 262,162 302,120 337,94 372,88 402,100 431,80" fill="none" stroke="#3ec97a" stroke-width="2.4" stroke-linejoin="round"/>
+    <polyline points="228,208 302,190 402,178 431,174" fill="none" stroke="#2e93e5" stroke-width="2.4" stroke-linejoin="round"/>
+    <polyline points="228,214 302,202 431,206" fill="none" stroke="#f0a202" stroke-width="2.4" stroke-linejoin="round"/>
     <!-- nav buttons -->
-    <rect x="64" y="266" width="44" height="26" rx="8" fill="#233040"/>
-    <path d="M79,279 L88,271 L88,287 Z" fill="#dbe4ec"/>
-    <rect x="150" y="266" width="44" height="26" rx="8" fill="#233040"/>
-    <path d="M161,285 L161,274 L172,279 L161,285 Z" fill="none" stroke="#dbe4ec" stroke-width="2"/>
-    <rect x="162" y="278" width="7" height="7" fill="#dbe4ec"/>
-    <rect x="236" y="266" width="44" height="26" rx="8" fill="#233040"/>
-    <path d="M265,279 L256,271 L256,287 Z" fill="#dbe4ec"/>
+    <rect x="244" y="222" width="40" height="25" rx="8" fill="#233040"/>
+    <path d="M257,234.5 L265,227.5 L265,241.5 Z" fill="#dbe4ec"/>
+    <rect x="326" y="222" width="40" height="25" rx="8" fill="#233040"/>
+    <path d="M334,240 L334,231 L342,234.5 L334,240 Z" fill="#dbe4ec"/>
+    <rect x="337" y="235" width="6" height="5" fill="#dbe4ec"/>
+    <rect x="408" y="222" width="40" height="25" rx="8" fill="#233040"/>
+    <path d="M435,234.5 L427,227.5 L427,241.5 Z" fill="#dbe4ec"/>
   </g>
 
-  <!-- microSD card on the bottom face (u = along front edge, v = depth) -->
-  <g transform="matrix(300,0,46,46,32,312)">
-    <!-- slot opening -->
-    <rect x="0.55" y="0.085" width="0.20" height="0.075" fill="#05070b"/>
-    <!-- card, partially inserted, protruding past the back edge -->
-    <rect x="0.57" y="0.09" width="0.16" height="1.14" fill="#0b6bcb" stroke="#084a8f" stroke-width="0.012"/>
-    <rect x="0.57" y="0.09" width="0.16" height="0.10" fill="#d9a520"/>
-    <path d="M0.73,1.23 L0.665,1.23 L0.665,1.12 L0.73,1.12 Z" fill="#d9a520"/>
-  </g>
+  <!-- ================= BACK VIEW (Rückseite: PCB) ================= -->
+  <rect x="500" y="30" width="235" height="235" rx="12" fill="#191f2a" stroke="#ffffff0d" stroke-width="1.5"/>
+  <!-- corner screws -->
+  <circle cx="516" cy="46" r="4.5" fill="#2c3440" stroke="#00000040"/>
+  <circle cx="714" cy="46" r="4.5" fill="#2c3440" stroke="#00000040"/>
+  <circle cx="516" cy="249" r="4.5" fill="#2c3440" stroke="#00000040"/>
+  <circle cx="714" cy="249" r="4.5" fill="#2c3440" stroke="#00000040"/>
+  <!-- antenna zone (top right) -->
+  <rect x="668" y="44" width="46" height="38" rx="6" fill="#202835"/>
+  <path d="M674,74 L680,54 L690,74 L700,54" fill="none" stroke="#39434f" stroke-width="1.6"/>
+  <path d="M684,76 L690,56 L700,76 L710,56" fill="none" stroke="#39434f" stroke-width="1.6"/>
+  <!-- ESP32-S3 module -->
+  <rect x="520" y="60" width="90" height="52" rx="6" fill="#bcc3ca"/>
+  <rect x="538" y="76" width="54" height="20" rx="3" fill="#6e7782"/>
+  <text x="565" y="126" fill="#8f9aa8" font-size="14" text-anchor="middle">ESP32-S3</text>
+  <!-- microSD / TF slot with card partially inserted -->
+  <rect x="560" y="228" width="92" height="20" rx="4" fill="#05070b"/>
+  <rect x="630" y="230" width="72" height="16" rx="2" fill="#0b6bcb" stroke="#084a8f" stroke-width="1"/>
+  <rect x="632" y="232" width="26" height="12" fill="#d9a520"/>
+  <!-- silkscreen -->
+  <text x="617" y="215" fill="#56616e" font-size="13" text-anchor="middle">ESP32-S3 4848S040</text>
 
-  <!-- callout leaders (white halo + blue line) -->
+  <!-- ================= LEADERS ================= -->
   <g stroke-linecap="round" fill="none">
     <!-- 1: touch display -->
-    <path d="M158,96 L404,96 L452,104" stroke="#ffffff" stroke-width="4.5" opacity="0.9"/>
-    <path d="M158,96 L404,96 L452,104" stroke="#0b6bcb" stroke-width="1.8"/>
+    <path d="M445,250 L445,278 L175,278 L175,352" stroke="#ffffff" stroke-width="4.5" opacity="0.9"/>
+    <path d="M445,250 L445,278 L175,278 L175,352" stroke="#0b6bcb" stroke-width="1.8"/>
     <!-- 2: microSD -->
-    <path d="M252,332 L300,194 L452,194" stroke="#ffffff" stroke-width="4.5" opacity="0.9"/>
-    <path d="M252,332 L300,194 L452,194" stroke="#0b6bcb" stroke-width="1.8"/>
+    <path d="M666,240 L666,284 L490,284 L490,352" stroke="#ffffff" stroke-width="4.5" opacity="0.9"/>
+    <path d="M666,240 L666,284 L490,284 L490,352" stroke="#0b6bcb" stroke-width="1.8"/>
     <!-- 3: usb-c -->
-    <path d="M366,282 L404,282 L452,284" stroke="#ffffff" stroke-width="4.5" opacity="0.9"/>
-    <path d="M366,282 L404,282 L452,284" stroke="#0b6bcb" stroke-width="1.8"/>
+    <path d="M330,266 L330,290 L920,290 L920,352 L700,352" stroke="#ffffff" stroke-width="4.5" opacity="0.9"/>
+    <path d="M330,266 L330,290 L920,290 L920,352 L700,352" stroke="#0b6bcb" stroke-width="1.8"/>
   </g>
 
-  <!-- legend -->
-  <rect x="410" y="18" width="330" height="296" rx="14" fill="#eef5fb" stroke="#b9d3ec" stroke-width="1.5"/>
-  <text x="432" y="54" fill="#0b3d6b" font-size="26" font-weight="700">Schnittstellen</text>
-  <line x1="432" y1="66" x2="718" y2="66" stroke="#b9d3ec" stroke-width="1.5"/>
+  <!-- ================= LEGEND BANNER ================= -->
+  <rect x="40" y="300" width="900" height="105" rx="14" fill="#eef5fb" stroke="#b9d3ec" stroke-width="1.5"/>
+  <text x="60" y="326" fill="#0b3d6b" font-size="24" font-weight="700">Schnittstellen</text>
+  <line x1="60" y1="338" x2="920" y2="338" stroke="#b9d3ec" stroke-width="1.5"/>
 
-  <!-- row 1: touch -->
-  <circle cx="452" cy="104" r="16" fill="#0b6bcb"/>
-  <text x="452" y="110" fill="#ffffff" font-size="18" font-weight="700" text-anchor="middle">1</text>
-  <text x="482" y="101" fill="#0b3d6b" font-size="21" font-weight="600">Touch-Display</text>
-  <text x="482" y="125" fill="#44525f" font-size="17">kapazitiv · 480 × 480 px · Bedienung</text>
+  <!-- col 1: touch -->
+  <circle cx="175" cy="372" r="16" fill="#0b6bcb"/>
+  <text x="175" y="379" fill="#ffffff" font-size="19" font-weight="700" text-anchor="middle">1</text>
+  <text x="197" y="368" fill="#0b3d6b" font-size="22" font-weight="600">Touch-Display</text>
+  <text x="197" y="394" fill="#44525f" font-size="17.5">kapazitiv · 480 × 480 px</text>
 
-  <!-- row 2: microSD -->
-  <circle cx="452" cy="194" r="16" fill="#0b6bcb"/>
-  <text x="452" y="200" fill="#ffffff" font-size="18" font-weight="700" text-anchor="middle">2</text>
-  <text x="482" y="191" fill="#0b3d6b" font-size="21" font-weight="600">microSD (TF)</text>
-  <text x="482" y="215" fill="#44525f" font-size="17">Steckplatz auf der Platine · Aufzeichnung</text>
+  <!-- col 2: microSD -->
+  <circle cx="490" cy="372" r="16" fill="#0b6bcb"/>
+  <text x="490" y="379" fill="#ffffff" font-size="19" font-weight="700" text-anchor="middle">2</text>
+  <text x="512" y="368" fill="#0b3d6b" font-size="22" font-weight="600">microSD (TF)</text>
+  <text x="512" y="394" fill="#44525f" font-size="17.5">Steckplatz auf der Rückseite</text>
 
-  <!-- row 3: USB-C -->
-  <circle cx="452" cy="284" r="16" fill="#0b6bcb"/>
-  <text x="452" y="290" fill="#ffffff" font-size="18" font-weight="700" text-anchor="middle">3</text>
-  <text x="482" y="281" fill="#0b3d6b" font-size="21" font-weight="600">USB-C</text>
-  <text x="482" y="305" fill="#44525f" font-size="17">Stromversorgung (5 V)</text>
+  <!-- col 3: usb-c -->
+  <circle cx="700" cy="372" r="16" fill="#0b6bcb"/>
+  <text x="700" y="379" fill="#ffffff" font-size="19" font-weight="700" text-anchor="middle">3</text>
+  <text x="722" y="368" fill="#0b3d6b" font-size="22" font-weight="600">USB-C</text>
+  <text x="722" y="394" fill="#44525f" font-size="17.5">Stromversorgung (5 V)</text>
 </svg>
