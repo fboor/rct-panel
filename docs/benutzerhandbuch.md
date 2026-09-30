@@ -608,5 +608,5 @@ die eigenen Netzwerk- und Verbindungsdaten des Panels fest).
 ---
 
 *Stand: September 2026. Das Handbuch beschreibt die Firmware ab Commit
-`7eb6e6f` (inclusive) — Weboberfläche im Normalbetrieb und SD-Karte mit
-4 MHz.*
+`a3775b0` (inclusive) — Weboberfläche im Normalbetrieb, SD-Karte mit 4 MHz
+und der Schaltausgang.*
