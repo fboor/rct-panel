@@ -237,13 +237,26 @@ static const int HIST_POINTS = 288;              // 288 * 5 min = 24 h
 static const int HIST_SERIES = 6;                // grid, house(+ext), PV, EXT, battery, SOC
 static const uint32_t HIST_INTERVAL_MS = 300000; // 5 min
 static const uint32_t HIST_SEED_WINDOW_MS = 60000; // boot grace without a card
+// SOC yellow: brightened to #FFEA00 so it lifts off the dark card and the
+// orange battery line next to it (0xF0A202).
 static const uint32_t kHistColor[HIST_SERIES] = {0xCA0C0F, 0xA45EE5, 0x3EC97A,
-                                                 0x2E93E5, 0xF0A202, 0xEBD300};
+                                                 0x2E93E5, 0xF0A202, 0xFFEA00};
 static const char *const kHistName[HIST_SERIES] = {"Netz", "Verbrauch", "PV",
                                                    "EXT", "Batterie", "SOC"};
 static const int LEGEND_GAP = 24; // space between two legend entries
+// Chart frame on the Verlauf page. Shifts the chart right so a left gutter
+// stays free for the min/0/max scale markers of the power axis.
+static const int kHistChartX = 56, kHistChartY = 52;
+static const int kHistChartW = 412, kHistChartH = 280;
+static const int kHistChartPad = 10;
 static lv_obj_t *s_chart = nullptr;
 static lv_chart_series_t *s_chartSer[HIST_SERIES] = {nullptr};
+// Scale markers of the primary (power) axis in the chart's left gutter,
+// refreshed by updateChartRange(). The SOC series gets no markers: its own
+// fixed 0..100 axis spans the whole chart height by construction.
+static lv_obj_t *s_scaleMax = nullptr, *s_scaleZero = nullptr,
+                *s_scaleMin = nullptr;
+static lv_obj_t *s_scaleTick[3] = {nullptr, nullptr, nullptr};
 static float s_hist[HIST_POINTS * HIST_SERIES] = {0.0f}; // packed [pt][ser]
 static uint32_t s_histTs[HIST_POINTS] = {0};   // unix s per slot, 0 = unknown
 static uint8_t s_histOk[HIST_POINTS] = {0};    // 1 = measured, 0 = gap marker
@@ -1242,8 +1255,57 @@ static void pageBuildService(AppPage *p) {
   lv_obj_set_width(p->labels[SV_SHOT], 160);
 }
 
+// Format one scale marker value: "0" or kW with comma decimal ("2,5",
+// "-0,5"). The kW unit comes from the legend, so the numbers stay short.
+static void setScaleVal(lv_obj_t *l, float v) {
+  if (v == 0.0f) {
+    lv_label_set_text(l, "0");
+    return;
+  }
+  char b[16];
+  snprintf(b, sizeof(b), "%.1f", v / 1000.0f);
+  for (char *q = b; *q; q++) {
+    if (*q == '.') *q = ',';
+  }
+  lv_label_set_text(l, b);
+}
+
+// Move the min / 0 / max markers to the power-axis positions of loW / 0 / hiW
+// in the chart's left gutter. When loW == 0 the min marker coincides with the
+// zero one and stays hidden. The SOC series needs no markers: its fixed
+// 0..100 axis spans the full chart height by construction.
+static void applyScaleMarkers(float loW, float hiW) {
+  if (s_scaleMax == nullptr) return;
+  const int plotTop = kHistChartY + kHistChartPad;
+  const int plotBot = kHistChartY + kHistChartH - kHistChartPad;
+  const int plotH = plotBot - plotTop;
+  const float span = hiW - loW;
+  auto yOf = [plotBot, plotH, span, loW](float w) -> int {
+    return plotBot - (int)lrintf((w - loW) / span * (float)plotH);
+  };
+  const int yMax = yOf(hiW), yZero = yOf(0.0f), yMin = yOf(loW);
+  const int tickX = kHistChartX - 5; // 5 px tick ending at the card edge
+  auto place = [&](lv_obj_t *l, lv_obj_t *tk, int yv, float v) {
+    setScaleVal(l, v);
+    lv_obj_set_pos(l, 8, yv - 9); // 14 px font line box ~18 px: centre it
+    lv_obj_set_pos(tk, tickX, yv);
+    lv_obj_remove_flag(tk, LV_OBJ_FLAG_HIDDEN);
+  };
+  place(s_scaleMax, s_scaleTick[0], yMax, hiW);
+  place(s_scaleZero, s_scaleTick[1], yZero, 0.0f);
+  if (loW < 0.0f) {
+    place(s_scaleMin, s_scaleTick[2], yMin, loW);
+  } else {
+    lv_obj_add_flag(s_scaleMin, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(s_scaleTick[2], LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
 // Recompute the chart Y range from the stored history ring (kW = W / 1000 on
-// the axis is implied by the legend; the range itself stays in W).
+// the axis is implied by the legend; the range itself stays in W). Runs on
+// every new sample and after the SD seed, so the axis grows the moment a new
+// peak arrives and shrinks again once that peak leaves the 24 h window. A
+// small air margin keeps the extremes off the exact plot edges.
 static void updateChartRange() {
   float loW = 0.0f, hiW = 0.0f;
   bool first = true;
@@ -1273,12 +1335,16 @@ static void updateChartRange() {
                : span < 4000.0f  ? 500.0f
                : span < 10000.0f ? 1000.0f
                                  : 2000.0f;
-  loW = floorf(loW / step) * step;
-  hiW = ceilf(hiW / step) * step;
+  // Air margin above/below the data so the max line never touches the exact
+  // top edge; 5 % of the span, at least one step.
+  float margin = span > 0.0f ? span * 0.05f : step;
+  loW = floorf((loW - margin) / step) * step;
+  hiW = ceilf((hiW + margin) / step) * step;
   if (hiW - loW < step) hiW = loW + step;
 
   lv_chart_set_axis_range(s_chart, LV_CHART_AXIS_PRIMARY_Y, (int32_t)loW,
                           (int32_t)hiW);
+  applyScaleMarkers(loW, hiW);
 }
 
 // Graph page: all power values of the last 24 hours (legend above, chart
@@ -1309,10 +1375,11 @@ static void pageBuildGraph(AppPage *p) {
   // Chart. Points are seeded with LV_CHART_POINT_NONE so nothing is drawn
   // until real 5-minute samples arrive (no fake zero history after boot).
   s_chart = lv_chart_create(root);
-  lv_obj_set_pos(s_chart, 12, 52);
-  // 52 + 280 = 332, and the gap summary sits directly under the chart at
-  // 336..~354 so it stays inside CONTENT_H (364) - no scrolling to read it.
-  lv_obj_set_size(s_chart, 456, 280);
+  lv_obj_set_pos(s_chart, kHistChartX, kHistChartY);
+  // kHistChartY + kHistChartH = 332, and the gap summary sits directly under
+  // the chart at 336..~354 so it stays inside CONTENT_H (364) - no scrolling
+  // to read it.
+  lv_obj_set_size(s_chart, kHistChartW, kHistChartH);
   lv_obj_set_style_bg_color(s_chart, COL_CARD, 0);
   lv_obj_set_style_radius(s_chart, 10, 0);
   lv_obj_set_style_border_width(s_chart, 1, 0);
@@ -1340,6 +1407,34 @@ static void pageBuildGraph(AppPage *p) {
                              : LV_CHART_AXIS_PRIMARY_Y);
     lv_chart_set_all_values(s_chart, s_chartSer[i], LV_CHART_POINT_NONE);
   }
+
+  // --- Scale markers (left gutter) ---
+  // Min / 0 / max of the power axis, right-aligned next to the chart. Their
+  // positions and values are refreshed by updateChartRange(); they are only
+  // meaningful once a range was computed, so the initial text stays empty.
+  for (int i = 0; i < 3; i++) {
+    lv_obj_t *tk = lv_obj_create(root);
+    lv_obj_set_size(tk, 5, 1);
+    lv_obj_set_pos(tk, kHistChartX - 5, kHistChartY);
+    lv_obj_set_style_bg_color(tk, COL_BORDER, 0);
+    lv_obj_set_style_border_width(tk, 0, 0);
+    lv_obj_set_style_radius(tk, 0, 0);
+    lv_obj_set_style_shadow_width(tk, 0, 0);
+    s_scaleTick[i] = tk;
+  }
+  lv_obj_t *scaleLabels[3] = {nullptr, nullptr, nullptr};
+  scaleLabels[0] = s_scaleMax =
+      makeLabel(root, "", &lv_font_montserrat_14_uml, COL_MUTED);
+  scaleLabels[1] = s_scaleZero =
+      makeLabel(root, "", &lv_font_montserrat_14_uml, COL_MUTED);
+  scaleLabels[2] = s_scaleMin =
+      makeLabel(root, "", &lv_font_montserrat_14_uml, COL_MUTED);
+  for (int i = 0; i < 3; i++) {
+    lv_obj_set_pos(scaleLabels[i], 8, kHistChartY);
+    lv_obj_set_width(scaleLabels[i], kHistChartX - 14);
+    lv_obj_set_style_text_align(scaleLabels[i], LV_TEXT_ALIGN_RIGHT, 0);
+  }
+
   // --- Gap summary ---
   // The chart itself shows where the recording broke (the stroke is interrupted).
   // This line says how much is missing, because a break in a line chart is easy
