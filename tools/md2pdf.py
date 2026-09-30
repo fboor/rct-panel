@@ -53,6 +53,13 @@ tr:nth-child(even) td { background: #f7f9fb; }
 hr { border: none; border-top: 1pt solid #c5cdd5; margin: 12pt 0; }
 strong { color: #0b3d6b; }
 a { color: #0b6bcb; text-decoration: none; }
+figure.portal-shot { margin: 8pt 0 10pt 0; page-break-inside: avoid; }
+.portal-shot-ph { height: 130pt; border: 2pt dashed #a9b6c3;
+  background: #f2f5f8; border-radius: 4pt; display: flex;
+  align-items: center; justify-content: center; color: #7a8794;
+  font-style: italic; font-size: 10pt; }
+figure.portal-shot figcaption { font-size: 9pt; color: #5a6672;
+  margin-top: 3pt; text-align: center; }
 """
 
 html = f"""<!DOCTYPE html>

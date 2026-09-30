@@ -8,6 +8,42 @@ zusätzlich automatisch auf einer microSD-Karte auf.
 
 ---
 
+## Kurzanleitung — Inbetriebnahme in 5 Schritten
+
+Sie brauchen nur **drei Angaben**, sonst nichts weiter zu wissen:
+
+1. den **Namen und das Passwort Ihres WLAN**,
+2. die **IP-Adresse (oder den Hostnamen) Ihres RCT-Wechselrichters**,
+3. den **Port** des Wechselrichters — Standard `8899`.
+
+So geht's:
+
+1. **Panel anschließen** — 5-V-Versorgung, das Display zeigt sofort die
+   Übersicht.
+2. **WLAN „RCT-Panel" wählen** — beim ersten Start (oder wenn kein
+   gespeichertes Netzwerk erreichbar ist) erzeugt das Panel einen eigenen
+   WLAN-Zugangspunkt mit diesem Namen.
+3. **Portal öffnen** — im Browser `http://192.168.4.1` aufrufen (die
+   Konfigurationsseite öffnet sich meist von selbst).
+
+<figure class="portal-shot">
+  <div class="portal-shot-ph">Platzhalter: Screenshot des Webportals (Screenshot folgt)</div>
+  <figcaption>Bild: Konfigurationsportal unter http://192.168.4.1</figcaption>
+</figure>
+
+4. **Drei Felder ausfüllen und speichern** — WLAN-Name/-Passwort sowie
+   RCT-Adresse und Port (siehe die drei Angaben oben).
+5. **Fertig.** Das Panel verbindet sich mit Ihrem WLAN und zeigt die
+   Live-Daten. Der Zugangspunkt „RCT-Panel" verschwindet dabei von selbst.
+
+**So sieht es danach aus:** Oben sitzt die Statusleiste mit dem
+Verbindungsstatus (`live`, grün = alles gut). In der Mitte liegt die aktuelle
+Seite; unten blättern Sie mit **◀** und **▶** durch die sieben Seiten, **⌂**
+(Home) springt zur Übersicht. Welche Seite was zeigt, steht in Kapitel 4 —
+die Details zur Einrichtung ab Kapitel 2.
+
+---
+
 ## 1. Geräteüberblick
 
 | Baustein | Details |
