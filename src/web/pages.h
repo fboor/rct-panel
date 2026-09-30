@@ -31,6 +31,7 @@ static const char kShell[] PROGMEM = R"(<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>%T</title>
+%R
 <style>%S</style>
 </head><body>
 <div class="wrap">%B</div>

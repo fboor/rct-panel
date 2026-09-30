@@ -14,8 +14,8 @@
 //    per loop iteration and writes that chunk to the socket. Nothing here ever
 //    blocks on the card, so a download cannot freeze the panel.
 // 2. Routes that only read are open; everything that changes the panel (update,
-//    restart, provisioning) needs the 4-digit code, which only exists on the
-//    panel's own display.
+//    restart, provisioning, screenshot) needs the 4-digit code, which only
+//    exists on the panel's own display.
 // 3. Every download goes out with the real Content-Length, so the browser shows
 //    a true progress bar and knows when it is complete.
 // 4. One open stream at a time (a single card handle, a single chunk buffer).
@@ -27,6 +27,7 @@
 #include "../Diag.h"
 #include "../NumFmt.h"
 #include "../config/Configuration.h"
+#include "../gui/GuiApp.h"
 #include "../output/Relay.h"
 #include "../rct/RctTypes.h"
 #include "../storage/sdlog.h"
@@ -48,13 +49,27 @@
 static const char kPanelVersion[] = "1.0 (2026-09)";
 
 // Upper bound for a firmware image: the app slots in partitions/16mb_app.csv are
-// 7 MB. Checked before writing, so a wrong file cannot waste ten minutes of
-// upload time and then fail.
+// 7 MB. The upload announces no size (see handleUpdateUpload), so this is
+// checked while the bytes stream past rather than before the first one is
+// written.
 static const uint32_t kMaxFirmware = 7340032u;
 
 // "tail=..." is clamped to this. A month of CSV at 5-minute rows is about
 // 300 kB, so 1 MB covers every file this panel can produce.
 static const uint32_t kMaxTail = 1048576u;
+
+// The one reload that belongs to a screenshot, as a meta tag. 6 s, because the
+// write of 691 kB to a card at 4 MHz was measured at 3 s and at 5 s - the second
+// time on a card that was also writing the CSV row. One reload, not several: a
+// page that keeps reloading itself is harder to read than one that is briefly
+// out of date.
+static const char kShotReloadTag[] =
+    "<meta http-equiv=\"refresh\" content=\"6;url=/bilder?neu=2\">";
+
+// Ceiling for the waiting reloads, only reached when a card needs longer than
+// the 6 s above. Without it a write that never finishes would leave the page
+// reloading for as long as the browser keeps asking.
+static const int kShotReloadMax = 8;
 
 // The functions the switched output can follow, in the order of RelayMode and
 // therefore in the order the panel cycles through them. The same text is used
@@ -108,8 +123,7 @@ size_t s_listingLen = 0;
 // context only - the loop task, which is also where these handlers run.
 bool s_otaOpen = false;  // an upload is in flight (Update.begin succeeded)
 bool s_otaOk = false;    // so far no error
-uint32_t s_otaBytes = 0;
-uint32_t s_otaTotal = 0;
+uint32_t s_otaBytes = 0; // counted up from the chunks; no announced size exists
 uint32_t s_otaStartMs = 0;
 // The gating code, 4 digits, fresh for every boot.
 char s_code[5] = {0};
@@ -180,6 +194,7 @@ void sendMsg(int code, const char *msg) {
   page.reserve(strlen_P(web::kShell) + strlen_P(web::kStyle) + body.length() + 64);
   page = FPSTR(web::kShell);
   page.replace("%T", String("RCT Power Panel"));
+  page.replace("%R", String("")); // no auto-reload on a message page
   page.replace("%S", FPSTR(web::kStyle));
   // %B goes in last: the body carries values with percent signs and units, and
   // replacing the shell's tokens after that would read those as tokens.
@@ -210,7 +225,13 @@ void addNav(String &page, const char *current) {
 }
 
 // header + nav + main + body, sent as one page.
-void sendNavPage(const char *title, const char *current, const String &body) {
+//
+// refreshTag != nullptr is a whole meta tag for the head, which makes the
+// browser load the page again on its own. Only the picture list uses it (see
+// handleShots): a capture is written in the background, so the list has to be
+// asked again to show the new file.
+void sendNavPage(const char *title, const char *current, const String &body,
+                 const char *refreshTag = nullptr) {
   char t[48];
   escape(title, t, sizeof(t));
   String frame;
@@ -227,6 +248,7 @@ void sendNavPage(const char *title, const char *current, const String &body) {
                strlen(t) + 64);
   page = FPSTR(web::kShell);
   page.replace("%T", String(t));
+  page.replace("%R", refreshTag != nullptr ? String(refreshTag) : String());
   page.replace("%S", FPSTR(web::kStyle));
   // %B goes in last: the body carries values with percent signs and units, and
   // replacing the shell's tokens after that would read those as tokens.
@@ -379,7 +401,8 @@ void handleRoot() {
 // Listings
 // ---------------------------------------------------------------------------
 
-void renderList(const char *title, const char *nav, const char *dir, bool csv);
+void renderList(const char *title, const char *nav, const char *dir, bool csv,
+                const char *refreshTag = nullptr);
 
 // The card belongs to the worker task, so the web task never reads it. The worker
 // keeps a listing per directory up to date instead, and this handler answers from
@@ -391,15 +414,16 @@ void renderList(const char *title, const char *nav, const char *dir, bool csv);
 // returns, and WiFiClient's assignment calls stop() on the old socket. A handler
 // that sends nothing therefore has no connection left to answer on, and the
 // browser gets an empty reply. Hence the cache, and a 503 while it is still cold.
-void askListing(const char *title, const char *nav, const char *dir, bool csv) {
-  sdRequestListing(dir);
+void askListing(const char *title, const char *nav, const char *dir, bool csv,
+                const char *refreshTag = nullptr, bool freshList = false) {
+  sdRequestListing(dir, freshList);
   const int n = sdListingText(dir, s_listing, sizeof(s_listing) - 1);
   if (n == kListingUnavailable) {
     sendMsg(503, "Die SD-Karte liess sich nicht lesen.");
     return;
   }
   s_listingLen = n > 0 ? (size_t)n : 0;
-  renderList(title, nav, dir, csv);
+  renderList(title, nav, dir, csv, refreshTag);
 }
 
 // Both lists look the same; only the directory, the route and the wording
@@ -410,10 +434,15 @@ void askListing(const char *title, const char *nav, const char *dir, bool csv) {
 // pointer value 0x2F. That compiles, strlen() then reads from address 47, and
 // the panel reboots with a LoadProhibited - which is what the first build on the
 // wall did, the moment someone opened /daten or /bilder.
-void renderList(const char *title, const char *nav, const char *dir,
-                bool csv) {
+void renderList(const char *title, const char *nav, const char *dir, bool csv,
+                const char *refreshTag) {
   String b;
   b.reserve(1600);
+  // Before the loop below, not after: that loop overwrites the line breaks in
+  // place, so afterwards the last byte is always '\0' and the check would claim
+  // a full buffer on every page that has files at all.
+  const bool listingTruncated =
+      s_listingLen > 0 && s_listing[s_listingLen - 1] != '\n';
   if (s_listingLen == 0) {
     b += F("<div class=\"note\">Auf der SD-Karte liegt nichts in "
            "<code>");
@@ -483,7 +512,7 @@ void renderList(const char *title, const char *nav, const char *dir,
     }
     // The worker fills a fixed buffer; a full one ends mid-line and means there
     // are more files than fit. Say so instead of showing a silently short list.
-    if (s_listingLen > 0 && s_listing[s_listingLen - 1] != '\n') {
+    if (listingTruncated) {
       b += F("<div class=\"note\">Mehr Dateien auf der Karte, als hier "
              "platzieren. &Uuml;brige Dateien lassen sich direkt &uuml;ber "
              "ihren Namen aufrufen: <code>");
@@ -491,12 +520,83 @@ void renderList(const char *title, const char *nav, const char *dir,
       b += F("/Dateiname</code>.</div>");
     }
   }
-  sendNavPage(title, nav, b);
+
+  if (!csv) {
+    // Taking a picture belongs under the picture list: whoever is reading the
+    // list wants the next picture without walking over to the device. Behind the
+    // code like every other write - a screenshot puts 691 kB onto the card.
+    //
+    // Without the 5 s countdown the panel's own button has. There the delay buys
+    // time to navigate to the page to be photographed; here the browser is
+    // already showing it, so waiting would only make the button feel broken.
+    const bool running = guiShotRunning();
+    b += F("<h2>Aufnahme</h2>");
+    b += F("<form action=\"/aktion\" method=\"POST\">");
+    b += F("<input type=\"hidden\" name=\"was\" value=\"bild\">");
+    b += F("<input type=\"text\" name=\"code\" inputmode=\"numeric\" "
+           "maxlength=\"4\" placeholder=\"Code\">");
+    b += F("<button class=\"btn\">Screenshot ausl&ouml;sen</button>");
+    b += F("</form>");
+    b += F("<p><a class=\"btn gray\" href=\"");
+    b += nav;
+    b += F("\">Seite neu laden</a></p>");
+    if (running) {
+      b += F("<div class=\"note\">Eine Aufnahme wird gerade geschrieben. Die "
+             "Seite l&auml;dt sich in ein paar Sekunden einmal neu, dann steht "
+             "die neue Datei oben.</div>");
+    } else {
+      b += F("<div class=\"note\">Die Aufnahme zeigt genau diese Seite. Das "
+             "Bild landet als <code>shot...bmp</code> auf der Karte; die Seite "
+             "l&auml;dt sich danach einmal neu.</div>");
+    }
+  }
+
+  sendNavPage(title, nav, b, refreshTag);
 }
 
 void handleData() { askListing("Daten", "/daten", "/hist", true); }
 
-void handleShots() { askListing("Bilder", "/bilder", "/shot", false); }
+// The picture list, with the trigger button for a new screenshot.
+//
+// "?neu" counts the steps of the one reload that belongs to a capture:
+//
+//   1  where the button's answer lands. Same list as before, plus a refresh
+//      after 6 s - long enough for 691 kB to reach the card.
+//   2  that reload: it reads the directory from the card again, bypassing the
+//      listing cache, because that cache is at most 5 s old and would otherwise
+//      still hide the file that was just written.
+//
+// From 2 on the page stands still. The one exception: if the write is still
+// running (a card that fell back to a slow clock), step 2 asks once more instead
+// of showing a list that quietly lacks the picture - up to kShotReloadMax steps,
+// then it gives up and the "Seite neu laden" button is there.
+void handleShots() {
+  int step = 0;
+  if (s_server.hasArg("neu")) {
+    const String arg = s_server.arg("neu");
+    step = atoi(arg.c_str());
+    if (step < 0 || step > kShotReloadMax) {
+      step = 0; // not ours; a big number would keep the page reloading
+    }
+  }
+  if (step == 1) {
+    askListing("Bilder", "/bilder", "/shot", false, kShotReloadTag);
+    return;
+  }
+  if (step >= 2) {
+    char tag[64];
+    const char *next = nullptr;
+    if (guiShotRunning() && step < kShotReloadMax) {
+      snprintf(tag, sizeof(tag), "<meta http-equiv=\"refresh\" "
+                                  "content=\"6;url=/bilder?neu=%d\">",
+               step + 1);
+      next = tag;
+    }
+    askListing("Bilder", "/bilder", "/shot", false, next, true);
+    return;
+  }
+  askListing("Bilder", "/bilder", "/shot", false);
+}
 
 // ---------------------------------------------------------------------------
 // Downloads
@@ -613,7 +713,9 @@ void streamStep() {
       if (sdStreamFailed()) {
         s_streamKind = StreamKind::None;
         s_streamFile[0] = '\0';
-        sendMsg(404, "Die Datei gibt es nicht (oder der Stick ist weg).");
+        sendMsg(404, "Die Datei gibt es nicht, ist 0 Bytes lang (bei Bildern: "
+                     "eine Aufnahme, die nicht fertig wurde) oder der Stick ist "
+                     "weg.");
         return;
       }
       if ((int32_t)(millis() - s_streamOpenedMs) > 6000) {
@@ -795,7 +897,8 @@ void handleUpdateUpload() {
   HTTPUpload &up = s_server.upload();
   switch (up.status) {
   case UPLOAD_FILE_START: {
-    Serial.printf("Web: Update angefordert, %s\n", up.name.c_str());
+    Serial.printf("Web: Update angefordert, %s (%s)\n", up.name.c_str(),
+                  up.filename.c_str());
     // Reject before writing: a wrong file would otherwise cost the whole upload
     // and only then fail.
     if (!codeOk()) {
@@ -803,28 +906,46 @@ void handleUpdateUpload() {
       s_otaOk = false;
       return;
     }
-    if (up.totalSize == 0 || up.totalSize > kMaxFirmware) {
-      Serial.println(F("Web: Update abgelehnt (Groesse passt nicht)"));
+    // HTTPUpload::name is the *form field* name, not the file name - for this
+    // form both are "fw", and checking name for ".bin" turned every upload away
+    // (measured: "Update abgelehnt (keine .bin-Datei)" for a perfectly good
+    // firmware.bin). filename is the name the browser sent with the part, which
+    // is what the .bin check belongs to.
+    if (up.filename.indexOf(".bin") < 0) {
+      Serial.printf("Web: Update abgelehnt (keine .bin-Datei: '%s')\n",
+                    up.filename.c_str());
       s_otaOk = false;
       return;
     }
-    if (up.name.indexOf(".bin") < 0) {
-      Serial.println(F("Web: Update abgelehnt (keine .bin-Datei)"));
-      s_otaOk = false;
-      return;
-    }
-    s_otaOk = Update.begin(up.totalSize, U_FLASH);
+    // No size from the request: this WebServer version only sums up the chunks
+    // as they arrive, so up.totalSize is 0 at UPLOAD_FILE_START - the file's
+    // Content-Length is not handed to the handler at all. Asking Update.begin()
+    // for that 0 failed every upload with "Groesse passt nicht", i.e. the
+    // update could not be carried out with this library version. UPDATE_SIZE_UNKNOWN
+    // takes the whole slot instead, and end(true) cuts the image back to what
+    // really arrived - the size check that is kept is the one on the bytes
+    // written, below.
+    s_otaOk = Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH);
     s_otaOpen = s_otaOk;
     if (!s_otaOk) {
       Serial.printf("Web: Update.begin(): %s\n", Update.errorString());
     }
     s_otaBytes = 0;
-    s_otaTotal = up.totalSize;
     s_otaStartMs = millis();
     break;
   }
   case UPLOAD_FILE_WRITE:
     if (s_otaOk) {
+      // A firmware image is longer than the app slot? Then it is not a firmware.
+      // Checked while it streams, because there is no announced size to check
+      // against up front; the partition itself refuses anything over its size.
+      if (s_otaBytes + up.currentSize > kMaxFirmware) {
+        Serial.println(F("Web: Update abgebrochen, groesser als der Speicherplatz"));
+        Update.abort();
+        s_otaOk = false;
+        s_otaOpen = false;
+        return;
+      }
       s_otaOk = Update.write(up.buf, up.currentSize) == up.currentSize;
       if (!s_otaOk) {
         Serial.printf("Web: Update.write(): %s\n", Update.errorString());
@@ -863,6 +984,10 @@ void handleUpdateDone() {
     return;
   }
   const uint32_t took = millis() - s_otaStartMs;
+  // end(true) because the slot was opened with UPDATE_SIZE_UNKNOWN: the image is
+  // cut back to the bytes that really arrived, and the bootloader's own checksum
+  // decides whether the result is a valid firmware. Nothing written without a
+  // valid image: the other app slot still holds the running one.
   if (!Update.end(true)) {
     Serial.printf("Web: Update.end(): %s\n", Update.errorString());
     s_otaOpen = false;
@@ -871,9 +996,8 @@ void handleUpdateDone() {
     return;
   }
   s_otaOpen = false;
-  Serial.printf("Web: Update fertig, %u von %u bytes in %lu ms, Neustart\n",
-                (unsigned)s_otaBytes, (unsigned)s_otaTotal,
-                (unsigned long)took);
+  Serial.printf("Web: Update fertig, %u bytes in %lu ms, Neustart\n",
+                (unsigned)s_otaBytes, (unsigned long)took);
   String b;
   b.reserve(400);
   b += F("<div class=\"note ok\">Firmware geschrieben. Das Panel startet "
@@ -885,7 +1009,7 @@ void handleUpdateDone() {
 }
 
 // ---------------------------------------------------------------------------
-// /aktion - restart and re-provisioning, both behind the code
+// /aktion - screenshot, restart and re-provisioning, all behind the code
 // ---------------------------------------------------------------------------
 
 void handleAction() {
@@ -909,6 +1033,27 @@ void handleAction() {
     delay(500);
     webStop(); // frees port 80 and the radio for the portal
     restartProvisioning();
+    return;
+  }
+  if (was == "bild") {
+    // A screenshot is a write like the rest: 691 kB onto the card, and a capture
+    // blocks the card worker while it runs, so a download asked for at that
+    // moment waits. Behind the code, reached from the button under /bilder.
+    const bool started = guiRequestShot();
+    Serial.printf("Web: Screenshot %s\n",
+                  started ? "gestartet" : "nicht moeglich (laeuft noch oder "
+                                          "keine SD-Karte)");
+    if (!started) {
+      sendMsg(409, "Es l&auml;uft schon eine Aufnahme, oder es steckt keine "
+                   "SD-Karte im Panel.");
+      return;
+    }
+    // Straight back to the list, which reloads itself once so the new file is in
+    // it (see handleShots). A message page in between would only be a step
+    // nobody needs: the list is where the picture shows up, and the reload
+    // carries the waiting.
+    s_server.sendHeader("Location", "/bilder?neu=1");
+    s_server.send(303);
     return;
   }
   if (was == "test") {
