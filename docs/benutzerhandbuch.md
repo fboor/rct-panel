@@ -40,43 +40,13 @@ So geht's:
 So sieht es danach aus: Oben die Statusleiste mit dem Verbindungsstatus
 (`live`, grün = alles gut), in der Mitte die aktuelle Seite; unten blättern
 ◀ / ▶ durch die sieben Seiten, ⌂ springt zur Übersicht. Details
-zu den Seiten stehen in Kapitel 4, zur Einrichtung ab Kapitel 2.
+zu den Seiten stehen in Kapitel 3, zur Einrichtung ab Kapitel 1.
 
 ---
 
-## 1. Technische Daten
+## 1. Inbetriebnahme
 
-| Bezeichnung | Technische Daten |
-|---|---|
-| Anzeige | 4" IPS-Farbdisplay, 480 × 480 Pixel (ST7701 RGB) |
-| Bedienung | kapazitives Touchpanel (GT911) |
-| Prozessor | ESP32-S3, Dual-Core |
-| Speicher | 16 MB Flash, 8 MB PSRAM |
-| Datenspeicher | microSD/TF-Karte, FAT32 (Steckplatz auf der Platine) |
-| Stromversorgung | USB-C, 5 V DC |
-| WLAN | IEEE 802.11 b/g/n (2,4 GHz) |
-| Datenabfrage | RCT-Wechselrichter über TCP (Port 8899) |
-| Datenaufzeichnung | alle 5 Minuten als CSV (ca. 40 KB pro Tag) |
-
-Das Panel zeigt ausschließlich Messwerte an — es **verändert keine
-Einstellungen am Wechselrichter** (eine Ausnahme: der Setup-Modus legt nur
-die eigenen Netzwerk- und Verbindungsdaten des Panels fest).
-
-### Datenfluss
-
-- Das Panel liest alle Live-Werte alle 10 Sekunden aus dem Wechselrichter.
-- Das Display aktualisiert sich einmal pro Sekunde mit den zuletzt
-  gelesenen Werten.
-- Der 24-Stunden-Verlauf nimmt alle 5 Minuten einen Messpunkt auf.
-- Ist der Wechselrichter nicht erreichbar, zeigt das Panel weiterhin die
-  letzten Werte an, kennzeichnet den Zustand aber im Statusfeld (siehe
-  Abschnitt 4) und versucht die Verbindung automatisch wiederherzustellen.
-
----
-
-## 2. Inbetriebnahme
-
-### 2.1 Erstes Einschalten
+### 1.1 Erstes Einschalten
 
 1. Panel mit 5 V versorgen. Das Display startet sofort.
 2. Ohne gespeichertes WLAN startet das Panel selbst einen eigenen
@@ -86,7 +56,7 @@ die eigenen Netzwerk- und Verbindungsdaten des Panels fest).
    die Konfigurationsseite unter `http://192.168.4.1` (ein Captive-Portal
    öffnet sich meist automatisch).
 
-### 2.2 Konfiguration im Setup-Portal
+### 1.2 Konfiguration im Setup-Portal
 
 Tragen Sie im Portal ein:
 
@@ -110,18 +80,18 @@ Bestätigen Sie das Formular. Das Panel speichert die Angaben dauerhaft
   <figcaption>Bild 2: Konfigurationsportal unter http://192.168.4.1</figcaption>
 </figure>
 
-### 2.3 Später erneut konfigurieren
+### 1.3 Später erneut konfigurieren
 
 - Öffnen Sie auf der Seite Service den Button „Setup starten" — das
   Panel startet daraufhin wieder den Konfigurations-Zugangspunkt.
 - Oder starten Sie das Panel, während kein gespeichertes Netzwerk erreichbar
   ist (nach ca. 15 s erscheint der AP von selbst).
 - Zum vollständigen Zurücksetzen auf Werkseinstellung kann der
-  NVS-Speicher gelöscht werden (Entwickler-Anleitung, Abschnitt 9).
+  NVS-Speicher gelöscht werden (Entwickler-Anleitung, Abschnitt 8).
 
 ---
 
-## 3. Bedienung
+## 2. Bedienung
 
 Die Bedienung erfolgt per Touch:
 
@@ -147,9 +117,9 @@ erfundenen Nullwert an.
 
 ---
 
-## 4. Die sieben Seiten im Einzelnen
+## 3. Die sieben Seiten im Einzelnen
 
-### 4.1 Übersicht (Energiefluss)
+### 3.1 Übersicht (Energiefluss)
 
 Das Flussdiagramm bildet die „Energiefluss"-Ansicht des RCT-Portals ab:
 
@@ -167,7 +137,7 @@ Die Pfeile zwischen den Knoten leuchten rot in Richtung des aktuellen
 Energieflusses. Unten zeigt eine Tabelle den Stand von Erzeugung /
 Verbrauch / Netz / Batterie.
 
-### 4.2 Energie (Balken pro Zeitraum)
+### 3.2 Energie (Balken pro Zeitraum)
 
 Akkumulierte Energien als Balken — wählbar über die Tasten
 Tag | Monat | Jahr | Gesamt:
@@ -184,7 +154,7 @@ Die Balken sind zum größten Wert des gewählten Zeitraums normiert; die
 Werte stehen rechtsbündig über dem jeweiligen Balken (kWh bzw. MWh mit
 Dezimalkomma).
 
-### 4.3 Heute (Tagesübersicht)
+### 3.3 Heute (Tagesübersicht)
 
 Die Tageswerte des aktuellen Kalendertags:
 
@@ -196,7 +166,7 @@ Die Tageswerte des aktuellen Kalendertags:
 Hinweis: Entlädt sich die Batterie zur Deckung des Hausbedarfs, zählt diese
 Energie als Eigenverbrauch.
 
-### 4.4 24 h Verlauf
+### 3.4 24 h Verlauf
 
 Liniendiagramm der letzten 24 Stunden (ein Punkt alle 5 Minuten, 288 Punkte):
 
@@ -220,7 +190,7 @@ Liniendiagramm der letzten 24 Stunden (ein Punkt alle 5 Minuten, 288 Punkte):
 - Der Verlauf übersteht einen Neustart: Beim Hochfahren lädt das Panel
   die letzten bis zu 24 Stunden von der SD-Karte zurück.
 
-### 4.5 Info
+### 3.5 Info
 
 Technische und Verbindungsdaten (Reihenfolge wie angezeigt):
 
@@ -228,7 +198,7 @@ Technische und Verbindungsdaten (Reihenfolge wie angezeigt):
 `Last data` (Sekunden seit letztem Datenpaket) · `Uptime` ·
 `Netz L1..L3` · `PV` (A+B+S0) · `Kern` · `Kühlkörper` · `Netzfrequenz`.
 
-### 4.6 Akku
+### 3.6 Akku
 
 Alles zur Batterie:
 
@@ -241,18 +211,18 @@ Alles zur Batterie:
   Tages-Countdown, sobald die Uhrzeit synchronisiert ist) · Zyklen ·
   SOH (State of Health) · Inselbetrieb.
 
-### 4.7 Service
+### 3.7 Service
 
 Die einzige Seite mit Aktionen:
 
 - „Setup starten" (rechts oben): öffnet das Konfigurationsportal (siehe
-  Abschnitt 2.3).
+  Abschnitt 1.3).
 - Batterie-Status: decodierter Zustand (darunter der Rohwert).
 - Störungen: decodierte Fehlermeldungen des Wechselrichters (mehrere
   können gleichzeitig aktiv sein).
 - SD-Log: Status der SD-Aufzeichnung, z. B. `SD: OK | 16,0 GB frei` —
   bei gezogener Karte `SD: -- | n gepuffert` (Werte werden zwischengepuffert;
-  siehe Abschnitt 5).
+  siehe Abschnitt 4).
 - „Screenshot" (rechts, unter „Setup starten"): speichert nach 5
   Sekunden ein Bild des aktuellen Displays als BMP auf die Karte
   (`/shot/shot001.bmp`). Die 5 Sekunden erlauben, vorher zu einer anderen
@@ -261,7 +231,7 @@ Die einzige Seite mit Aktionen:
 
 ---
 
-## 5. Datenerfassung auf der SD-Karte
+## 4. Datenerfassung auf der SD-Karte
 
 Das Panel schreibt automatisch alle 5 Minuten einen Datensatz in eine
 CSV-Datei (nur bei verbundenem Wechselrichter, keine Nullzeilen):
@@ -302,7 +272,7 @@ Monatsdatei über die SNTP-Zeit.
 
 ---
 
-## 6. Vorzeichen <span class="h-sub">kompakt</span>
+## 5. Vorzeichen <span class="h-sub">kompakt</span>
 
 | Größe | Konvention |
 |---|---|
@@ -315,7 +285,7 @@ Monatsdatei über die SNTP-Zeit.
 
 ---
 
-## 7. Fehlerbehebung
+## 6. Fehlerbehebung
 
 | Symptom | Ursache / Lösung |
 |---|---|
@@ -328,7 +298,7 @@ Monatsdatei über die SNTP-Zeit.
 
 ---
 
-## 8. Sicherheit
+## 7. Sicherheit
 
 - Das Panel ist ein Anzeigegerät und greift nicht in die
   Wechselrichter-Konfiguration ein.
@@ -339,7 +309,7 @@ Monatsdatei über die SNTP-Zeit.
 
 ---
 
-## 9. Für Entwickler: Firmware aktualisieren (Kurzfassung)
+## 8. Für Entwickler: Firmware aktualisieren (Kurzfassung)
 
 Quellcode und Build liegen in diesem Repository (`rct-panel`). Voraussetzung:
 PlatformIO (Core 6.x).
@@ -357,6 +327,36 @@ gespeichertes WLAN und RCT-Konfiguration).
 > **Hinweis:** Zum Flashen verbinden Sie das Panel per USB mit dem Rechner
 > und starten den Build mit Upload (siehe oben). Das Gerät startet danach
 > automatisch neu; die SD-Aufzeichnung stört der Vorgang nicht.
+
+---
+
+## 9. Technische Daten
+
+| Bezeichnung | Technische Daten |
+|---|---|
+| Anzeige | 4" IPS-Farbdisplay, 480 × 480 Pixel (ST7701 RGB) |
+| Bedienung | kapazitives Touchpanel (GT911) |
+| Prozessor | ESP32-S3, Dual-Core |
+| Speicher | 16 MB Flash, 8 MB PSRAM |
+| Datenspeicher | microSD/TF-Karte, FAT32 (Steckplatz auf der Platine) |
+| Stromversorgung | USB-C, 5 V DC |
+| WLAN | IEEE 802.11 b/g/n (2,4 GHz) |
+| Datenabfrage | RCT-Wechselrichter über TCP (Port 8899) |
+| Datenaufzeichnung | alle 5 Minuten als CSV (ca. 40 KB pro Tag) |
+
+Das Panel zeigt ausschließlich Messwerte an — es **verändert keine
+Einstellungen am Wechselrichter** (eine Ausnahme: der Setup-Modus legt nur
+die eigenen Netzwerk- und Verbindungsdaten des Panels fest).
+
+### Datenfluss
+
+- Das Panel liest alle Live-Werte alle 10 Sekunden aus dem Wechselrichter.
+- Das Display aktualisiert sich einmal pro Sekunde mit den zuletzt
+  gelesenen Werten.
+- Der 24-Stunden-Verlauf nimmt alle 5 Minuten einen Messpunkt auf.
+- Ist der Wechselrichter nicht erreichbar, zeigt das Panel weiterhin die
+  letzten Werte an, kennzeichnet den Zustand aber im Statusfeld (siehe
+  Abschnitt 2) und versucht die Verbindung automatisch wiederherzustellen.
 
 ---
 
