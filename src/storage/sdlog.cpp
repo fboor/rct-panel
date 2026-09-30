@@ -5,17 +5,22 @@
 //   sdTick()  -> kicks the worker (non-blocking)
 //   sdLogSample() -> queues one row (caller drives the 5-minute cadence)
 //
-// Why a task: the SPI card talks at 400 kHz and SD.begin() alone measured
-// 1457 ms, the history restore 1418 ms. LVGL runs on the same task as this
-// file's callers, so a single long card operation froze the whole panel -
-// GUI redraw and touch included - for over a second. The worker owns the card
-// exclusively (the ESP32 SD/FS layer is not thread-safe) and the GUI thread
-// only ever posts messages to it.
+// Why a task: SD.begin() alone measured 1457 ms, the history restore 1418 ms,
+// and a full card read is seconds. LVGL runs on the same task as this file's
+// callers, so a single long card operation froze the whole panel - GUI redraw
+// and touch included - for over a second. The worker owns the card exclusively
+// (the ESP32 SD/FS layer is not thread-safe) and the GUI thread only ever posts
+// messages to it.
 //
 // SPI wiring on the 4848S040 (cross-checked with a working Tasmota setup):
 //   SCK = 48, MOSI = 47 (shared with the boot-only bit-banged LCD config
 //   SPI; idle after init), MISO = 41, CS = 42. Uses the FSPI peripheral,
-//   blocking, no DMA. ~5 MHz - some UHS-class cards are picky in SPI mode.
+//   blocking, no DMA.
+//
+// Clock: the card is mounted at 4 MHz (the SD library's own default) and falls
+// back to the 400 kHz that worked for every earlier release. Not a free choice
+// - see kSdFastHz: the library runs *every* transaction, CMD0 included, at the
+// given frequency, so a marginal card is detected only by the round-trip probe.
 //
 // SPDX-License-Identifier: MIT
 #include "storage/sdlog.h"
@@ -25,6 +30,7 @@
 
 #include "../Diag.h"
 #include <SPI.h>
+#include <esp_heap_caps.h>
 #include <esp_task_wdt.h>
 #include <esp_timer.h>
 #include <freertos/FreeRTOS.h>
@@ -45,6 +51,22 @@ volatile bool s_mounted = false; // read by the GUI thread via sdMounted()
 bool s_probePending = true;      // PROBE self-test marker exists until first flush
 uint32_t s_nextMountMs = 0;
 constexpr uint32_t kMountRetryMs = 10000; // retry every 10 s without a card
+
+// SPI clock for the card. 4 MHz first, 400 kHz as the fallback that has
+// proven itself on every release so far.
+//
+// The Arduino SD stack takes the frequency as a plain argument and keeps it in
+// the card state (libraries/SD/src/sd_diskio.cpp: card->frequency = hz, and
+// every transaction runs at SPISettings(card->frequency)). There is no
+// automatic slow-down, so the *card detection itself* - the part that fails on
+// a marginal card with "physical drive cannot work" - already runs at the fast
+// clock. That is why the fast clock is only kept when the card proves it with
+// the write+read-back probe (probeMount) and why the probe result decides for
+// the rest of the session instead of being retried every 10 s.
+constexpr uint32_t kSdFastHz = 4000000;
+constexpr uint32_t kSdSlowHz = 400000;
+int s_fastUsable = -1; // -1 untested, 1 fast clock works, 0 dropped to 400 kHz
+uint32_t s_spiHz = kSdSlowHz;
 
 char s_path[32];    // "/hist/RCT-202609.csv" or "/hist/UPT-<days>.csv"
 char s_pathKey[16]; // rotation key of the currently open file ("202609" ...)
@@ -101,12 +123,14 @@ void buildStatus(); // defined below, called by queueFlush()
 // The GUI thread (Arduino loop + LVGL) posts the three things it needs - write
 // a row, read the history, report status - and never waits for them.
 // --------------------------------------------------------------------------
-enum SdReqType : uint8_t { SDREQ_LOG, SDREQ_HISTORY, SDREQ_SHOT };
+enum SdReqType : uint8_t { SDREQ_LOG, SDREQ_HISTORY, SDREQ_SHOT, SDREQ_STREAM,
+                          SDREQ_LIST };
 
 struct SdReq {
   uint8_t type;
-  int maxRows;       // SDREQ_HISTORY
-  bool waitForClock; // SDREQ_HISTORY
+  int maxRows;         // SDREQ_HISTORY
+  bool waitForClock;   // SDREQ_HISTORY
+  uint32_t tailBytes;  // SDREQ_STREAM: start that many bytes back from the end
   // SDREQ_SHOT: the captured screen. Owned by the caller until the worker sets
   // s_shotDone, which is the only thing that makes it safe to free again.
   const uint16_t *px;
@@ -179,17 +203,101 @@ bool updatePath() {
   return true;
 }
 
-// Self-test: a marker that only disappears after the first successful flush.
-// If it still exists after a power loss, the write path is suspect.
-bool probeMount() {
-  File probe = SD.open("/hist/PROBE", FILE_WRITE);
-  if (!probe) {
-    Serial.println(F("SD: could not write /hist/PROBE (self-test failed)"));
+// --------------------------------------------------------------------------
+// Mount self-test
+//
+// Writes /hist/PROBE and reads it back, comparing it with the pattern it just
+// wrote. The read-back is the point: a write-only probe proves nothing about a
+// raised SPI clock, because what breaks at high speed is the data coming back
+// (bit errors, CRC mismatches) - exactly what a raw write never looks at. The
+// round trip also yields the throughput, which is the number that says whether
+// the fast clock is really worth keeping.
+//
+// 512 bytes: enough for a throughput figure that means something, small enough
+// that a failing card fails in milliseconds instead of after a second of
+// retries. Both buffers live here, not on the worker's 4 kB stack, and only
+// this task ever touches them.
+//
+// The marker is not deleted here: it is removed after the first successful
+// flush (see sdWorkerWriteRow), so "PROBE still exists" keeps meaning what it
+// always meant - the write path is not proven yet.
+// --------------------------------------------------------------------------
+constexpr size_t kProbeBytes = 512;
+uint8_t s_probeTx[kProbeBytes];
+uint8_t s_probeRx[kProbeBytes];
+
+static uint8_t probePattern(size_t i) { return (uint8_t)(i * 37 + 11); }
+
+// Round-trip probe. kbsOut receives the measured round-trip throughput in
+// kB/s (payload bytes both ways divided by the elapsed time).
+bool probeMount(float *kbsOut) {
+  for (size_t i = 0; i < kProbeBytes; i++) {
+    s_probeTx[i] = probePattern(i);
+  }
+  const int64_t t0 = esp_timer_get_time();
+  {
+    File probe = SD.open("/hist/PROBE", FILE_WRITE);
+    if (!probe) {
+      Serial.println(F("SD: could not write /hist/PROBE (self-test failed)"));
+      return false;
+    }
+    const size_t wrote = probe.write(s_probeTx, kProbeBytes);
+    probe.flush();
+    probe.close();
+    if (wrote != kProbeBytes) {
+      Serial.printf("SD: self-test short write %u/%u\n", (unsigned)wrote,
+                    (unsigned)kProbeBytes);
+      return false;
+    }
+  }
+  {
+    File in = SD.open("/hist/PROBE", FILE_READ);
+    if (!in) {
+      Serial.println(F("SD: could not read /hist/PROBE (self-test failed)"));
+      return false;
+    }
+    const size_t got = in.read(s_probeRx, kProbeBytes);
+    in.close();
+    if (got != kProbeBytes) {
+      Serial.printf("SD: self-test short read %u/%u\n", (unsigned)got,
+                    (unsigned)kProbeBytes);
+      return false;
+    }
+  }
+  const int64_t dt = esp_timer_get_time() - t0;
+  if (memcmp(s_probeTx, s_probeRx, kProbeBytes) != 0) {
+    Serial.println(F("SD: self-test data mismatch - card cannot hold this clock"));
     return false;
   }
-  probe.println(F("probe"));
-  probe.flush();
-  probe.close();
+  if (kbsOut != nullptr) {
+    // Both directions of the round trip count as payload here: the figure is
+    // the card's throughput, not the file system's.
+    *kbsOut = dt > 0 ? (float)(2.0 * (double)kProbeBytes / (double)dt) : 0.0f;
+  }
+  return true;
+}
+
+// One mount attempt at a given clock: bus, mount, /hist, self-test. Leaves the
+// card unmounted on any failure so the next attempt starts from a clean bus.
+static bool tryMount(uint32_t hz, float *kbsOut, bool *probeOkOut) {
+  s_spi.begin(kSpiSck, kSpiMiso, kSpiMosi, kSpiSs);
+  if (!SD.begin(kSpiSs, s_spi, hz, "/sd", 4)) {
+    SD.end(); // leave the bus clean for the next attempt
+    return false;
+  }
+  // mkdir() reports false for an existing directory, so ask first - the old
+  // "cannot create /hist" message was printed on every normal mount.
+  if (!SD.exists("/hist") && !SD.mkdir("/hist")) {
+    Serial.println(F("SD: cannot create /hist"));
+  }
+  const bool probeOk = probeMount(kbsOut);
+  if (probeOkOut != nullptr) {
+    *probeOkOut = probeOk;
+  }
+  if (!probeOk) {
+    SD.end();
+    return false;
+  }
   return true;
 }
 
@@ -325,9 +433,11 @@ constexpr size_t kRowBytesEst = 128;
 // file and parsing forward from there. Bounding the read is the whole point of
 // this function: the log is appended to every 5 minutes, so a month file grows
 // by ~8 600 rows, and parsing it from the front meant reading the entire file
-// over a 400 kHz SPI bus. That scan does not finish in any useful time - it held
-// the card worker, and behind it the GUI waiting for the history result, for
-// minutes. Measured on 2025-09-29: still running after 120 s.
+// over the SPI bus. At the 400 kHz this started out with, that scan does not
+// finish in any useful time - it held the card worker, and behind it the GUI
+// waiting for the history result, for minutes. Measured on 2025-09-29: still
+// running after 120 s. Bounding the read is what fixed it, and the higher clock
+// makes the window cheap as well.
 //
 // The window is sized generously (kRowBytesEst per row rather than the exact
 // row length), so it can begin slightly before the rows that matter. Extra rows
@@ -468,7 +578,10 @@ static void sdWorkerPeriodic(uint32_t now) {
         buildStatus();
       } else if (s_probePending && !s_warnLogged) {
         // A card is back. Do NOT re-write the PROBE marker here: delete+create
-        // is FAT metadata traffic that measured 1971 ms on this 400 kHz bus.
+        // is FAT metadata traffic, and it measured 1971 ms on the 400 kHz bus
+        // this panel started with (a few hundred ms at 4 MHz - still a long time
+        // to hold the worker, for no information this block does not already
+        // have).
         // Card presence is what this block is for, and it is answered by
         // cardSize(). If the inserted card is a different one, the next real
         // row write fails through appendRow() and parks the row in the RAM
@@ -494,25 +607,36 @@ static void sdWorkerPeriodic(uint32_t now) {
   // (measured 1457 ms). It runs on this task, not on the GUI task, but the GUI
   // then blocks on s_lock in the status call, so it has to be visible.
   diagPhase("sd.mount");
-  s_spi.begin(kSpiSck, kSpiMiso, kSpiMosi, kSpiSs);
-  // Spec-compliant 400 kHz init: the Arduino SD library clocks the card at the
-  // given frequency from CMD0 onwards, and fast init is the classic cause of
-  // "physical drive cannot work" with marginal wiring/cards. Plenty fast for
-  // one 16-column row per 5 minutes.
-  if (!SD.begin(kSpiSs, s_spi, 400000, "/sd", 4)) {
-    SD.end(); // leave the bus clean for the next attempt
-    return;
+  // Fast clock first (4 MHz, the library default), fall back to the 400 kHz
+  // that worked before. The probe in tryMount() is what decides, and its
+  // verdict sticks for the rest of the session: a card that cannot hold 4 MHz
+  // must not be offered 4 MHz again every 10 s.
+  uint32_t hz = s_fastUsable == 0 ? kSdSlowHz : kSdFastHz;
+  float kbs = 0.0f;
+  bool probeOk = false;
+  if (!tryMount(hz, &kbs, &probeOk)) {
+    if (hz == kSdSlowHz) {
+      return; // already at the safe clock, nothing to fall back to
+    }
+    Serial.printf("SD: %lu Hz unbrauchbar, weiche auf %lu Hz zurueck\n",
+                  (unsigned long)hz, (unsigned long)kSdSlowHz);
+    s_fastUsable = 0;
+    hz = kSdSlowHz;
+    if (!tryMount(hz, &kbs, &probeOk)) {
+      return;
+    }
+  } else if (s_fastUsable < 0) {
+    s_fastUsable = 1;
   }
-  if (!SD.mkdir("/hist")) {
-    Serial.println(F("SD: cannot create /hist"));
-  }
+  s_spiHz = hz;
   s_mounted = true;
   s_warnLogged = false;
   s_pathValid = false;
-  s_probePending = probeMount();
+  s_probePending = probeOk;
   updatePath(); // fill s_path, otherwise the log line below stays empty
   buildStatus();
-  Serial.printf("SD: mounted, %.1f GB free (%s)\n",
+  Serial.printf("SD: mounted at %lu Hz, self-test %.0f kB/s, %.1f GB free (%s)\n",
+                (unsigned long)hz, (double)kbs,
                 (double)(SD.totalBytes() - SD.usedBytes()) / 1.0e9, s_path);
   if (s_queueCount > 0) {
     s_nextQueueRetryMs = millis(); // flush parked rows right away
@@ -610,6 +734,8 @@ const char *sdStatusText() {
 }
 
 
+uint32_t sdSpiHz() { return s_mounted ? s_spiHz : 0; }
+
 bool sdMounted() { return s_mounted; }
 
 static void sdWorkerWriteShot(const SdReq &req) {
@@ -673,13 +799,13 @@ static void sdWorkerWriteShot(const SdReq &req) {
   memcpy(hdr + 42, &ppm, 4);
   f.write(hdr, sizeof(hdr));
 
-  // Bottom-up: BMP starts at the last scanline. The card runs at 400 kHz
-  // (spec-compliant init chosen for this marginal wiring), so a 480x480 BMP
-  // needs >14 s of transfer time - longer than the 5 s task-watchdog window.
-  // Feed the WDT from this task and let IDLE0 run every row, or the first
-  // screenshot after every boot would reboot the panel mid-write and leave
-  // a 0-byte file behind. A transfer that is truly stuck still trips the
-  // watchdog: this only legalises writes that are slow, not ones that hang.
+  // Bottom-up: BMP starts at the last scanline. A 480x480 BMP is 691 254 bytes:
+  // ~1.4 s at the 4 MHz clock the card normally runs at, >14 s at the 400 kHz
+  // fallback - and the 5 s task-watchdog window is shorter than the second case.
+  // Feed the WDT from this task and let IDLE0 run every row, so a card that fell
+  // back to 400 kHz still writes its picture completely. A transfer that is
+  // truly stuck still trips the watchdog: this only legalises writes that are
+  // slow, not ones that hang.
   for (int y = h - 1; y >= 0; y--) {
     const uint16_t *src = req.px + (size_t)y * (size_t)w;
     size_t n = 0;
@@ -708,8 +834,8 @@ static void sdWorkerWriteShot(const SdReq &req) {
 // scan (measured 1418 ms). Now the scan happens here and hands the rows over
 // through s_histOut; the GUI collects them whenever it is ready.
 void sdWorkerReadHistory(int maxRows, bool waitForClock) {
-  // scanFile() walks whole CSV files backwards over a 400 kHz bus: the
-  // second-longest card operation, and the one the chart on the panel waits on.
+  // scanFile() walks CSV files backwards over the SPI bus: still the second-longest
+  // card operation, and the one the chart on the panel waits on.
   diagPhase("sd.scan");
   int count = 0;
   bool deferred = false;
@@ -818,6 +944,299 @@ int sdTakeHistory(SdHistSample *out, int maxRows) {
 }
 
 // --------------------------------------------------------------------------
+// File streaming and directory listing (web interface, see docs/web-interface.md)
+//
+// The card stays in this worker's hands, same rule as everywhere else in this
+// file: the GUI asks for a chunk and copies bytes out of a buffer below, it
+// never touches a File itself. The web server cannot read the card in the same
+// breath as it writes to a socket - that is what the worker is for.
+//
+// One chunk per worker pass, and only when the previous chunk has been picked
+// up. So a queued 5-minute row or a card-presence check waits at most one
+// chunk instead of a whole file, and a browser that stops reading stops the
+// card (the buffer simply stays full) - no unbounded buffering.
+//
+// A stream announces its byte count up front (whole file, or the last N kB of
+// it), which is what lets the web server send a real Content-Length and the
+// browser show a true progress bar.
+// --------------------------------------------------------------------------
+
+// 16 kB: at 4 MHz a chunk takes ~40 ms, so the worker's 10 ms idle pass is
+// noise; at the 400 kHz fallback it is ~380 ms and still harmless. 8 kB was
+// measurably more per-pass overhead for no gain in responsiveness.
+constexpr size_t kStreamChunk = 16384;
+// PSRAM first: this buffer is touched once per GUI loop while a stream runs,
+// and internal heap is the scarce resource on this panel (~150 kB).
+uint8_t *s_streamBuf = nullptr;
+// 2 kB of listing: a line is ~34 bytes ("shot042.bmp|691024|1758901200"), so this
+// holds ~60 entries. A full card of screenshots (999 by the naming scheme)
+// exceeds it - the page says so rather than pretending the list is complete.
+constexpr size_t kListingCap = 2048;
+
+struct StreamState {
+  bool active = false;  // worker holds an open file
+  bool ready = false;   // a filled chunk is waiting to be picked up
+  bool done = false;    // everything announced has been handed over (or failed)
+  bool failed = false;
+  bool stop = false;    // abort asked for by the caller
+  size_t total = 0;     // bytes the caller will receive in total
+  size_t sent = 0;      // bytes handed over so far
+  size_t have = 0;      // bytes in the buffer not yet taken
+};
+StreamState s_stream;
+File s_streamFile; // worker-only: opened by SDREQ_STREAM, closed on done/abort
+
+// Guarded by s_lock.
+char s_listing[kListingCap];
+int s_listingLen = -1; // -1 nothing fresh, -2 failed
+
+// Worker side of SDREQ_STREAM: open, position, announce.
+static void sdWorkerOpenStream(const SdReq &req) {
+  if (s_stream.active) {
+    s_streamFile.close();
+  }
+  s_stream.active = false;
+  s_stream.failed = false;
+  s_stream.stop = false;
+  s_stream.sent = 0;
+  s_stream.have = 0;
+  s_stream.total = 0;
+  if (!s_mounted) {
+    s_stream.failed = true;
+    s_stream.done = true;
+    return;
+  }
+  diagPhase("sd.open");
+  File f = SD.open(req.path, FILE_READ);
+  if (!f) {
+    Serial.printf("SD: cannot open %s for streaming\n", req.path);
+    s_stream.failed = true;
+    s_stream.done = true;
+    return;
+  }
+  const size_t size = (size_t)f.size();
+  // Tail request: start that many bytes back from the end, clamped to the file.
+  size_t start = 0;
+  if (req.tailBytes > 0 && req.tailBytes < size) {
+    start = size - req.tailBytes;
+  }
+  if (start > 0 && !f.seek(start)) {
+    Serial.printf("SD: seek %u in %s failed, streaming from the start\n",
+                  (unsigned)start, req.path);
+    start = 0;
+  }
+  s_streamFile = f;
+  s_stream.total = size - start;
+  s_stream.active = true;
+  s_stream.done = false;
+  // A zero-length file is finished before it starts: otherwise the first
+  // take would return 0 (nothing yet) and the caller would wait forever.
+  s_stream.done = s_stream.total == 0;
+  Serial.printf("SD: stream %s, %u bytes from %u\n", req.path,
+                (unsigned)s_stream.total, (unsigned)start);
+}
+
+// Worker side of SDREQ_LIST: one directory, formatted in place.
+static void sdWorkerListDir(const SdReq &req) {
+  if (!s_mounted) {
+    s_listingLen = -2;
+    return;
+  }
+  diagPhase("sd.listdir");
+  xSemaphoreTake(s_lock, portMAX_DELAY);
+  size_t used = 0;
+  int n = 0;
+  File dir = SD.open(req.path);
+  if (dir && !dir.isDirectory()) {
+    dir.close();
+  } else if (!dir) {
+    // A missing directory is normal on a fresh card (no /shot yet).
+    used = 0;
+  }
+  if (dir) {
+    for (File e = dir.openNextFile(); e; e = dir.openNextFile()) {
+      if (e.isDirectory()) {
+        e.close();
+        continue;
+      }
+      // name|size|epoch, one per line. The pipe is safe: FAT names cannot
+      // contain it, and the web server splits on it without parsing.
+      const int w = snprintf(s_listing + used, kListingCap - used, "%s|%u|%u\n",
+                             e.name(), (unsigned)e.size(),
+                             (unsigned long)e.getLastWrite());
+      e.close();
+      if (w <= 0 || (size_t)w >= kListingCap - used) {
+        break; // full or would not fit
+      }
+      used += (size_t)w;
+      n++;
+    }
+    dir.close();
+  }
+  s_listingLen = n > 0 ? (int)used : -2;
+  xSemaphoreGive(s_lock);
+}
+
+void sdRequestStream(const char *path, uint32_t tailBytes) {
+  if (s_reqQ == nullptr || path == nullptr || s_streamBuf == nullptr) {
+    return;
+  }
+  SdReq req;
+  memset(&req, 0, sizeof(req));
+  req.type = SDREQ_STREAM;
+  req.tailBytes = tailBytes;
+  strlcpy(req.path, path, sizeof(req.path));
+  if (xQueueSend(s_reqQ, &req, 0) != pdTRUE) {
+    // No worker to hand it to: report the stream as finished, so a waiting web
+    // client gets an answer instead of hanging.
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    s_stream.active = false;
+    s_stream.done = true;
+    s_stream.failed = true;
+    xSemaphoreGive(s_lock);
+  }
+}
+
+void sdRequestListing(const char *path) {
+  if (s_reqQ == nullptr || path == nullptr) {
+    return;
+  }
+  SdReq req;
+  memset(&req, 0, sizeof(req));
+  req.type = SDREQ_LIST;
+  strlcpy(req.path, path, sizeof(req.path));
+  if (xQueueSend(s_reqQ, &req, 0) != pdTRUE) {
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    s_listingLen = -2;
+    xSemaphoreGive(s_lock);
+  }
+}
+
+uint32_t sdStreamTotal() {
+  xSemaphoreTake(s_lock, portMAX_DELAY);
+  const uint32_t t = s_stream.done ? 0 : (uint32_t)s_stream.total;
+  xSemaphoreGive(s_lock);
+  return t;
+}
+
+// Hand out the next piece of the stream. Returns the number of bytes copied,
+// 0 when the worker has not filled a chunk yet (ask again next GUI tick), and
+// -1 when the stream is finished or failed. Once -1 the caller is done; the
+// worker's file is closed by then.
+int sdTakeStreamChunk(uint8_t *out, uint32_t max) {
+  if (out == nullptr || s_lock == nullptr) {
+    return -1;
+  }
+  int rc = 0;
+  xSemaphoreTake(s_lock, portMAX_DELAY);
+  if (s_stream.ready && s_stream.have > 0) {
+    const uint32_t n = (uint32_t)(s_stream.have < max ? s_stream.have : max);
+    memcpy(out, s_streamBuf, n);
+    if (n < s_stream.have) {
+      // Caller wanted less than the chunk holds: keep the rest for next time.
+      memmove(s_streamBuf, s_streamBuf + n, s_stream.have - n);
+    }
+    s_stream.have -= n;
+    s_stream.sent += n;
+    if (s_stream.have == 0) {
+      s_stream.ready = false;
+    }
+    rc = (int)n;
+  } else if (s_stream.done) {
+    rc = -1;
+  }
+  xSemaphoreGive(s_lock);
+  return rc;
+}
+
+bool sdStreamFailed() {
+  xSemaphoreTake(s_lock, portMAX_DELAY);
+  const bool f = s_stream.failed;
+  xSemaphoreGive(s_lock);
+  return f;
+}
+
+void sdStopStream() {
+  if (s_lock == nullptr) {
+    return;
+  }
+  xSemaphoreTake(s_lock, portMAX_DELAY);
+  s_stream.stop = true;
+  // Give up on the remaining bytes. The worker sees the flag on its next pass
+  // and closes the file; a caller that is waiting for a chunk gets -1 and can
+  // stop writing immediately.
+  s_stream.ready = false;
+  s_stream.have = 0;
+  s_stream.done = true;
+  xSemaphoreGive(s_lock);
+}
+
+// Collect a directory listing. Returns the number of bytes written into out
+// (lines "name|size|epoch"), -1 while the worker is still busy, and -2 when the
+// card is not mounted or the directory is empty.
+int sdTakeListing(char *out, size_t cap) {
+  if (out == nullptr || s_lock == nullptr) {
+    return -2;
+  }
+  int rc = -1;
+  xSemaphoreTake(s_lock, portMAX_DELAY);
+  if (s_listingLen >= 0) {
+    const size_t n = (size_t)s_listingLen < cap ? (size_t)s_listingLen : cap;
+    memcpy(out, s_listing, n);
+    rc = (int)n;
+    s_listingLen = -1;
+  } else if (s_listingLen == -2) {
+    rc = -2;
+  }
+  xSemaphoreGive(s_lock);
+  return rc;
+}
+
+// Worker side, called once per pass: fill at most one chunk, and only when the
+// last one has been taken. Nothing here waits, so the pass stays short.
+static void sdWorkerStreamStep() {
+  bool openNext = false;
+  bool closeNow = false;
+  xSemaphoreTake(s_lock, portMAX_DELAY);
+  if (s_stream.active && !s_stream.stop && !s_stream.ready &&
+      s_stream.have == 0 && !s_stream.done) {
+    openNext = true;
+  }
+  if (s_stream.active && (s_stream.stop || s_stream.done) && s_stream.have == 0) {
+    closeNow = true;
+  }
+  xSemaphoreGive(s_lock);
+  if (closeNow) {
+    diagPhase("sd.close");
+    s_streamFile.close();
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    s_stream.active = false;
+    s_stream.ready = false;
+    s_stream.have = 0;
+    s_stream.done = true;
+    xSemaphoreGive(s_lock);
+    return;
+  }
+  if (!openNext) {
+    return;
+  }
+  diagPhase("sd.readchunk");
+  const size_t n = s_streamFile.read(s_streamBuf, kStreamChunk);
+  xSemaphoreTake(s_lock, portMAX_DELAY);
+  s_stream.have = n;
+  if (n == 0) {
+    s_stream.done = true; // clean end of file
+  } else {
+    s_stream.ready = true;
+    if (n < kStreamChunk) {
+      s_stream.done = true; // last chunk handed over together with it
+    }
+  }
+  esp_task_wdt_reset();
+  xSemaphoreGive(s_lock);
+}
+
+// --------------------------------------------------------------------------
 // Worker task
 // --------------------------------------------------------------------------
 
@@ -837,11 +1256,20 @@ static void sdTask(void *) {
       case SDREQ_SHOT:
         sdWorkerWriteShot(req);
         break;
+      case SDREQ_STREAM:
+        sdWorkerOpenStream(req);
+        break;
+      case SDREQ_LIST:
+        sdWorkerListDir(req);
+        break;
       default:
         break;
       }
     }
     sdWorkerPeriodic(millis());
+    // One stream chunk per pass, so a queued row or a presence check never
+    // waits for a whole file. A no-op unless a stream is running.
+    sdWorkerStreamStep();
     // Say "alive" for the idle pass. Without this the card worker keeps the
     // phase of its last real job and the heartbeat reports a hang for as long
     // as the worker does nothing - which is most of the time, by design.
@@ -887,6 +1315,24 @@ void sdInit() {
   }
   s_reqQ = xQueueCreate(kReqQueueLen, sizeof(SdReq));
   s_lock = xSemaphoreCreateMutex();
+  // Stream buffer: PSRAM if it is there, internal otherwise. Never fail - a
+  // missing buffer only costs the web interface its file downloads, and the
+  // card logging below must not be conditional on it.
+  const size_t psramFree = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+  s_streamBuf = (uint8_t *)heap_caps_malloc(kStreamChunk,
+                                            MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (s_streamBuf == nullptr) {
+    s_streamBuf = (uint8_t *)malloc(kStreamChunk);
+  }
+  if (s_streamBuf != nullptr) {
+    // Ask the allocator instead of guessing from an address range: only the
+    // successful PSRAM attempt reports how much of it was free, which is also
+    // the number worth watching if the web interface ever needs trimming.
+    Serial.printf("SD: stream buffer %u bytes (PSRAM frei %u bytes)\n",
+                  (unsigned)kStreamChunk, (unsigned)psramFree);
+  } else {
+    Serial.println(F("SD: no stream buffer, web file download disabled"));
+  }
   buildStatus();
   // Priority 1, the same as the Arduino loop task: the card work then shares
   // the CPU with LVGL instead of pre-empting it, and the worker sleeps 10 ms

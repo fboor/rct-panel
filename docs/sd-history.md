@@ -206,6 +206,57 @@ Verified in the serial log: two consecutive screenshots completed
 with no `task_wdt` abort and no reboot. Files written before the fix under the
 same numbering (shot001–005, 0 bytes) are leftovers, not regressions.
 
+> The ~16 s above is what the 400 kHz clock cost. At 4 MHz the same write takes
+> ~1.4 s (section 4d) — the watchdog fix stays in place regardless, because it
+> costs nothing and the card may still fall back.
+
+### 4d. Bus clock: 4 MHz, with a self-test that decides
+
+Everything above was built on a deliberate 400 kHz init ("spec-compliant init
+for this marginal wiring"). That was the right call while the card was the
+suspect, and it made the panel's *own* history scan unusable: a bounded read of
+the newest 288 rows is cheap, but a screenshot needs >14 s and a month file
+>1 MB is simply minutes of transfer. As soon as the panel started *serving*
+those files to a browser (see `docs/web-interface.md`), 400 kHz stopped being a
+safety margin and became the bottleneck.
+
+Measured throughput at 400 kHz: **~43 kB/s** (a 691 kB BMP in ~16 s).
+
+### Why 4 MHz and not 20
+
+`sd_diskio.cpp` stores `card->frequency` after `SD.begin()` and then runs
+**every** transaction at it, `CMD0` included (clamped to 25 MHz). There is no
+automatic downshift: a card that cannot do the fast clock does not fall back
+quietly, it fails during detection and never mounts at all. So the number has
+to be right at mount time, and the only way to know is to try.
+
+`kSdFastHz = 4000000` with `kSdSlowHz = 400000` as the fallback, decided once
+per session by the mount path in `sdWorkerPeriodic()`:
+
+1. `tryMount(4 MHz)`: `s_spi.begin(48, 41, 47, 42)`, `SD.begin(..., 4 MHz,
+   "/sd", 4)`, `/hist` if missing, then `probeMount()`.
+2. `probeMount()` writes 512 B of a bit pattern to `/hist/PROBE`, reads it back
+   and `memcmp`es it. It also times the round trip, so the boot log states a
+   measured rate instead of an assumption: `SD: mounted at 4000000 Hz, self-test
+   610 kB/s, 29,7 GB free (/sd)`.
+3. On failure `SD.end()` and the same thing again at 400 kHz. The decision is
+   remembered in `s_fastUsable` for the rest of the session — a card that failed
+   once is not re-probed every 10 s, and a fast card is never downgraded.
+4. A card inserted later goes through the same path, and the fast clock is tried
+   again: a different card may be a better card.
+
+4 MHz and not 20 MHz because 4 MHz is the SD specification's *initial* clock
+(`SD_CS_SEND_INIT_CLOCK`, ≤400 kHz during init, ≤25 MHz after), the number the
+vendor's own tooling uses, and roughly 10× the old speed. Expected at 4 MHz:
+screenshot 691 kB ≈ 1.4 s, month CSV (1.2 MB) ≈ 2.5 s, tail 64 kB ≈ 0.15 s.
+
+The fallback is not a guess about the card but a *verdict*: 4 MHz is a figure
+the card itself proved by returning a byte-for-byte correct 512 B block, and the
+only cost of the 400 kHz branch is a slower, still-correct panel.
+
+Not yet verified on the actual card — the design self-protects (400 kHz is the
+proven path), so a card that fails the probe simply keeps the old speed.
+
 ## 5. History restore: 24 h chart survives a reboot
 
 The "Verlauf" ring buffer (`s_hist`, 288 x 5 min) lives in RAM only, so a
@@ -242,12 +293,17 @@ feeds it back at boot:
 
 Implemented: `src/storage/sdlog.{h,cpp}`, hook in `main.cpp` (5-min beat),
 Service page "SD-Log" status line, the history restore above, the one-hour RAM
-queue with card-removal detection (section 4a), and the SD worker task that
-keeps the card off the GUI thread (section 4b).
+queue with card-removal detection (section 4a), the SD worker task that keeps
+the card off the GUI thread (section 4b), the 4 MHz clock with its read-back
+self-test (section 4d), and the stream/listing requests the web interface
+consumes (`docs/web-interface.md`).
 
 Verified on the board: TF slot in SPI mode (SCK 48 / MISO 41 / MOSI 47 /
 CS 42), 400 kHz init per SD spec, mount retry every 10 s while the card is
-absent, monthly CSV + header, `PROBE` self-test marker. Screenshot feature
+absent, monthly CSV + header, `PROBE` self-test marker. The marker grew from a
+one-byte "can I create a file" into the 512-byte read-back probe of section 4d,
+which also times itself; the marker is still removed after the first successful
+flush. Screenshot feature
 (Service-page button, 5 s delay, PSRAM buffer, `lv_draw_buf` snapshot, BMP
 writer in the SD worker) verified end-to-end: two complete 691 254-byte BMPs
 written in a row without the watchdog abort that the first attempt triggered

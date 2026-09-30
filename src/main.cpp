@@ -15,6 +15,7 @@
 #include "gui/GuiApp.h"
 #include "rct/RctClient.h"
 #include "storage/sdlog.h"
+#include "web/WebServer.h"
 
 #define RCT_POLL_MS 10000
 #define SD_LOG_INTERVAL_MS 300000 // 5 min, aligned to the history sampler
@@ -136,6 +137,19 @@ void loop() {
   }
   if (networkReady) {
     wifiReconnectLoop();
+  }
+
+  // Web interface: exists only in normal operation, next to the portal - never
+  // with it, since both want port 80. Started once the link is up, stopped
+  // again by startProvisioningAp()/restartProvisioning() inside Configuration.
+  // Pumping is like the portal's: one handleClient() plus at most one stream
+  // chunk per iteration, so a download never blocks the panel.
+  diagPhase("web.update");
+  if (normalOperation()) {
+    if (!webRunning()) {
+      webStart();
+    }
+    webUpdate();
   }
 
   static uint32_t lastRct = 0;

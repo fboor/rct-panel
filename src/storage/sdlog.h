@@ -71,10 +71,61 @@ int sdTakeHistory(SdHistSample *out, int maxRows);
 // when it may free the buffer.
 //
 // The worker owns it because the conversion plus the write is far too slow for
-// the GUI task: 691 kB at a 400 kHz SPI clock is seconds, not milliseconds.
+// the GUI task: 691 kB, and even at 4 MHz that is over a second.
 // --------------------------------------------------------------------------
 void sdScreenshot(const uint16_t *rgb565, int w, int h);
 // True once the worker finished with the buffer passed to sdScreenshot().
 bool sdTakeShotDone();
+
+// --------------------------------------------------------------------------
+// File streaming and directory listing (web interface, see
+// docs/web-interface.md)
+//
+// Same rule as the rest of this header: the card belongs to the worker task,
+// so the caller never touches it. The web server streams a file out of a card
+// by asking for one chunk per GUI tick and writing that chunk to the socket.
+// A single stream runs at a time; a second request replaces the first.
+//
+//   sdRequestStream(path, tailBytes) - ask. tailBytes 0 = whole file, otherwise
+//                                    start that many bytes back from the end
+//                                    (clamped to the file size). Returns
+//                                    immediately.
+//   sdStreamTotal()                 - byte count the caller will receive, 0 if
+//                                    no stream is open. Read this right after
+//                                    requesting, so the web server can send a
+//                                    real Content-Length and the browser shows
+//                                    a true progress bar.
+//   sdTakeStreamChunk(out, max)     - copy out the next piece: bytes copied,
+//                                    0 if the worker has not filled a chunk yet
+//                                    (ask again next tick), -1 when finished or
+//                                    failed. Terminal: ask until -1.
+//   sdStreamFailed()                - true if the worker could not open the
+//                                    file (distinguishes an empty reply from a
+//                                    finished download).
+//   sdStopStream()                  - abort (browser closed the connection,
+//                                    another request came in, provisioning
+//                                    started). Safe to call at any time.
+//
+// A browser that stops reading stops the card: the single chunk buffer stays
+// full and the worker waits. At most one chunk of delay for a queued 5-minute
+// CSV row, so logging and streaming do not starve each other.
+// --------------------------------------------------------------------------
+void sdRequestStream(const char *path, uint32_t tailBytes);
+uint32_t sdStreamTotal();
+int sdTakeStreamChunk(uint8_t *out, uint32_t max);
+bool sdStreamFailed();
+void sdStopStream();
+
+// Ask for a directory listing ("/hist" or "/shot") and collect it.
+// Output is one line per entry, "name|size|epoch", in directory order. Ask
+// again while the return is -1; -2 means the card is not mounted or the
+// directory is empty, and a value >= 0 is the number of bytes written into out.
+void sdRequestListing(const char *path);
+int sdTakeListing(char *out, size_t cap);
+
+// SPI clock the card is currently mounted at, in Hz (0 when no card). Shown on
+// the web interface's overview: 4000000 is the normal case, 400000 means the
+// card failed the self-test at 4 MHz and the bus was dropped back.
+uint32_t sdSpiHz();
 
 #endif // RCT_SDLOG_H

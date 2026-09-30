@@ -58,4 +58,9 @@ bool provisioningApOpen(); // true = open network (no password)
 // the Wi-Fi / RCT host can be reconfigured without wiping NVS.
 void restartProvisioning();
 
+// True in normal operation - Wi-Fi connected, no provisioning AP running.
+// The web interface exists only in this state, and this is what the GUI shows
+// the web address for.
+bool normalOperation();
+
 #endif // CONFIGURATION_H

@@ -19,6 +19,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "Configuration.h"
 
+#include "../web/WebServer.h"
 #include <Preferences.h>
 #include <WiFiManager.h>
 
@@ -100,6 +101,11 @@ void saveConfig() {
 // WiFiManager portal web server is kept running by networkUpdate()).
 static void startProvisioningAp() {
   Serial.println(F("WiFi: starting 'RCT-Panel' provisioning access point ..."));
+  // Port 80 and the radio go to the portal from here on. The normal-operation
+  // web server must be gone first: WiFiManager only checks configPortalActive,
+  // not a foreign server, and two WebServers on port 80 is not a state either of
+  // them can serve. See startConfigPortal() in the library and src/web/.
+  webStop();
   // Keep the portal form's RCT host/port fields in sync with the values
   // actually in use. The WiFiManagerParameter defaults are captured at file
   // scope - before readConfig() and any dev override run - so without this a
@@ -334,6 +340,11 @@ bool networkUpdate() {
   }
 }
 
+// True when the Wi-Fi link is usable and normal operation has begun: the
+// web interface starts here and stops again as soon as provisioning takes the
+// radio back.
+bool normalOperation() { return phase == WIFI_READY && ready; }
+
 void wifiReconnectLoop() {
   if (!ready || WiFi.status() == WL_CONNECTED) {
     return;
@@ -381,6 +392,8 @@ void restartProvisioning() {
   }
   ready = false;
   Serial.println(F("WiFi: reopening 'RCT-Panel' provisioning AP (Service page)"));
+  // Release port 80 and any open download before the portal takes the radio.
+  webStop();
   // The portal must start from the same clean radio state as a first boot
   // with no credentials (the only state known to work): WiFiManager skips its
   // own station teardown when the STA is still connected, and a portal

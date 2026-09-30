@@ -49,11 +49,12 @@
 #define DIAG_ALIVE_MS 30000
 
 // The screenshot write legitimately occupies the card worker for the whole
-// transfer: 691 kB at a 400 kHz SPI clock is ~16 s, far beyond the generic
-// warning threshold, and the worker feeds the task watchdog between rows so
-// a legitimate write no longer trips the WDT either. A transfer that really
-// hangs still dies on the task watchdog (no feed, no yield), so the longer
-// ceiling here only silences false alarms, it does not disable hang detection.
+// transfer: 691 kB, ~1.4 s at the 4 MHz the card normally runs at and ~16 s on a
+// card that fell back to the 400 kHz default - both beyond the generic warning
+// threshold, and the worker feeds the task watchdog between rows so a legitimate
+// write does not trip the WDT either. A transfer that really hangs still dies on
+// the task watchdog (no feed, no yield), so the longer ceiling here only silences
+// false alarms, it does not disable hang detection.
 static uint32_t diagPhaseWarnMs(const char *phase) {
   return (phase != nullptr && strncmp(phase, "sd.shot", 7) == 0)
              ? 20000u

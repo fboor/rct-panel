@@ -39,6 +39,8 @@
 #include <string.h>
 #include <time.h>
 
+#include <WiFi.h>
+
 #include "GuiApp.h"
 
 #include "../config/Configuration.h"
@@ -47,6 +49,7 @@
 #include "../display/Touch.h"
 #include "../rct/RctTypes.h"
 #include "../storage/sdlog.h"
+#include "../web/WebServer.h"
 #include "fonts/lv_font_portal_icons_20.h"
 // Montserrat with German umlauts (Latin-1 supplement), falling back to the
 // LVGL built-ins for the LV_SYMBOL_* glyphs. See OFL-Montserrat.txt.
@@ -222,6 +225,8 @@ enum SvLabel {
   SV_FLT_LIST,   // decoded faults, one per line
   SV_SD,         // SD history log status
   SV_SHOT,       // screenshot state ("geschrieben" / "wird geschrieben")
+  SV_WEB,        // panel's own address (web interface, normal operation)
+  SV_CODE,       // 4-digit code for the web interface's write actions
   SV_LABEL_COUNT,
 };
 
@@ -1040,6 +1045,17 @@ static void serviceSetupCb(lv_event_t *e) {
   restartProvisioning();
 }
 
+// Tap on the web code: draw a new one. Only useful in normal operation (without
+// a web server there is no code and nothing to guard), so the tap does nothing
+// visible then - the page shows "--" in that state.
+static void webCodeNewCb(lv_event_t *e) {
+  (void)e;
+  if (!webRunning()) {
+    return;
+  }
+  webNewCode();
+}
+
 // ---------------------------------------------------------------------------
 // Screenshot
 //
@@ -1065,6 +1081,11 @@ static uint16_t *s_shotBuf = nullptr;
 // outside the callback so it survives the page switch.
 #define SHOT_DELAY_MS 5000
 static uint32_t s_shotDueMs = 0; // capture armed, due at this tick; 0 = none
+
+// Was the web interface running on the previous tick? Used to clear the code
+// when it stops (provisioning took the radio) without blinking the two fields
+// on every tick where the answer is unchanged.
+static bool s_webWasUp = false;
 
 // The actual capture, run SHOT_DELAY_MS after the button was pressed.
 static void takeShotNow() {
@@ -1254,6 +1275,41 @@ static void pageBuildService(AppPage *p) {
       makeLabel(root, "", &lv_font_montserrat_14_uml, COL_MUTED);
   lv_obj_set_pos(p->labels[SV_SHOT], 300, 86);
   lv_obj_set_width(p->labels[SV_SHOT], 160);
+
+  // --- Web interface (address + the code that guards its write actions) ---
+  // Here and not on the Info page: that one is full at 14 rows, and this is
+  // maintenance information in any case - the same group as the setup button
+  // above, which is the fallback path into the same web interface.
+  //
+  // The code is a value, not a setting, so it is shown as text and tappable:
+  // pressing it draws a new one, which is the answer to "someone read it over
+  // my shoulder" (the code changes per boot anyway, so this is a convenience
+  // rather than a security measure - what it really protects is a network
+  // neighbour who guessed the address).
+  (void)sectionHead("Web-Oberfläche", 290);
+  lv_obj_t *webName = makeLabel(root, "Adresse:", &lv_font_montserrat_14_uml,
+                                COL_MUTED);
+  lv_obj_set_pos(webName, 20, 314);
+  p->labels[SV_WEB] =
+      makeLabel(root, "-", &lv_font_montserrat_14_uml, COL_TEXT);
+  lv_obj_set_pos(p->labels[SV_WEB], 120, 314);
+  lv_obj_t *codeName = makeLabel(root, "Code:", &lv_font_montserrat_14_uml,
+                                 COL_MUTED);
+  lv_obj_set_pos(codeName, 20, 336);
+  p->labels[SV_CODE] = makeLabel(root, "----", &lv_font_montserrat_14_uml,
+                                 COL_TEXT);
+  lv_obj_set_pos(p->labels[SV_CODE], 120, 336);
+  // Wide, so the target is a line and not four digits.
+  lv_obj_set_width(p->labels[SV_CODE], 200);
+  lv_obj_set_style_bg_color(p->labels[SV_CODE], lv_color_hex(0xe8ebef), 0);
+  lv_obj_set_style_radius(p->labels[SV_CODE], 6, 0);
+  lv_obj_set_style_pad_hor(p->labels[SV_CODE], 8, 0);
+  lv_obj_add_flag(p->labels[SV_CODE], LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(p->labels[SV_CODE], webCodeNewCb, LV_EVENT_CLICKED,
+                      nullptr);
+  lv_obj_t *hint = makeLabel(root, "antippen = neuer Code",
+                             &lv_font_montserrat_14_uml, COL_MUTED);
+  lv_obj_set_pos(hint, 230, 336);
 }
 
 // Format one scale marker value: "0" or kW with comma decimal ("2,5",
@@ -1977,10 +2033,11 @@ static void refreshCb(lv_timer_t *t) {
     }
   }
 
-  // Screenshot handoff: the card worker needs seconds for 691 kB at 400 kHz, so
-  // the buffer stays allocated until it says it is finished. Only then is it
-  // released - freeing it earlier would hand the worker memory that PSRAM has
-  // already handed to something else.
+  // Screenshot handoff: the card worker needs over a second for 691 kB (and up
+  // to 16 s on a card that fell back to the 400 kHz clock), so the buffer stays
+  // allocated until it says it is finished. Only then is it released - freeing it
+  // earlier would hand the worker memory that PSRAM has already handed to
+  // something else.
   if (s_shotBuf != nullptr && sdTakeShotDone()) {
     heap_caps_free(s_shotBuf);
     s_shotBuf = nullptr;
@@ -1988,6 +2045,24 @@ static void refreshCb(lv_timer_t *t) {
       lv_label_set_text(sv.labels[SV_SHOT], "auf /shot gespeichert");
     }
   }
+
+  // Web interface: address and code. Both exist only in normal operation, and
+  // both are read on every 1 s tick so the code also shows up directly after a
+  // tap without waiting for a page change.
+  if (sv.labels[SV_WEB]) {
+    if (webRunning()) {
+      char ip[20];
+      strlcpy(ip, WiFi.localIP().toString().c_str(), sizeof(ip));
+      setText(sv.labels[SV_WEB], "%s", ip);
+      setText(sv.labels[SV_CODE], "%s", webCode(nullptr));
+    } else if (s_webWasUp) {
+      // The server is gone (provisioning started, or the link dropped): clear
+      // the code, which is no longer valid for anything.
+      setText(sv.labels[SV_WEB], "-");
+      setText(sv.labels[SV_CODE], "----");
+    }
+  }
+  s_webWasUp = webRunning();
 
   diagPhase("gui.hist");
   // --- 24 h history: gap summary ---
