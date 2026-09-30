@@ -136,7 +136,9 @@ enum OvLabel {
 
 // Info page label indices.
 enum InfoLabel {
-  INF_HOST = 0,
+  INF_NAME = 0, // device name (rows 1+2: identity first, then connection)
+  INF_SW,       // control software version
+  INF_HOST,
   INF_PORT,
   INF_LINK,
   INF_LAST,
@@ -145,8 +147,6 @@ enum InfoLabel {
   INF_L2,
   INF_L3,
   INF_PV,   // PV total (A + B + S0)
-  INF_NAME, // device name (moved here from the Akku page)
-  INF_SW,   // control software version
   INF_CORE, // core temperature
   INF_HTEMP, // heat sink temperature
   INF_FREQ, // grid frequency L1
@@ -603,7 +603,9 @@ static void pageBuildOverview(AppPage *p) {
 
   // Haus value sits right of the vertical battery line (x=240) so the line no
   // longer runs through the text.
-  p->labels[OV_HOUSE_VAL] = makeValueLabel(root, 250, 135);
+  // House consumption: 10 px up and 5 px right of the old spot so the number
+  // visually belongs to the house node above it.
+  p->labels[OV_HOUSE_VAL] = makeValueLabel(root, 255, 125);
   p->labels[OV_PV_VAL] = makeValueLabel(root, 0, 116);
   p->labels[OV_BAT_VAL] = makeValueLabel(root, 180, 247);
 
@@ -770,14 +772,13 @@ static void makeRow(AppPage *p, lv_obj_t *root, int i, const char *name,
 
 static void pageBuildInfo(AppPage *p) {
   static const char *const names[INF_LABEL_COUNT] = {
-      "RCT host:", "RCT port:", "Link:",      "Last data:",
-      "Uptime:",   "Netz L1:",  "Netz L2:",   "Netz L3:",
-      "PV:",       "Name:",     "Software:",  "Kern:",
-      "Kühlkörper:", "Netzfrequenz:",
+      "Name:",     "Software:",  "RCT host:",  "RCT port:",  "Link:",
+      "Last data:", "Uptime:",   "Netz L1:",   "Netz L2:",   "Netz L3:",
+      "PV:",        "Kern:",     "Kühlkörper:", "Netzfrequenz:",
   };
   static const char *const values[INF_LABEL_COUNT] = {
-      "--", "--", "--", "-- s", "-- s", "-- kW", "-- kW", "-- kW",
-      "-- kW", "--", "--", "-- °C", "-- °C", "-- Hz",
+      "--",     "--",     "--",     "--",     "--",     "-- s",   "-- s",
+      "-- kW",  "-- kW",  "-- kW",  "-- kW",  "-- °C",  "-- °C",  "-- Hz",
   };
   for (int i = 0; i < INF_LABEL_COUNT; i++) {
     makeRow(p, p->root, i, names[i], values[i]);
@@ -1861,7 +1862,13 @@ static void refreshCb(lv_timer_t *t) {
 
   diagPhase("gui.info");
   AppPage &inf = s_pages[PAGE_INFO];
-  if (inf.labels[INF_HOST]) {
+  if (inf.labels[INF_NAME]) {
+    // Rows 1+2: device identity, so the page opens with what it is.
+    const char *dash = "--";
+    setText(inf.labels[INF_NAME], "%s",
+            s.deviceName[0] ? s.deviceName : dash);
+    setText(inf.labels[INF_SW], "%s",
+            s.firmwareVersion[0] ? s.firmwareVersion : dash);
     setText(inf.labels[INF_HOST], "%s", rct_host);
     setText(inf.labels[INF_PORT], "%s", rct_port);
     setText(inf.labels[INF_LINK], "%s",
@@ -1874,12 +1881,6 @@ static void refreshCb(lv_timer_t *t) {
     setNum(inf.labels[INF_L3], "%.3f kW", s.gridPower[2] / 1000.0f);
     float pvTotal = s.pvPower[0] + s.pvPower[1] + s.s0Power;
     setNum(inf.labels[INF_PV], "%.3f kW", pvTotal / 1000.0f);
-    // Device identity moved here when the "Gerät" page became "Akku".
-    const char *dash = "--";
-    setText(inf.labels[INF_NAME], "%s",
-            s.deviceName[0] ? s.deviceName : dash);
-    setText(inf.labels[INF_SW], "%s",
-            s.firmwareVersion[0] ? s.firmwareVersion : dash);
     if (s.haveData) {
       setNum(inf.labels[INF_CORE], "%.1f °C", s.coreTemp);
       setNum(inf.labels[INF_HTEMP], "%.1f °C", s.heatSinkTemp);
@@ -1891,10 +1892,12 @@ static void refreshCb(lv_timer_t *t) {
   if (dev.labels[DEV_SOC]) {
     if (s.haveData) {
       setNum(dev.labels[DEV_SOC], "%.0f %%", s.batterySoc);
-      // %+ keeps the sign column stable, so A and V stay put when the battery
-      // switches between charging and discharging.
+      // Battery-centric sign on the Akku page: charging = "+", discharging =
+      // "-", the opposite of the Overview flow diagram (discharge feeds the
+      // house and reads "+" there). %+ keeps the sign column stable, so A and
+      // V stay put when the battery switches between charging/discharging.
       setNum(dev.labels[DEV_BAT], "%+.3f kW  %.1f A  %.1f V",
-             s.batteryPower / 1000.0f, s.batteryCurrent, s.batteryVoltage);
+             -s.batteryPower / 1000.0f, -s.batteryCurrent, s.batteryVoltage);
       setNum(dev.labels[DEV_BTEMP], "%.1f °C", s.batteryTemp);
 
       // Next calibration: the inverter reports a Unix timestamp; turn it
