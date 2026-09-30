@@ -27,7 +27,11 @@
 
 #define RCT_RX_TIMEOUT_MS 2000    // per-frame receive window
 #define RCT_CYCLE_TIMEOUT_MS 4000 // total per-poll collection budget
-#define RCT_INFO_POLL_MS 10000    // device info group poll cadence
+// How long a device that has already answered may stay silent before the cycle is
+// called done. The device answers a burst of reads and then nothing, so this is
+// the pause that ends a poll - not a deadline it has to meet.
+#define RCT_QUIET_MS 300
+#define RCT_INFO_POLL_MS 10000 // device info group poll cadence
 // Bounded connect() so an unreachable host can not freeze the UI task for
 // long; offline reconnects are throttled independently of the poll cadence.
 #define RCT_CONNECT_TIMEOUT_MS 400  // hard ceiling for one frozen frame
@@ -141,11 +145,11 @@ static void rctProcessByte(uint8_t c) {
 }
 
 // Hook into the wait loop. Collecting a cycle means sitting in rctReceiveFrame()
-// for up to RCT_RX_TIMEOUT_MS when a tracked OID does not answer, and LVGL runs
-// in the same FreeRTOS task as this file - without a way to render in between,
-// the whole panel froze for two seconds on every poll that had to wait. main.cpp
-// installs displayLooper()+lv_tick_inc here, which is the only safe place: it is
-// the same task, so rctState is still only ever touched from one context.
+// while the device answers, and LVGL runs in the same FreeRTOS task as this file -
+// without a way to render in between, the panel stands still for as long as the
+// wait lasts. main.cpp installs displayLooper()+lv_tick_inc here, which is the
+// only safe place: it is the same task, so rctState is still only ever touched
+// from one context.
 static void (*rctYieldHook)() = nullptr;
 void rctSetYieldHook(void (*fn)()) { rctYieldHook = fn; }
 
@@ -156,12 +160,25 @@ enum RCT_RX : int { RCT_RX_OK = 0, RCT_RX_TIMEOUT, RCT_RX_CRC };
 // can check rctClient.connected() to see whether the peer closed the
 // connection) and RCT_RX_CRC when a frame arrived but its checksum does not
 // match. Resets the receive state in all cases.
+//
+// quietMs is the shorter window that applies once the device has answered
+// something in this cycle and then stopped sending; 0 disables it. The device
+// answers a whole burst of reads back to back, so silence means it has nothing
+// left to say - and waiting out the full window here is what froze the panel
+// for RCT_CYCLE_TIMEOUT_MS on every poll whose OID set came back incomplete
+// (a value the device does not know never arrives, and its silence was read as
+// "still coming").
 static int rctReceiveFrame(uint8_t &command, uint32_t &oid, uint8_t *payload,
-                           size_t payloadCapacity, size_t &payloadLen) {
+                           size_t payloadCapacity, size_t &payloadLen,
+                           uint32_t quietMs) {
   unsigned long startMillisHere = millis();
+  unsigned long lastByteMs = startMillisHere;
+  bool gotAny = false;
   while (millis() - startMillisHere < RCT_RX_TIMEOUT_MS) {
     while (rctClient.available()) {
       rctProcessByte(rctClient.read());
+      gotAny = true;
+      lastByteMs = millis();
       if (rctRxComplete) {
         break;
       }
@@ -170,6 +187,14 @@ static int rctReceiveFrame(uint8_t &command, uint32_t &oid, uint8_t *payload,
       break;
     }
     if (!rctClient.connected()) {
+      rctRxLen = 0;
+      rctRxEscaping = false;
+      rctRxComplete = false;
+      rctRxTotal = 0;
+      return RCT_RX_TIMEOUT;
+    }
+    if (quietMs > 0 && gotAny &&
+        (int32_t)(millis() - lastByteMs) >= (int32_t)quietMs) {
       rctRxLen = 0;
       rctRxEscaping = false;
       rctRxComplete = false;
@@ -570,14 +595,21 @@ void rctParse() {
       << RCT_SLOT_DCMONTH0;
   unsigned long deadline = millis() + RCT_CYCLE_TIMEOUT_MS;
   bool streamQuiet = false;
+  bool gotFrame = false;
   while (freshMask != allFast && !streamQuiet &&
          (int32_t)(millis() - deadline) < 0) {
     uint8_t command = 0;
     uint8_t payload[128];
     size_t payloadLen = 0;
     uint32_t respOid = 0;
+    // The first frame gets the full window: after a reconnect the device may need
+    // a moment. Every frame after it is only waited for briefly, because a device
+    // that has gone quiet has already said everything it knows.
     int rc = rctReceiveFrame(command, respOid, payload, sizeof(payload),
-                             payloadLen);
+                             payloadLen, gotFrame ? RCT_QUIET_MS : 0);
+    if (rc == RCT_RX_OK) {
+      gotFrame = true;
+    }
     if (rc == RCT_RX_TIMEOUT) {
       if (!rctClient.connected()) {
         rctClient.stop();
