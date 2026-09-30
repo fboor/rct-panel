@@ -197,6 +197,26 @@ Schwellwertfunktionen noch da. Die Service-Seite kann dieselbe Funktion durch
 Antippen wählen, aber keine Schwelle: Zahlen in Watt brauchen eine Tastatur, und
 das Panel hat nur ein Touchscreen.
 
+## Sprache
+
+Der sichtbare Text steht in `src/i18n/`, eine Tabelle je Sprache, und wird zur
+Bauzeit gewählt: `pio run -e esp32-s3` ist Deutsch, `pio run -e esp32-s3-en`
+englisch (`-DRCT_LANG_EN`). Zur Laufzeit gibt es keinen Umschalter - die
+Anzeigeseiten werden einmal in `guiStartApp()` gebaut, und eine zweite Tabelle
+wäre für ein paar kB Text ein zweiter Zustand, den man auf der Wand nicht
+prüfen kann.
+
+Für die Webseiten heißt das: `tr(T_...)` statt eines deutschen Literals, und der
+`<html lang>`-Wert kommt aus derselben Tabelle (`T_HTML_LANG`). Zwei
+Konventionen in den Tabellen: Web-Texte tragen HTML-Entities (`&uuml;`),
+Anzeigetexte sind normales UTF-8 (Montserrat hat die Umlaute). Geprüft wird das
+in `tools/i18n_test`: gleiche IDs und gleiche Platzhalter auf beiden Seiten,
+kein deutscher Buchstabe in `src/web/` und `src/storage/`.
+
+Nicht übersetzt sind das Serienprotokoll (Entwicklertext, bleibt wie er ist) und
+die CSV-Spaltenköpfe (`ts,pv_a,...` - eine Tabelle in Excel darf ihre Spalten
+nicht mit der Anzeigesprache wechseln).
+
 ## Puffer und Speicher
 
 * 16 kB Stream-Puffer aus PSRAM (`heap_caps_malloc`, Rückfall auf internen RAM)
@@ -206,9 +226,9 @@ das Panel hat nur ein Touchscreen.
 
 Interne Heap-Reserve in Normalbetrieb ~150 kB; Webserver und Worker liegen bei
 ~2 kB statischem Bedarf darüber. Die Seiten sind aus Flash-Bausteinen
-zusammengesetzt (ein Shell-Dokument mit `%T`/`%S`/`%B`-Platzhaltern), nicht aus
-`String`-Konkatenation - sonst würde jeder Seitenaufbau einen großen Teil des
-Heaps verbrauchen.
+zusammengesetzt (ein Shell-Dokument mit `%T`/`%L`/`%R`/`%S`/`%B`-Platzhaltern),
+nicht aus `String`-Konkatenation - sonst würde jeder Seitenaufbau einen großen
+Teil des Heaps verbrauchen.
 
 ## SD-Takt
 

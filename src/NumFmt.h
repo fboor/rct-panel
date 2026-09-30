@@ -23,12 +23,18 @@
 // swapped afterwards. Never use it for text rows - a date like "29.09.2026"
 // would come out as "29,09,2026".
 //
+// fmtNumLang is the same thing without naming the language: it follows the build
+// (see src/i18n/Lang.h), which is what the web interface and the SD status line
+// use, because both are shown to the user and both follow the language.
+//
 // No Arduino, no ESP, no card: this is the shipped header that the host test
 // compiles (tools/numfmt_test), so the rule is checked without a panel.
 //
 // SPDX-License-Identifier: MIT
 #ifndef RCT_NUMFMT_H
 #define RCT_NUMFMT_H
+
+#include "i18n/Lang.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -108,20 +114,41 @@ static inline int fmtNum(char *out, size_t cap, const char *fmt, ...) {
   return n;
 }
 
-// The same, with the decimal point written as a comma.
-static inline int fmtNumComma(char *out, size_t cap, const char *fmt, ...) {
-  va_list ap;
-  va_start(ap, fmt);
+// The part both comma variants share: format, write the decimal separator the
+// caller wants, then the sign rule. A va_list in and not "..." on, so the three
+// public functions below are one line each instead of three copies of the same
+// loop.
+static inline int fmtNumSepV(char *out, size_t cap, char sep, const char *fmt,
+                             va_list ap) {
   const int n = vsnprintf(out, cap, fmt, ap);
-  va_end(ap);
   if (out != nullptr && cap > 0) {
-    for (char *q = out; *q; q++) {
-      if (*q == '.') {
-        *q = ',';
+    if (sep != '.') {
+      for (char *q = out; *q; q++) {
+        if (*q == '.') {
+          *q = sep;
+        }
       }
     }
     numDropNegZero(out);
   }
+  return n;
+}
+
+// The same, with the decimal point written as a comma.
+static inline int fmtNumComma(char *out, size_t cap, const char *fmt, ...) {
+  va_list ap;
+  va_start(ap, fmt);
+  const int n = fmtNumSepV(out, cap, ',', fmt, ap);
+  va_end(ap);
+  return n;
+}
+
+// The same, with the separator of the language this firmware was built for.
+static inline int fmtNumLang(char *out, size_t cap, const char *fmt, ...) {
+  va_list ap;
+  va_start(ap, fmt);
+  const int n = fmtNumSepV(out, cap, langDecPoint(), fmt, ap);
+  va_end(ap);
   return n;
 }
 

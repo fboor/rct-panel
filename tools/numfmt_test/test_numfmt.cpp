@@ -40,6 +40,14 @@ static std::string comma(double v) {
   return b;
 }
 
+// The variant that follows the build: a comma in the German one, a point in the
+// English one. run.sh compiles this file twice, so both are checked.
+static std::string lang(double v) {
+  char b[64];
+  fmtNumLang(b, sizeof(b), "%.2f kW", v);
+  return b;
+}
+
 int main() {
   std::printf("== Anzeigewerte, die auf null runden ==\n");
 
@@ -61,6 +69,15 @@ int main() {
   expect(dot(-1.0), "-1.0 kW", "-1.0");
   expect(dot(-12.34), "-12.3 kW", "-12.34");
   expect(dot(1.5), "1.5 kW", "positiv");
+
+  std::printf("== Dezimaltrennzeichen des Builds %s ==\n", RCT_LANG_NAME);
+  {
+    const std::string sep(1, langDecPoint());
+    expect(lang(-0.0001), "0" + sep + "00 kW", "gerundete Null, Trennzeichen");
+    expect(lang(-0.01), "-0" + sep + "01 kW", "echter Wert, Trennzeichen");
+    expect(lang(1.5), "1" + sep + "50 kW", "positiver Wert");
+    expect(lang(0.25), "0" + sep + "25 kW", "0.25 kW");
+  }
 
   std::printf("== Anzeigewerte ohne Einheit ==\n");
   {

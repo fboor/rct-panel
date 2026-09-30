@@ -23,11 +23,11 @@
 namespace web {
 
 // ---------------------------------------------------------------------------
-// Shared shell. %T is replaced by the page title, %S by the style block,
-// %B by the body.
+// Shared shell. %T is replaced by the page title, %L by the language attribute,
+// %R by a refresh tag, %S by the style block, %B by the body.
 // ---------------------------------------------------------------------------
 static const char kShell[] PROGMEM = R"(<!DOCTYPE html>
-<html lang="de"><head>
+<html %L><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>%T</title>
@@ -78,11 +78,8 @@ input[type=text],input[type=number],select{width:100%;padding:11px;margin:10px 0
 code{background:#e8ebef;padding:1px 5px;border-radius:4px;font-size:14px}
 )" ;
 
-// Navigation, built once per page load into a small buffer.
-static const char kNavHome[] PROGMEM = "Start";
-static const char kNavData[] PROGMEM = "Daten";
-static const char kNavShots[] PROGMEM = "Bilder";
-static const char kNavFw[] PROGMEM = "Update";
+// The navigation words and the page titles are not here: they are texts, and
+// texts live in src/i18n (see Lang.h), one table per language.
 
 } // namespace web
 

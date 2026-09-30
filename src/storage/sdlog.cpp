@@ -29,6 +29,8 @@
 #include <SD.h>
 
 #include "../Diag.h"
+#include "../NumFmt.h"
+#include "../i18n/Lang.h"
 #include <SPI.h>
 #include <esp_heap_caps.h>
 #include <esp_task_wdt.h>
@@ -412,28 +414,26 @@ void buildStatus() {
   if (parked > 0) {
     queueSpan(parked, span, sizeof(span));
   }
+  // One line, shown on the display and in the web overview, so its wording and
+  // its decimal separator are texts of the language this build is in (src/i18n).
+  // fmtNumLang writes the separator and drops a sign on a rounded zero.
   if (!s_mounted) {
     if (parked > 0) {
-      snprintf(buf, sizeof(buf), "SD: -- | %d gepuffert (%s)", parked, span);
+      fmtNumLang(buf, sizeof(buf), tr(T_SD_QUEUED_NCARD), parked, span);
     } else {
-      snprintf(buf, sizeof(buf), "SD: --");
+      strlcpy(buf, tr(T_SD_OK), sizeof(buf));
     }
   } else if (s_queue.dropped() > 0) {
     // Lost rows outrank the free space: that is the number that matters.
-    snprintf(buf, sizeof(buf), "SD: OK | %u %s verloren",
-             (unsigned)s_queue.dropped(),
-             s_queue.dropped() == 1 ? "Zeile" : "Zeilen");
+    fmtNumLang(buf, sizeof(buf), tr(T_SD_LOST),
+               (unsigned)s_queue.dropped(),
+               tr(s_queue.dropped() == 1 ? T_SD_ROW : T_SD_ROWS));
   } else if (parked > 0) {
-    snprintf(buf, sizeof(buf), "SD: OK | %d gepuffert (%s) | %.1f GB frei",
-             parked, span,
-             (float)(SD.totalBytes() - SD.usedBytes()) / 1.0e9f);
+    fmtNumLang(buf, sizeof(buf), tr(T_SD_QUEUED), parked, span,
+               (float)(SD.totalBytes() - SD.usedBytes()) / 1.0e9f);
   } else {
-    snprintf(buf, sizeof(buf), "SD: OK | %.1f GB frei",
-             (float)(SD.totalBytes() - SD.usedBytes()) / 1.0e9f);
-  }
-  char *dot = strchr(buf, '.');
-  if (dot != nullptr) {
-    *dot = ','; // German decimal comma
+    fmtNumLang(buf, sizeof(buf), tr(T_SD_FREE),
+               (float)(SD.totalBytes() - SD.usedBytes()) / 1.0e9f);
   }
   strlcpy(s_status, buf, sizeof(s_status));
 }

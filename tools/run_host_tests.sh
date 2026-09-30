@@ -9,7 +9,11 @@
 #                  functions, the boot state)
 #   sd_queue_test  the CSV row and the parked-rows ring of the SD logger
 #   numfmt_test    the display's number formatting: a value that rounds to zero
-#                  shows no minus
+#                  shows no minus - once per language, because the decimal
+#                  separator follows the build
+#   i18n_test      the language tables: every text there and in this language,
+#                  the same IDs and placeholders on both sides, and no German
+#                  character left in the code that has been moved out
 #   rct_sim_test   the RCT simulator: that it answers every id the firmware
 #                  polls, that its numbers add up, and that its relay modes
 #                  are reachable
@@ -25,7 +29,7 @@ set -e
 cd "$(dirname "$0")/.."
 
 fail=0
-for t in relay_test sd_queue_test numfmt_test; do
+for t in relay_test sd_queue_test numfmt_test i18n_test; do
   printf '\n=== %s ===\n' "$t"
   if sh "tools/$t/run.sh"; then
     :

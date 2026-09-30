@@ -28,6 +28,7 @@
 #include "../NumFmt.h"
 #include "../config/Configuration.h"
 #include "../gui/GuiApp.h"
+#include "../i18n/Lang.h"
 #include "../output/Relay.h"
 #include "../rct/RctTypes.h"
 #include "../storage/sdlog.h"
@@ -45,8 +46,10 @@
 #include <stdlib.h>
 
 // Shown on the overview so a user can tell which panel build they are looking
-// at (and so a support case can be pinned to a firmware).
-static const char kPanelVersion[] = "1.0 (2026-09)";
+// at (and so a support case can be pinned to a firmware). The language is part
+// of it: the two builds share a version number, and only the language says
+// which one a device is running.
+static const char kPanelVersion[] = "1.0 (2026-09) " RCT_LANG_NAME;
 
 // Upper bound for a firmware image: the app slots in partitions/16mb_app.csv are
 // 7 MB. The upload announces no size (see handleUpdateUpload), so this is
@@ -72,12 +75,20 @@ static const char kShotReloadTag[] =
 static const int kShotReloadMax = 8;
 
 // The functions the switched output can follow, in the order of RelayMode and
-// therefore in the order the panel cycles through them. The same text is used
-// for the read-out and for the select, so the two can never disagree.
-static const char *const kRelayModeName[kRelayModeCount] = {
-    "Aus (schaltet nie)", "Netzbezug &uuml;ber Schwelle",
-    "&Uuml;berschuss &uuml;ber Schwelle", "St&ouml;rung am Wechselrichter",
-    "Inselbetrieb (Netz getrennt)"};
+// therefore in the order the panel cycles through them. The long text of the
+// select comes from src/i18n, as does the short text the display shows for the
+// same mode - two IDs, one table, and the read-out and the select can therefore
+// never disagree.
+const char *relayModeNameLong(RelayMode mode) {
+  switch (mode) {
+  case RelayMode::Off: return tr(T_RELAY_LONG_OFF);
+  case RelayMode::GridDraw: return tr(T_RELAY_LONG_GRID);
+  case RelayMode::PvSurplus: return tr(T_RELAY_LONG_SURPLUS);
+  case RelayMode::Fault: return tr(T_RELAY_LONG_FAULT);
+  case RelayMode::Island: return tr(T_RELAY_LONG_ISLAND);
+  default: return "?";
+  }
+}
 
 namespace {
 
@@ -170,13 +181,12 @@ void escape(const char *in, char *out, size_t cap) {
 // 19 kB and a card that is 16 GB according to its label shows 14,9 - the number
 // then does not match anything the user can see anywhere else.
 //
-// The decimal point is written as a comma, like every other number on these
-// pages.
+// The decimal separator is the one of the language this build is in.
 void humanSize(uint32_t bytes, char *out, size_t cap) {
   if (bytes >= 1024u * 1024u) {
-    fmtNumComma(out, cap, "%.1f MB", (double)bytes / (1024.0 * 1024.0));
+    fmtNumLang(out, cap, "%.1f MB", (double)bytes / (1024.0 * 1024.0));
   } else if (bytes >= 1024u) {
-    fmtNumComma(out, cap, "%.1f kB", (double)bytes / 1024.0);
+    fmtNumLang(out, cap, "%.1f kB", (double)bytes / 1024.0);
   } else {
     snprintf(out, cap, "%u B", (unsigned)bytes);
   }
@@ -186,14 +196,17 @@ void humanSize(uint32_t bytes, char *out, size_t cap) {
 // are answers to an action, not somewhere to wander off to.
 void sendMsg(int code, const char *msg) {
   String body;
-  body.reserve(360);
+  body.reserve(460);
   body = F("<main><div class=\"note\">");
   body += msg;
-  body += F("</div><p><a class=\"lnk\" href=\"/\">Zur Startseite</a></p></main>");
+  body += F("</div><p><a class=\"lnk\" href=\"/\">");
+  body += tr(T_MSG_TO_HOME);
+  body += F("</a></p></main>");
   String page;
   page.reserve(strlen_P(web::kShell) + strlen_P(web::kStyle) + body.length() + 64);
   page = FPSTR(web::kShell);
   page.replace("%T", String("RCT Power Panel"));
+  page.replace("%L", tr(T_HTML_LANG));
   page.replace("%R", String("")); // no auto-reload on a message page
   page.replace("%S", FPSTR(web::kStyle));
   // %B goes in last: the body carries values with percent signs and units, and
@@ -207,9 +220,11 @@ void addNav(String &page, const char *current) {
   page += F("<nav>");
   struct {
     const char *href;
-    const char *label;
-  } items[] = {{"/", web::kNavHome},   {"/daten", web::kNavData},
-               {"/bilder", web::kNavShots}, {"/update", web::kNavFw}};
+    LangId label;
+  } items[] = {{"/", T_NAV_HOME},
+               {"/daten", T_NAV_DATA},
+               {"/bilder", T_NAV_SHOTS},
+               {"/update", T_NAV_UPDATE}};
   for (const auto &it : items) {
     page += F("<a href=\"");
     page += it.href;
@@ -218,7 +233,7 @@ void addNav(String &page, const char *current) {
       page += F(" class=\"on\"");
     }
     page += F(">");
-    page += it.label;
+    page += tr(it.label);
     page += F("</a>");
   }
   page += F("</nav>");
@@ -235,7 +250,7 @@ void sendNavPage(const char *title, const char *current, const String &body,
   char t[48];
   escape(title, t, sizeof(t));
   String frame;
-  frame.reserve(body.length() + 320);
+  frame.reserve(body.length() + 400);
   frame = F("<header><h1>");
   frame += t;
   frame += F("</h1></header>");
@@ -248,6 +263,7 @@ void sendNavPage(const char *title, const char *current, const String &body,
                strlen(t) + 64);
   page = FPSTR(web::kShell);
   page.replace("%T", String(t));
+  page.replace("%L", tr(T_HTML_LANG));
   page.replace("%R", refreshTag != nullptr ? String(refreshTag) : String());
   page.replace("%S", FPSTR(web::kStyle));
   // %B goes in last: the body carries values with percent signs and units, and
@@ -264,59 +280,62 @@ void handleRoot() {
   const RctSnapshot &s = rctState;
   char v[40];
   String b;
-  b.reserve(3000);
+  b.reserve(3800);
 
   b += F("<div class=\"big\">");
-  auto card = [&b, &v](const char *label, const char *value) {
+  auto card = [&b, &v](LangId label, const char *value) {
     b += F("<div class=\"card\"><div class=\"l\">");
-    b += label;
+    b += tr(label);
     b += F("</div><div class=\"n\">");
     b += value;
     b += F("</div></div>");
   };
   // Sign convention as on the panel and in the manual: net positive = draw
-  // from the grid, negative = feed-in. fmtNumComma: comma as the decimal
-  // separator, and no "-0,00 kW" for a grid power that is a rounding error
+  // from the grid, negative = feed-in. fmtNumLang: the decimal separator of
+  // this build, and no "-0,00 kW" for a grid power that is a rounding error
   // below zero.
-  fmtNumComma(v, sizeof(v), "%.2f kW", (double)s.gridPowerSum / 1000.0);
-  card("Netz", v);
-  fmtNumComma(v, sizeof(v), "%.2f kW",
+  fmtNumLang(v, sizeof(v), "%.2f kW", (double)s.gridPowerSum / 1000.0);
+  card(T_CARD_GRID, v);
+  fmtNumLang(v, sizeof(v), "%.2f kW",
              (double)(s.pvPower[0] + s.pvPower[1] + s.s0Power) / 1000.0);
-  card("PV", v);
-  fmtNumComma(v, sizeof(v), "%.0f %%", (double)s.batterySoc);
-  card("Batterie", v);
-  fmtNumComma(v, sizeof(v), "%.0f W", (double)loadSum(s));
-  card("Verbrauch", v);
+  card(T_CARD_PV, v);
+  fmtNumLang(v, sizeof(v), "%.0f %%", (double)s.batterySoc);
+  card(T_CARD_BATTERY, v);
+  fmtNumLang(v, sizeof(v), "%.0f W", (double)loadSum(s));
+  card(T_CARD_LOAD, v);
   b += F("</div>");
 
-  b += F("<h2>Ger&auml;t</h2><table>");
-  auto row = [&b, &v](const char *k, const char *value) {
+  b += F("<h2>");
+  b += tr(T_H_DEVICE);
+  b += F("</h2><table>");
+  auto row = [&b, &v](LangId k, const char *value) {
     b += F("<tr><td class=\"k\">");
-    b += k;
+    b += tr(k);
     b += F("</td><td class=\"v\">");
     b += value;
     b += F("</td></tr>");
   };
   char escName[48];
-  row("Wechselrichter", s.connected ? "verbunden" : "nicht erreichbar");
+  row(T_ROW_INVERTER,
+      s.connected ? tr(T_ROW_INVERTER_OK) : tr(T_ROW_INVERTER_NO));
   escape(s.firmwareVersion, escName, sizeof(escName));
-  row("Steuerger&auml;t", escName[0] ? escName : "--");
-  row("Firmware Panel", kPanelVersion);
+  row(T_ROW_CONTROLLER, escName[0] ? escName : "--");
+  row(T_ROW_FW_PANEL, kPanelVersion);
   snprintf(v, sizeof(v), "%lu s", (unsigned long)(millis() / 1000));
-  row("Laufzeit", v);
+  row(T_ROW_UPTIME, v);
   snprintf(v, sizeof(v), "%u kB", (unsigned)(ESP.getFreeHeap() / 1024));
-  row("Speicher frei", v);
-  row("SD-Karte", sdStatusText());
+  row(T_ROW_FREEMEM, v);
+  row(T_ROW_SDCARD, sdStatusText());
 
   const uint32_t hz = sdSpiHz();
   if (hz == 0) {
-    row("SD-Takt", "keine Karte");
+    row(T_ROW_SDCLK, tr(T_ROW_SDCLK_NONE));
   } else if (hz >= 1000000u) {
     snprintf(v, sizeof(v), "%u MHz", (unsigned)(hz / 1000000u));
-    row("SD-Takt", v);
+    row(T_ROW_SDCLK, v);
   } else {
     snprintf(v, sizeof(v), "%u kHz", (unsigned)(hz / 1000u));
-    row("SD-Takt", v);
+    row(T_ROW_SDCLK, v);
   }
 
   // The one thing the user needs and the panel display itself does not show:
@@ -325,8 +344,8 @@ void handleRoot() {
   if (WiFi.status() == WL_CONNECTED) {
     strlcpy(ip, WiFi.localIP().toString().c_str(), sizeof(ip));
   }
-  row("Adresse hier", ip);
-  row("Als Name", s_mdnsStarted ? "rct-panel.local" : "-");
+  row(T_ROW_ADDR, ip);
+  row(T_ROW_ADDR_NAME, s_mdnsStarted ? "rct-panel.local" : "-");
   b += F("</table>");
 
   // The switched output. Its state belongs with the other read-outs, but
@@ -334,28 +353,29 @@ void handleRoot() {
   // rule the update follows. The panel display can cycle the function by
   // tapping, which is the quicker way; this form is where the threshold in
   // watts goes, and where the test sits next to the thing it tests.
-  b += F("<h2>Ausgang</h2><table>");
+  b += F("<h2>");
+  b += tr(T_H_OUTPUT);
+  b += F("</h2><table>");
   {
     const RelayMode m = relayMode();
     const bool hasThreshold =
         (m == RelayMode::GridDraw || m == RelayMode::PvSurplus);
-    row("Funktion", kRelayModeName[(int)m]);
+    row(T_ROW_FUNCTION, relayModeNameLong(m));
     if (relayTestRunning()) {
-      row("Zustand", "Test l&auml;uft");
+      row(T_ROW_STATE, tr(T_STATE_TEST));
     } else if (hasThreshold) {
-      snprintf(v, sizeof(v), "%s &middot; %d W jetzt", relayIsOn() ? "ein" : "aus",
+      snprintf(v, sizeof(v), tr(T_STATE_ON_NOW),
+               relayIsOn() ? tr(T_STATE_ON) : tr(T_STATE_OFF),
                (int)lroundf(relayTriggerValue()));
-      row("Zustand", v);
+      row(T_ROW_STATE, v);
     } else {
-      row("Zustand", relayIsOn() ? "ein" : "aus");
+      row(T_ROW_STATE, relayIsOn() ? tr(T_STATE_ON) : tr(T_STATE_OFF));
     }
   }
   b += F("</table>");
-  b += F("<div class=\"note\">Der Ausgang schaltet ein, wenn der Wert 20 s "
-         "lang &uuml;ber der Schwelle liegt, und bleibt nach dem Einschalten "
-         "mindestens 60 s an. &Uuml;berschuss hei&szlig;t PV minus "
-         "Hausverbrauch (mit S0). Ist der Wechselrichter zwei Minuten lang "
-         "nicht erreichbar, schaltet der Ausgang aus.</div>");
+  b += F("<div class=\"note\">");
+  b += tr(T_NOTE_OUTPUT);
+  b += F("</div>");
   b += F("<form action=\"/aktion\" method=\"POST\">");
   b += F("<input type=\"text\" name=\"code\" inputmode=\"numeric\" "
          "maxlength=\"4\" placeholder=\"Code\">");
@@ -368,33 +388,41 @@ void handleRoot() {
       b += F(" selected");
     }
     b += F(">");
-    b += kRelayModeName[i];
+    b += relayModeNameLong((RelayMode)i);
     b += F("</option>");
   }
   b += F("</select>");
   b += F("<input type=\"number\" name=\"schwelle\" min=\"0\" max=\"5000\" "
          "step=\"50\" value=\"");
   b += relayThreshold();
-  b += F("\" title=\"Schwelle in Watt\">");
-  b += F("<button class=\"btn\" name=\"was\" value=\"ausgang\">"
-         "&Uuml;bernehmen</button> ");
-  b += F("<button class=\"btn gray\" name=\"was\" value=\"test\">"
-         "Test: 5 s an, 5 s aus</button>");
+  b += F("\" title=\"");
+  b += tr(T_TITLE_THRESHOLD);
+  b += F("\">");
+  b += F("<button class=\"btn\" name=\"was\" value=\"ausgang\">");
+  b += tr(T_BTN_APPLY);
+  b += F("</button> ");
+  b += F("<button class=\"btn gray\" name=\"was\" value=\"test\">");
+  b += tr(T_BTN_TEST);
+  b += F("</button>");
   b += F("</form>");
 
-  b += F("<h2>Wartung</h2>");
-  b += F("<div class=\"note\">Update, Neustart und WLAN-Einrichtung "
-         "verlangen den 4-stelligen Code. Er steht auf der Panel-Seite "
-         "<em>Service</em>.</div>");
+  b += F("<h2>");
+  b += tr(T_H_MAINT);
+  b += F("</h2>");
+  b += F("<div class=\"note\">");
+  b += tr(T_NOTE_MAINT);
+  b += F("</div>");
   b += F("<form action=\"/aktion\" method=\"POST\">");
   b += F("<input type=\"text\" name=\"code\" inputmode=\"numeric\" "
          "maxlength=\"4\" placeholder=\"Code\">");
-  b += F("<button class=\"btn gray\" name=\"was\" value=\"neustart\">"
-         "Panel neu starten</button> ");
-  b += F("<button class=\"btn gray\" name=\"was\" value=\"setup\">"
-         "WLAN neu einrichten</button>");
+  b += F("<button class=\"btn gray\" name=\"was\" value=\"neustart\">");
+  b += tr(T_BTN_RESTART);
+  b += F("</button> ");
+  b += F("<button class=\"btn gray\" name=\"was\" value=\"setup\">");
+  b += tr(T_BTN_SETUP);
+  b += F("</button>");
   b += F("</form>");
-  sendNavPage("RCT Power Panel", "/", b);
+  sendNavPage(tr(T_PAGE_ROOT), "/", b);
 }
 
 // ---------------------------------------------------------------------------
@@ -419,7 +447,7 @@ void askListing(const char *title, const char *nav, const char *dir, bool csv,
   sdRequestListing(dir, freshList);
   const int n = sdListingText(dir, s_listing, sizeof(s_listing) - 1);
   if (n == kListingUnavailable) {
-    sendMsg(503, "Die SD-Karte liess sich nicht lesen.");
+    sendMsg(503, tr(T_ERR_SD_UNREADABLE));
     return;
   }
   s_listingLen = n > 0 ? (size_t)n : 0;
@@ -437,17 +465,20 @@ void askListing(const char *title, const char *nav, const char *dir, bool csv,
 void renderList(const char *title, const char *nav, const char *dir, bool csv,
                 const char *refreshTag) {
   String b;
-  b.reserve(1600);
+  b.reserve(2400);
+  // A note with a value in it: the sentence is in src/i18n, the value (a route
+  // or a directory) goes in as a %s.
+  char note[300];
   // Before the loop below, not after: that loop overwrites the line breaks in
   // place, so afterwards the last byte is always '\0' and the check would claim
   // a full buffer on every page that has files at all.
   const bool listingTruncated =
       s_listingLen > 0 && s_listing[s_listingLen - 1] != '\n';
   if (s_listingLen == 0) {
-    b += F("<div class=\"note\">Auf der SD-Karte liegt nichts in "
-           "<code>");
-    b += dir;
-    b += F("</code>.</div>");
+    snprintf(note, sizeof(note), tr(T_NOTE_EMPTY), dir);
+    b += F("<div class=\"note\">");
+    b += note;
+    b += F("</div>");
   } else {
     b += F("<ul class=\"plain\">");
     char *line = s_listing;
@@ -495,7 +526,7 @@ void renderList(const char *title, const char *nav, const char *dir, bool csv,
             b += F("?tail=65536");
           }
           b += '>';
-          b += csv ? "laden" : "anzeigen";
+          b += csv ? tr(T_LINK_LOAD) : tr(T_LINK_VIEW);
           b += F("</a>");
         }
         b += F("</li>");
@@ -504,20 +535,17 @@ void renderList(const char *title, const char *nav, const char *dir, bool csv,
     }
     b += F("</ul>");
     if (csv) {
-      b += F("<div class=\"note\">Der Knopf &bdquo;laden&ldquo; holt die "
-             "letzten 64 kB (etwa zwei Tage). Mit "
-             "<code>?tail=0</code> im Link kommt die ganze Datei. W&auml;hrend "
-             "ein Download l&auml;uft, bedient das Panel keine weiteren "
-             "Anfragen.</div>");
+      b += F("<div class=\"note\">");
+      b += tr(T_NOTE_TAIL);
+      b += F("</div>");
     }
     // The worker fills a fixed buffer; a full one ends mid-line and means there
     // are more files than fit. Say so instead of showing a silently short list.
     if (listingTruncated) {
-      b += F("<div class=\"note\">Mehr Dateien auf der Karte, als hier "
-             "platzieren. &Uuml;brige Dateien lassen sich direkt &uuml;ber "
-             "ihren Namen aufrufen: <code>");
-      b += nav;
-      b += F("/Dateiname</code>.</div>");
+      snprintf(note, sizeof(note), tr(T_NOTE_TRUNC), nav);
+      b += F("<div class=\"note\">");
+      b += note;
+      b += F("</div>");
     }
   }
 
@@ -530,31 +558,31 @@ void renderList(const char *title, const char *nav, const char *dir, bool csv,
     // time to navigate to the page to be photographed; here the browser is
     // already showing it, so waiting would only make the button feel broken.
     const bool running = guiShotRunning();
-    b += F("<h2>Aufnahme</h2>");
+    b += F("<h2>");
+    b += tr(T_H_CAPTURE);
+    b += F("</h2>");
     b += F("<form action=\"/aktion\" method=\"POST\">");
     b += F("<input type=\"hidden\" name=\"was\" value=\"bild\">");
     b += F("<input type=\"text\" name=\"code\" inputmode=\"numeric\" "
            "maxlength=\"4\" placeholder=\"Code\">");
-    b += F("<button class=\"btn\">Screenshot ausl&ouml;sen</button>");
+    b += F("<button class=\"btn\">");
+    b += tr(T_BTN_SHOT);
+    b += F("</button>");
     b += F("</form>");
     b += F("<p><a class=\"btn gray\" href=\"");
     b += nav;
-    b += F("\">Seite neu laden</a></p>");
-    if (running) {
-      b += F("<div class=\"note\">Eine Aufnahme wird gerade geschrieben. Die "
-             "Seite l&auml;dt sich in ein paar Sekunden einmal neu, dann steht "
-             "die neue Datei oben.</div>");
-    } else {
-      b += F("<div class=\"note\">Die Aufnahme zeigt die aktuelle Seite. Das "
-             "Bild landet als <code>shot...bmp</code> auf der Karte; die Seite "
-             "l&auml;dt sich danach einmal neu.</div>");
-    }
+    b += F("\">");
+    b += tr(T_BTN_RELOAD);
+    b += F("</a></p>");
+    b += F("<div class=\"note\">");
+    b += tr(running ? T_NOTE_SHOT_RUN : T_NOTE_SHOT_IDLE);
+    b += F("</div>");
   }
 
   sendNavPage(title, nav, b, refreshTag);
 }
 
-void handleData() { askListing("Daten", "/daten", "/hist", true); }
+void handleData() { askListing(tr(T_PAGE_DATA), "/daten", "/hist", true); }
 
 // The picture list, with the trigger button for a new screenshot.
 //
@@ -580,7 +608,7 @@ void handleShots() {
     }
   }
   if (step == 1) {
-    askListing("Bilder", "/bilder", "/shot", false, kShotReloadTag);
+    askListing(tr(T_PAGE_SHOTS), "/bilder", "/shot", false, kShotReloadTag);
     return;
   }
   if (step >= 2) {
@@ -592,10 +620,10 @@ void handleShots() {
                step + 1);
       next = tag;
     }
-    askListing("Bilder", "/bilder", "/shot", false, next, true);
+    askListing(tr(T_PAGE_SHOTS), "/bilder", "/shot", false, next, true);
     return;
   }
-  askListing("Bilder", "/bilder", "/shot", false);
+  askListing(tr(T_PAGE_SHOTS), "/bilder", "/shot", false);
 }
 
 // ---------------------------------------------------------------------------
@@ -627,15 +655,15 @@ constexpr uint32_t kStreamMaxMs = 60000;
 // the Content-Length, and it is why a progress bar works).
 void openStream(const char *path, uint32_t tail, StreamKind kind) {
   if (s_streamKind != StreamKind::None) {
-    sendMsg(409, "Es l&auml;uft bereits ein Download.");
+    sendMsg(409, tr(T_ERR_DOWNLOAD_RUNNING));
     return;
   }
   if (s_otaOpen) {
-    sendMsg(503, "Gerade wird eine Firmware geschrieben.");
+    sendMsg(503, tr(T_ERR_FW_WRITING));
     return;
   }
   if (!sdMounted()) {
-    sendMsg(503, "Keine SD-Karte.");
+    sendMsg(503, tr(T_ERR_NO_SDCARD));
     return;
   }
   // Only the two directories this page serves. A name like "../../nvs" is
@@ -643,15 +671,15 @@ void openStream(const char *path, uint32_t tail, StreamKind kind) {
   const bool isCsv = strncmp(path, "/hist/", 6) == 0;
   const bool isShot = strncmp(path, "/shot/", 6) == 0;
   if (!isCsv && !isShot) {
-    sendMsg(404, "Unbekannte Datei.");
+    sendMsg(404, tr(T_ERR_NO_FILE_DIR));
     return;
   }
   if (isCsv && kind != StreamKind::Csv) {
-    sendMsg(404, "Unbekannte Datei.");
+    sendMsg(404, tr(T_ERR_NO_FILE_DIR));
     return;
   }
   if (isShot && kind != StreamKind::Shot) {
-    sendMsg(404, "Unbekannte Datei.");
+    sendMsg(404, tr(T_ERR_NO_FILE_DIR));
     return;
   }
   strlcpy(s_streamFile, path, sizeof(s_streamFile));
@@ -713,9 +741,7 @@ void streamStep() {
       if (sdStreamFailed()) {
         s_streamKind = StreamKind::None;
         s_streamFile[0] = '\0';
-        sendMsg(404, "Die Datei gibt es nicht, ist 0 Bytes lang (bei Bildern: "
-                     "eine Aufnahme, die nicht fertig wurde) oder der Stick ist "
-                     "weg.");
+        sendMsg(404, tr(T_ERR_NO_FILE));
         return;
       }
       if ((int32_t)(millis() - s_streamOpenedMs) > 6000) {
@@ -723,7 +749,7 @@ void streamStep() {
         sdStopStream();
         s_streamKind = StreamKind::None;
         s_streamFile[0] = '\0';
-        sendMsg(500, "Die Datei liess sich nicht vom Stick lesen.");
+        sendMsg(500, tr(T_ERR_READ_FAILED));
         return;
       }
       diagPhase("web.openwait");
@@ -837,12 +863,13 @@ void handleShotFile() {
 
 void handleUpdatePage() {
   String b;
-  b.reserve(1100);
-  b += F("<h2>Firmware aktualisieren</h2>");
-  b += F("<div class=\"note\">Datei <code>firmware.bin</code> aus dem "
-         "Build-Ordner w&auml;hlen. Das Panel bleibt w&auml;hrend des "
-         "Schreibens bedienbar und startet danach neu. L&auml;uft ein Update "
-         "schief, startet das Panel mit der bisherigen Firmware weiter.</div>");
+  b.reserve(1400);
+  b += F("<h2>");
+  b += tr(T_H_FIRMWARE);
+  b += F("</h2>");
+  b += F("<div class=\"note\">");
+  b += tr(T_NOTE_FIRMWARE);
+  b += F("</div>");
   b += F("<form action=\"/update\" method=\"POST\" "
          "enctype=\"multipart/form-data\">");
   // The code field comes *before* the file on purpose: the WebServer parses the
@@ -851,9 +878,11 @@ void handleUpdatePage() {
   b += F("<input type=\"text\" name=\"code\" inputmode=\"numeric\" "
          "maxlength=\"4\" placeholder=\"Code\">");
   b += F("<input type=\"file\" name=\"fw\" accept=\".bin\">");
-  b += F("<button class=\"btn\">Firmware schreiben</button>");
+  b += F("<button class=\"btn\">");
+  b += tr(T_BTN_FW_WRITE);
+  b += F("</button>");
   b += F("</form>");
-  sendNavPage("Update", "/update", b);
+  sendNavPage(tr(T_PAGE_UPDATE), "/update", b);
 }
 
 // The code check, in one place: used before the write starts and again after it
@@ -975,12 +1004,11 @@ void handleUpdateDone() {
   s_otaOpen = false;
   if (!code) {
     Serial.println(F("Web: Update ohne passenden Code abgelehnt"));
-    sendMsg(403, "Der Code stimmt nicht. Er steht auf der Panel-Seite Service.");
+    sendMsg(403, tr(T_ERR_CODE));
     return;
   }
   if (!ok) {
-    sendMsg(400, "Das Update wurde nicht ausgef&uuml;hrt. Bitte erneut "
-                 "versuchen.");
+    sendMsg(400, tr(T_ERR_FW_NOTRUN));
     return;
   }
   const uint32_t took = millis() - s_otaStartMs;
@@ -991,18 +1019,18 @@ void handleUpdateDone() {
   if (!Update.end(true)) {
     Serial.printf("Web: Update.end(): %s\n", Update.errorString());
     s_otaOpen = false;
-    sendMsg(500, "Das Update liess sich nicht abschliessen. Die alte "
-                 "Firmware l&auml;uft weiter.");
+    sendMsg(500, tr(T_ERR_FW_END));
     return;
   }
   s_otaOpen = false;
   Serial.printf("Web: Update fertig, %u bytes in %lu ms, Neustart\n",
                 (unsigned)s_otaBytes, (unsigned long)took);
   String b;
-  b.reserve(400);
-  b += F("<div class=\"note ok\">Firmware geschrieben. Das Panel startet "
-         "jetzt neu.</div>");
-  sendNavPage("Update", "/update", b);
+  b.reserve(460);
+  b += F("<div class=\"note ok\">");
+  b += tr(T_OK_FW_WRITTEN);
+  b += F("</div>");
+  sendNavPage(tr(T_PAGE_UPDATE), "/update", b);
   delay(800); // let the reply reach the browser before the radio goes down
   webStop();
   ESP.restart();
@@ -1015,13 +1043,13 @@ void handleUpdateDone() {
 void handleAction() {
   if (!codeOk()) {
     Serial.println(F("Web: Aktion abgelehnt (kein passender Code)"));
-    sendMsg(403, "Der Code stimmt nicht. Er steht auf der Panel-Seite Service.");
+    sendMsg(403, tr(T_ERR_CODE));
     return;
   }
   const String was = s_server.arg("was");
   if (was == "neustart") {
     Serial.println(F("Web: Neustart angefordert"));
-    sendMsg(200, "Das Panel startet neu.");
+    sendMsg(200, tr(T_OK_RESTART));
     delay(500);
     webStop();
     ESP.restart();
@@ -1029,7 +1057,7 @@ void handleAction() {
   }
   if (was == "setup") {
     Serial.println(F("Web: WLAN-Einrichtung angefordert"));
-    sendMsg(200, "Das Panel startet das WLAN-Setup (Zugang: RCT-Panel).");
+    sendMsg(200, tr(T_OK_SETUP));
     delay(500);
     webStop(); // frees port 80 and the radio for the portal
     restartProvisioning();
@@ -1044,8 +1072,7 @@ void handleAction() {
                   started ? "gestartet" : "nicht moeglich (laeuft noch oder "
                                           "keine SD-Karte)");
     if (!started) {
-      sendMsg(409, "Es l&auml;uft schon eine Aufnahme, oder es steckt keine "
-                   "SD-Karte im Panel.");
+      sendMsg(409, tr(T_ERR_SHOT_RUNNING));
       return;
     }
     // Straight back to the list, which reloads itself once so the new file is in
@@ -1063,8 +1090,7 @@ void handleAction() {
     const bool started = relayStartTest();
     Serial.printf("Web: Ausgang-Test %s\n", started ? "gestartet" : "laeuft schon");
     sendMsg(started ? 200 : 409,
-            started ? "Test laeuft: 5 s ein, 5 s aus, zweimal."
-                    : "Ein Test laeuft bereits.");
+            tr(started ? T_OK_TEST_RUN : T_ERR_TEST_RUNNING));
     return;
   }
   if (was == "ausgang") {
@@ -1075,21 +1101,20 @@ void handleAction() {
     const int m = f.toInt();
     const int w = s_server.arg("schwelle").toInt();
     if (m < 0 || m >= kRelayModeCount) {
-      sendMsg(400, "Unbekannte Funktion.");
+      sendMsg(400, tr(T_ERR_FUNCTION));
       return;
     }
     relaySetThreshold(w);
     relaySetMode((RelayMode)m);
     Serial.printf("Web: Ausgang auf '%s', Schwelle %d W\n",
-                  kRelayModeName[m], relayThreshold());
-    sendMsg(200, "&Uuml;bernommen. Das Panel zeigt die neue Funktion auf der "
-                 "Seite Service.");
+                  relayModeNameLong((RelayMode)m), relayThreshold());
+    sendMsg(200, tr(T_OK_APPLIED));
     return;
   }
-  sendMsg(400, "Unbekannte Aktion.");
+  sendMsg(400, tr(T_ERR_ACTION));
 }
 
-void handleNotFound() { sendMsg(404, "Diese Seite gibt es nicht."); }
+void handleNotFound() { sendMsg(404, tr(T_ERR_PAGE)); }
 
 // A fresh code per boot: a code that survives a restart could be replayed from
 // an old terminal log or a sticky note.
