@@ -80,6 +80,11 @@ int sdTakeHistory(SdHistSample *out, int maxRows);
 void sdScreenshot(const uint16_t *rgb565, int w, int h);
 // True once the worker finished with the buffer passed to sdScreenshot().
 bool sdTakeShotDone();
+// Whether that capture reached the card complete. A short write is repeated a few
+// times, and a file that is still short afterwards is deleted instead of left on
+// the card, so the picture list never shows a picture with a stripe of garbage in
+// it. Valid together with sdTakeShotDone().
+bool sdShotOk();
 
 // --------------------------------------------------------------------------
 // File streaming and directory listing (web interface, see
@@ -125,10 +130,11 @@ void sdStopStream();
 //
 // The card belongs to the worker task, so it fills a cache and the caller reads
 // that: sdRequestListing() asks for a refresh (a no-op while the cache is younger
-// than a few seconds), sdListingText() hands out the cached text in the same pass.
+// than a few seconds, unless force says the card is to be read again now),
+// sdListingText() hands out the cached text in the same pass.
 // Its return is the number of bytes written into out, 0 for an empty directory,
 // or kListingUnavailable if the card cannot be read or the cache is still cold.
-void sdRequestListing(const char *path);
+void sdRequestListing(const char *path, bool force = false);
 int sdListingText(const char *path, char *out, size_t cap);
 
 // Return value of sdListingText() that means "no answer available".

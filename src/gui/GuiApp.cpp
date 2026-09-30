@@ -1277,6 +1277,31 @@ static void shotCb(lv_event_t *e) {
   lv_timer_set_repeat_count(timer, 1);
 }
 
+bool guiShotRunning() {
+  // Both states count: while the countdown ticks, and afterwards while the card
+  // worker still holds the image buffer of a running capture.
+  return s_shotDueMs != 0 || s_shotBuf != nullptr;
+}
+
+bool guiRequestShot() {
+  // The same two checks the panel's own button does - one capture at a time, and
+  // no capture without a card - but without the countdown, because the caller is
+  // the web interface: the browser is already showing the page that is to be
+  // photographed, which is the whole reason the panel waits 5 s.
+  AppPage &sp = s_pages[PAGE_SERVICE];
+  if (guiShotRunning()) {
+    return false;
+  }
+  if (!sdMounted()) {
+    if (sp.labels[SV_SHOT] != nullptr) {
+      setText(sp.labels[SV_SHOT], "keine SD-Karte");
+    }
+    return false;
+  }
+  takeShotNow();
+  return true;
+}
+
 static void pageBuildService(AppPage *p) {
   lv_obj_t *root = p->root;
 
@@ -2211,7 +2236,11 @@ static void refreshCb(lv_timer_t *t) {
     heap_caps_free(s_shotBuf);
     s_shotBuf = nullptr;
     if (sv.labels[SV_SHOT]) {
-      lv_label_set_text(sv.labels[SV_SHOT], "auf /shot gespeichert");
+      // "fehlgeschlagen" only when the worker says the file did not make it onto
+      // the card whole: an incomplete BMP is deleted rather than kept, so there is
+      // nothing to point at, and the log line next to it says how far it got.
+      lv_label_set_text(sv.labels[SV_SHOT],
+                        sdShotOk() ? "auf /shot gespeichert" : "fehlgeschlagen");
     }
   }
 

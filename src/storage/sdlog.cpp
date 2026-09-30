@@ -154,7 +154,11 @@ static int s_histReady = 0; // 1 when a fresh result is waiting
 static int s_histCount = 0;  // rows in s_histOut (see sdTakeHistory)
 static bool s_histDeferred = false; // clock not ready yet, caller may retry
 // Screenshot handoff: true once the worker is done with the caller's buffer.
+// s_shotOk belongs to the capture that is being finished: false when the picture
+// did not make it onto the card whole, so the panel does not report a stored
+// file that was deleted again.
 static bool s_shotDone = true; // nothing in flight
+static bool s_shotOk = true;
 // One converted BMP scanline, reused for every row. Static, not on the stack:
 // the worker task has 4 kB and the card library already needs a good part of
 // that. Sized for kShotMaxW pixels at 3 bytes each.
@@ -846,7 +850,36 @@ static void sdWorkerWriteShot(const SdReq &req) {
   const uint32_t ppm = 2835; // 72 dpi, what Windows writes for a screen grab
   memcpy(hdr + 38, &ppm, 4);
   memcpy(hdr + 42, &ppm, 4);
-  f.write(hdr, sizeof(hdr));
+
+  // Every write is checked, and a short one is repeated. File::write() returns
+  // how many bytes it accepted - a sector the card could not store ends the call
+  // early - and a dropped row is a picture with a stripe of garbage in it that
+  // every later check passes: the file has the right name, appears in the
+  // listing, and opens in a viewer as an image. Measured on the wall: 3 of 8
+  // shots were short (0, 167 kB and 499 kB of 675 kB) while the return value
+  // went unread and the log reported the intended size every time.
+  //
+  // Not fatal like a failed CSV row: the card is not unmounted here. The CSV
+  // path does that, and it should be the one to decide a card is gone - a
+  // screenshot is the most expendable thing on it.
+  bool writeOk = true;
+  auto writeAll = [&](const uint8_t *data, size_t len) {
+    for (int attempt = 0; attempt < 4 && len > 0; attempt++) {
+      const size_t got = f.write((uint8_t *)data, len);
+      if (got == 0) {
+        esp_task_wdt_reset();
+        vTaskDelay(5); // card busy; give it a moment before trying again
+        continue;
+      }
+      data += got;
+      len -= got;
+    }
+    if (len > 0) {
+      writeOk = false;
+    }
+  };
+
+  writeAll(hdr, sizeof(hdr));
 
   // Bottom-up: BMP starts at the last scanline. A 480x480 BMP is 691 254 bytes:
   // ~1.4 s at the 4 MHz clock the card normally runs at, >14 s at the 400 kHz
@@ -855,7 +888,7 @@ static void sdWorkerWriteShot(const SdReq &req) {
   // back to 400 kHz still writes its picture completely. A transfer that is
   // truly stuck still trips the watchdog: this only legalises writes that are
   // slow, not ones that hang.
-  for (int y = h - 1; y >= 0; y--) {
+  for (int y = h - 1; y >= 0 && writeOk; y--) {
     const uint16_t *src = req.px + (size_t)y * (size_t)w;
     size_t n = 0;
     for (int x = 0; x < w; x++) {
@@ -867,14 +900,36 @@ static void sdWorkerWriteShot(const SdReq &req) {
     while (n < rowBytes) {
       s_shotRow[n++] = 0; // padding, only needed if w*3 is not 4-aligned
     }
-    f.write(s_shotRow, rowBytes);
+    writeAll(s_shotRow, rowBytes);
     esp_task_wdt_reset();
     vTaskDelay(1); // give IDLE0 a slice so its own WDT stays fed
   }
   f.close();
 
+  // Last word: the size the card reports after closing, not the size that was
+  // meant. A write that no amount of repeating fixed, or a file system that
+  // dropped something while closing, shows up here and nowhere earlier.
+  uint32_t onCard = 0;
+  {
+    File chk = SD.open(path, FILE_READ);
+    if (chk) {
+      onCard = (uint32_t)chk.size();
+      chk.close();
+    }
+  }
+  if (!writeOk || onCard != fileBytes) {
+    Serial.printf("SD: Screenshot unvollstaendig (%s): %lu statt %lu Bytes, "
+                  "geloescht\n",
+                  path, (unsigned long)onCard, (unsigned long)fileBytes);
+    SD.remove(path);
+    s_shotOk = false;
+    s_shotDone = true;
+    return;
+  }
+
   Serial.printf("SD: Screenshot -> %s (%dx%d, %lu Bytes)\n", path, w, h,
                 (unsigned long)fileBytes);
+  s_shotOk = true;
   s_shotDone = true;
 }
 
@@ -1091,6 +1146,18 @@ static void sdWorkerOpenStream(const SdReq &req) {
     return;
   }
   const size_t size = (size_t)f.size();
+  if (size == 0) {
+    // An empty file is nothing to send. Handed to the web as "not there" right
+    // away: the alternative is a wait for a size that is never going to arrive,
+    // followed by a complaint about the card - and the card is fine. Screenshots
+    // are no longer left behind empty (sdWorkerWriteShot deletes what it cannot
+    // write whole), so this is an old file, and a newer one of its kind will not
+    // be created any more.
+    Serial.printf("SD: %s is empty (0 bytes), not streamed\n", req.path);
+    s_stream.failed = true;
+    s_stream.done = true;
+    return;
+  }
   // Tail request: start that many bytes back from the end, clamped to the file.
   size_t start = 0;
   if (req.tailBytes > 0 && req.tailBytes < size) {
@@ -1192,12 +1259,16 @@ void sdRequestStream(const char *path, uint32_t tailBytes) {
 // Ask for a fresh listing, but only if the cached one is missing or older than
 // kListingMaxAgeMs. A page reload therefore shows a new file within seconds
 // without every visit re-reading the directory.
-void sdRequestListing(const char *path) {
+//
+// force skips the age check: the picture list uses it for the one reload that
+// follows a screenshot, so the file the panel has just written is on the page
+// instead of being held back by a cache entry that is not even five seconds old.
+void sdRequestListing(const char *path, bool force) {
   if (s_reqQ == nullptr || path == nullptr) {
     return;
   }
   ListCache *c = cacheFor(path);
-  if (c != nullptr) {
+  if (c != nullptr && !force) {
     xSemaphoreTake(s_lock, portMAX_DELAY);
     const bool fresh = c->len >= 0 &&
                        (int32_t)(millis() - c->atMs) < kListingMaxAgeMs;
@@ -1422,6 +1493,8 @@ void sdScreenshot(const uint16_t *rgb565, int w, int h) {
 }
 
 bool sdTakeShotDone() { return s_shotDone; }
+
+bool sdShotOk() { return s_shotOk; }
 
 void sdInit() {
   if (s_reqQ != nullptr) {
