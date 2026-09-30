@@ -25,6 +25,7 @@
 #include "web/WebServer.h"
 
 #include "../Diag.h"
+#include "../NumFmt.h"
 #include "../config/Configuration.h"
 #include "../output/Relay.h"
 #include "../rct/RctTypes.h"
@@ -99,18 +100,9 @@ size_t s_sendLen = 0;
 size_t s_sendPos = 0;
 uint32_t s_lastWriteMs = 0;
 
-// Directory listing handoff with the card worker: requested in the handler,
-// collected and rendered on a later loop iteration.
-bool s_listingPending = false;
+// The directory listing the card worker last read, copied out of its cache.
 char s_listing[2048];
 size_t s_listingLen = 0;
-// What the pending listing belongs to, so the answer can be rendered without
-// keeping a handler context around.
-const char *s_deferTitle = "";
-const char *s_deferNav = "";
-const char *s_deferDir = "";
-bool s_deferCsv = false;
-uint32_t s_deferSinceMs = 0;
 
 // Firmware upload state. Update has no internal mutex, so it is used from one
 // context only - the loop task, which is also where these handlers run.
@@ -122,6 +114,12 @@ uint32_t s_otaStartMs = 0;
 // The gating code, 4 digits, fresh for every boot.
 char s_code[5] = {0};
 
+// Hands the display back to the panel while a download is being pumped out of a
+// handler. Installed by main.cpp, the same way rctSetYieldHook is - the web
+// module stays free of LVGL, and the hook is guaranteed to run in the task that
+// called the handler.
+static void (*s_yieldHook)() = nullptr;
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -129,9 +127,18 @@ char s_code[5] = {0};
 // HTML-escape into a fixed buffer. The values that reach the pages are file
 // names, version strings and device names - all from the card or the device,
 // none of them trusted.
+//
+// The longest replacement is "&quot;" (6 characters), so each step needs room for
+// that plus the terminator. A buffer too small for even one character yields an
+// empty string - which is legal here, and the reason the code check used to
+// refuse every code: it escaped into 8 bytes, and 8 is not more than the reserve
+// it keeps. Every caller here passes 20 bytes or more.
 void escape(const char *in, char *out, size_t cap) {
   size_t n = 0;
-  for (size_t i = 0; in != nullptr && in[i] != '\0' && n + 8 < cap; i++) {
+  if (out == nullptr || cap == 0) {
+    return;
+  }
+  for (size_t i = 0; in != nullptr && in[i] != '\0' && n + 1 < cap; i++) {
     switch (in[i]) {
     case '&': n += (size_t)snprintf(out + n, cap - n, "&amp;"); break;
     case '<': n += (size_t)snprintf(out + n, cap - n, "&lt;"); break;
@@ -143,11 +150,19 @@ void escape(const char *in, char *out, size_t cap) {
   out[n] = '\0';
 }
 
+// A file size for the two listing pages, in the unit a file manager uses:
+// 1024 steps, and the step that is named is the one the number sits in - kB
+// below a megabyte, MB above. Divided by 1000 instead, a 19 kB month file claims
+// 19 kB and a card that is 16 GB according to its label shows 14,9 - the number
+// then does not match anything the user can see anywhere else.
+//
+// The decimal point is written as a comma, like every other number on these
+// pages.
 void humanSize(uint32_t bytes, char *out, size_t cap) {
-  if (bytes >= 1000000u) {
-    snprintf(out, cap, "%.1f MB", (double)bytes / 1000000.0);
-  } else if (bytes >= 1000u) {
-    snprintf(out, cap, "%u kB", (unsigned)(bytes / 1000u));
+  if (bytes >= 1024u * 1024u) {
+    fmtNumComma(out, cap, "%.1f MB", (double)bytes / (1024.0 * 1024.0));
+  } else if (bytes >= 1024u) {
+    fmtNumComma(out, cap, "%.1f kB", (double)bytes / 1024.0);
   } else {
     snprintf(out, cap, "%u B", (unsigned)bytes);
   }
@@ -238,15 +253,17 @@ void handleRoot() {
     b += F("</div></div>");
   };
   // Sign convention as on the panel and in the manual: net positive = draw
-  // from the grid, negative = feed-in.
-  snprintf(v, sizeof(v), "%.2f kW", (double)s.gridPowerSum / 1000.0);
+  // from the grid, negative = feed-in. fmtNumComma: comma as the decimal
+  // separator, and no "-0,00 kW" for a grid power that is a rounding error
+  // below zero.
+  fmtNumComma(v, sizeof(v), "%.2f kW", (double)s.gridPowerSum / 1000.0);
   card("Netz", v);
-  snprintf(v, sizeof(v), "%.2f kW",
-           (double)(s.pvPower[0] + s.pvPower[1] + s.s0Power) / 1000.0);
+  fmtNumComma(v, sizeof(v), "%.2f kW",
+             (double)(s.pvPower[0] + s.pvPower[1] + s.s0Power) / 1000.0);
   card("PV", v);
-  snprintf(v, sizeof(v), "%.0f %%", (double)s.batterySoc);
+  fmtNumComma(v, sizeof(v), "%.0f %%", (double)s.batterySoc);
   card("Batterie", v);
-  snprintf(v, sizeof(v), "%.0f W", (double)loadSum(s));
+  fmtNumComma(v, sizeof(v), "%.0f W", (double)loadSum(s));
   card("Verbrauch", v);
   b += F("</div>");
 
@@ -364,50 +381,35 @@ void handleRoot() {
 
 void renderList(const char *title, const char *nav, const char *dir, bool csv);
 
-// The listing is produced by the card worker, so a request and its answer are
-// two steps: ask in the handler, render on the loop iteration after the answer
-// arrived. The browser sees one request and one page, and nothing is waited for
-// - the panel keeps drawing in between.
+// The card belongs to the worker task, so the web task never reads it. The worker
+// keeps a listing per directory up to date instead, and this handler answers from
+// that cache - which is why the page appears in the same pass the request arrived
+// in.
 //
-// The response is deliberately *not* sent from the handler. The connection stays
-// open for HTTP_MAX_DATA_WAIT (5 s) after a request was handled, and a directory
-// listing is done in a few tens of milliseconds; a 503 plus a browser reload
-// would be a worse answer than a page that simply appears a moment later.
+// The obvious alternative, "ask here, answer on the next loop pass", does not work
+// with this WebServer: handleClient() drops its client as soon as the handler
+// returns, and WiFiClient's assignment calls stop() on the old socket. A handler
+// that sends nothing therefore has no connection left to answer on, and the
+// browser gets an empty reply. Hence the cache, and a 503 while it is still cold.
 void askListing(const char *title, const char *nav, const char *dir, bool csv) {
   sdRequestListing(dir);
-  s_listingLen = 0;
-  s_deferTitle = title;
-  s_deferNav = nav;
-  s_deferDir = dir;
-  s_deferCsv = csv;
-  s_deferSinceMs = millis();
-  s_listingPending = true;
-}
-
-// Collect the answer and render. Returns false while the worker is still busy.
-bool listingStep() {
-  if (!s_listingPending) {
-    return true;
+  const int n = sdListingText(dir, s_listing, sizeof(s_listing) - 1);
+  if (n == kListingUnavailable) {
+    sendMsg(503, "Die SD-Karte liess sich nicht lesen.");
+    return;
   }
-  const int n = sdTakeListing(s_listing, sizeof(s_listing) - 1);
-  if (n == -1) {
-    if ((int32_t)(millis() - s_deferSinceMs) > 4000) {
-      s_listingPending = false;
-      sendMsg(503, "Die SD-Karte liess sich nicht lesen.");
-      return true;
-    }
-    diagPhase("web.listwait");
-    diagBeat();
-    return false;
-  }
-  s_listingPending = false;
-  s_listingLen = n >= 0 ? (size_t)n : 0;
-  renderList(s_deferTitle, s_deferNav, s_deferDir, s_deferCsv);
-  return true;
+  s_listingLen = n > 0 ? (size_t)n : 0;
+  renderList(title, nav, dir, csv);
 }
 
 // Both lists look the same; only the directory, the route and the wording
 // differ. csvCol != nullptr marks the CSV list (download link, tail offered).
+//
+// Single characters go in as `b += '/'`, never as F('/'): F() is the macro for
+// a *string* literal in flash and hands on its address, so F('/') passes the
+// pointer value 0x2F. That compiles, strlen() then reads from address 47, and
+// the panel reboots with a LoadProhibited - which is what the first build on the
+// wall did, the moment someone opened /daten or /bilder.
 void renderList(const char *title, const char *nav, const char *dir,
                 bool csv) {
   String b;
@@ -425,15 +427,18 @@ void renderList(const char *title, const char *nav, const char *dir,
       if (nl != nullptr) {
         *nl = '\0';
       }
-      // "name|size|epoch" - the pipe cannot occur in a FAT name.
+      // "name|size|epoch" - the pipe cannot occur in a FAT name. The size is the
+      // field *between* the two pipes; reading the one behind the second pipe
+      // gives the timestamp, which is a nine- to ten-digit number and turns a
+      // 19 kB file into "1707,8 MB" (that is what the page showed).
       char *bar1 = strchr(line, '|');
       if (bar1 != nullptr) {
         *bar1 = '\0';
         char *bar2 = strchr(bar1 + 1, '|');
-        uint32_t size =
-            bar2 != nullptr ? (uint32_t)strtoul(bar2 + 1, nullptr, 10) : 0;
+        uint32_t size = 0;
         if (bar2 != nullptr) {
           *bar2 = '\0';
+          size = (uint32_t)strtoul(bar1 + 1, nullptr, 10);
         }
         // A name that tries to climb out of the directory is not rendered as a
         // link. The download route checks the prefix anyway.
@@ -452,15 +457,15 @@ void renderList(const char *title, const char *nav, const char *dir,
         if (safeName) {
           b += F("<a class=\"btn\" href=\"");
           b += nav;
-          b += F('/');
+          b += '/';
           b += name;
-          b += F('"');
+          b += '"';
           if (csv) {
             // Default to a tail: a whole month takes seconds at the card's
             // speed, and the last hours are what gets looked at.
             b += F("?tail=65536");
           }
-          b += F('>');
+          b += '>';
           b += csv ? "laden" : "anzeigen";
           b += F("</a>");
         }
@@ -497,9 +502,29 @@ void handleShots() { askListing("Bilder", "/bilder", "/shot", false); }
 // Downloads
 // ---------------------------------------------------------------------------
 
-// Opening a stream: remember what was asked for, hand it to the worker. The
-// header goes out on a later iteration, once the worker has reported the byte
-// count (that count is the Content-Length, and it is why a progress bar works).
+static void streamStep();
+
+// Backstop for a transfer that never finishes, in ms. A month of CSV is a few
+// hundred kB and a screenshot a few hundred kB more; a minute is already far
+// beyond what any of them needs.
+constexpr uint32_t kStreamMaxMs = 60000;
+
+// Opening a stream: remember what was asked for, hand it to the worker, and then
+// pump the whole transfer *from inside the handler*.
+//
+// The pump has to be here. The obvious design - start the download in the handler
+// and send it on the following loop iterations - cannot work with this WebServer:
+// handleClient() assigns _currentClient = WiFiClient() as soon as the handler
+// returns, and WiFiClient's assignment calls stop() on the old socket. The
+// download then writes to a closed socket and the browser gets an empty reply.
+//
+// So the handler stays until the file is out, and the yield hook hands rendering
+// back between chunks: the panel keeps drawing, and the loop task's other work
+// (polling the inverter, writing the next CSV row) waits for the transfer - which
+// is the same trade the earlier design made, only without a dead socket.
+//
+// The header goes out once the worker has reported the byte count (that count is
+// the Content-Length, and it is why a progress bar works).
 void openStream(const char *path, uint32_t tail, StreamKind kind) {
   if (s_streamKind != StreamKind::None) {
     sendMsg(409, "Es l&auml;uft bereits ein Download.");
@@ -537,6 +562,30 @@ void openStream(const char *path, uint32_t tail, StreamKind kind) {
   s_streamOpenedMs = millis();
   Serial.printf("Web: Download %s (tail %u)\n", s_streamFile, (unsigned)tail);
   sdRequestStream(s_streamFile, s_streamTail);
+
+  // One chunk per pass, with the display in between. kStreamMaxMs is the backstop
+  // for a card that stops answering mid-file: better a broken transfer the
+  // browser can see than a request that never ends.
+  const uint32_t until = millis() + kStreamMaxMs;
+  while (s_streamKind != StreamKind::None) {
+    streamStep();
+    if (s_yieldHook) {
+      s_yieldHook();
+    } else {
+      delay(1);
+    }
+    if ((int32_t)(millis() - until) >= 0) {
+      Serial.printf("Web: Download %s abgebrochen (Zeitueberschreitung)\n",
+                    s_streamFile);
+      sdStopStream();
+      s_streamKind = StreamKind::None;
+      s_streamFile[0] = '\0';
+      s_streamHeaderSent = false;
+      s_sendLen = 0;
+      s_client = WiFiClient();
+      break;
+    }
+  }
 }
 
 // One step of the open download. Called every loop iteration, and it is the
@@ -708,13 +757,37 @@ void handleUpdatePage() {
 // The code check, in one place: used before the write starts and again after it
 // (a hand-made request may put the file part first, in which case the field is
 // not known yet when the upload begins).
+//
+// The code is only ever *compared*, never written into a page, so it is checked
+// as four digits instead of being HTML-escaped into a buffer. That escape used to
+// be the whole bug: its loop keeps 8 bytes in reserve for the worst-case entity,
+// so a buffer of 8 - which is all a 4-digit code needs - came out empty, and
+// every code compared against "" and was refused.
 bool codeOk() {
   if (!s_server.hasArg("code")) {
     return false;
   }
-  char code[8];
-  escape(s_server.arg("code").c_str(), code, sizeof(code));
-  return strcmp(code, s_code) == 0;
+  // arg() returns a String *by value*, so it has to be kept in a named variable:
+  // s_server.arg("code").c_str() on its own line hands out the buffer of a
+  // temporary that is already destroyed, and the comparison then runs against
+  // whatever the freed heap block holds by then (an empty string, in practice).
+  const String got = s_server.arg("code");
+  const char *in = got.c_str();
+  int n = 0;
+  while (in[n] != '\0') {
+    if (n >= 4 || in[n] < '0' || in[n] > '9') {
+      return false; // not a 4-digit number: not our code
+    }
+    n++;
+  }
+  if (n != 4 || strncmp(in, s_code, 4) != 0) {
+    // The number of digits received is worth having: it separates "the code was
+    // wrong" from "the form sent something else entirely". The code itself stays
+    // out of the log.
+    Serial.printf("Web: Code abgelehnt, %d Ziffern erhalten\n", n);
+    return false;
+  }
+  return true;
 }
 
 // Runs while the request body arrives, chunk by chunk.
@@ -887,6 +960,8 @@ void makeCode() {
 
 } // namespace
 
+void webSetYieldHook(void (*fn)()) { s_yieldHook = fn; }
+
 void webStart() {
   if (s_serverStarted || provisioningApActive()) {
     return; // never both on port 80
@@ -930,9 +1005,6 @@ void webStop() {
     s_sendLen = 0;
     s_client = WiFiClient();
   }
-  if (s_listingPending) {
-    s_listingPending = false;
-  }
   if (s_serverStarted) {
     s_server.stop();
     s_server.close();
@@ -952,22 +1024,10 @@ void webUpdate() {
     return;
   }
   diagPhase("web.handle");
-  if (s_streamKind != StreamKind::None) {
-    // A download owns the connection, and handleClient() is deliberately *not*
-    // called while it runs: that is where the client is kept alive by the
-    // library, and it drops a connection with no new request after
-    // HTTP_MAX_DATA_WAIT (5 s). A whole month of CSV takes longer than that at
-    // the card's speed, so pumping the server here would cut every long download
-    // short. Cost of this choice: while a file is on the wire no second request
-    // is served - one download at a time, which the page says out loud.
-    streamStep();
-  } else if (s_listingPending) {
-    // Same idea, much shorter: the answer is due on the next pass, and nothing
-    // is served in between.
-    listingStep();
-  } else {
-    s_server.handleClient();
-  }
+  // Downloads are pumped inside their own handler (see openStream), so there is
+  // nothing to keep alive here: while a file is on the wire this task is inside
+  // that handler. One request at a time, which is what the page says out loud.
+  s_server.handleClient();
   diagBeat();
 }
 
