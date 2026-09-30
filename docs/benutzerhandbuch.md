@@ -43,7 +43,7 @@ So sieht es danach aus: Oben die Statusleiste mit dem Verbindungsstatus
 zu den Seiten stehen in Kapitel 3, zur Einrichtung ab Kapitel 1.
 
 Die Messwerte liegen außerdem auf der SD-Karte und lassen sich später im
-Browser abrufen: Adresse und Code dafür stehen auf der **Service-Seite**
+Browser abrufen: IP-Adresse und Code dafür stehen auf der **Service-Seite**
 (Kapitel 5).
 
 ---
@@ -221,23 +221,25 @@ Die einzige Seite mit Aktionen:
 
 - „Setup starten" (rechts oben): öffnet das Konfigurationsportal (siehe
   Abschnitt 1.3).
-- Batterie-Status: decodierter Zustand (darunter der Rohwert).
+- Batterie-Status: decodierter Zustand, darunter die **IP-Adresse des Panels** —
+  die brauchen Sie, um die Web-Oberfläche im Browser zu öffnen (Kapitel 5).
+  Steht kein Netz, finden Sie dort `kein Netz`. Rechts daneben, in grauer
+  Schrift, der Rohwert des Statusregisters als Hexzahl (nur für die
+  Fehlersuche).
 - Störungen: decodierte Fehlermeldungen des Wechselrichters (mehrere
   können gleichzeitig aktiv sein).
 - SD-Log: Status der SD-Aufzeichnung, z. B. `SD: OK | 16,0 GB frei` —
-  bei gezogener Karte `SD: -- | n gepuffert` (Werte werden zwischengepuffert;
-  siehe Abschnitt 4).
+  bei gezogener Karte `SD: -- | n gepuffert (11 h)` (Werte werden
+  zwischengepuffert; siehe Abschnitt 4).
 - „Screenshot" (rechts, unter „Setup starten"): speichert nach 5
   Sekunden ein Bild des aktuellen Displays als BMP auf die Karte
   (`/shot/shot001.bmp`). Die 5 Sekunden erlauben, vorher zu einer anderen
   Seite zu wechseln. Praktisch, wenn Sie dem Support zeigen möchten, was das
   Panel anzeigt.
-- Web-Oberfläche (rechts, unter den beiden Knöpfen): Darunter steht die
-  IP-Adresse, unter der das Panel seine Webseiten im Netz bereitstellt (siehe
-  Kapitel 5), darunter der vierstellige Code, den diese Seiten für Änderungen
-  verlangen. Beide Felder sind nur belegt, solange das Panel im Netz ist.
-  **Tippen Sie auf den Code**, zieht das Panel sofort einen neuen — nützlich,
-  wenn jemand über Ihre Schulter mitgelesen hat.
+- Web-Oberfläche (rechts, unter den beiden Knöpfen): der vierstellige Code,
+  den diese Seiten für Änderungen verlangen. Er ist nur belegt, solange das
+  Panel im Netz ist. **Tippen Sie auf den Code**, zieht das Panel sofort einen
+  neuen — nützlich, wenn jemand über Ihre Schulter mitgelesen hat.
 - Ausgang (unten): die Steckdose am Relais-Port. `Ausgang` nennt die
   eingestellte Funktion mit ihrer Schwelle in Watt; **Tippen Sie darauf**,
   wechselt die Funktion. Darunter steht, was gerade passiert (`AN · 512 W
@@ -255,11 +257,13 @@ CSV-Datei (nur bei verbundenem Wechselrichter, keine Nullzeilen):
   eine Datei pro Kalendermonat. Läuft die Uhr (SNTP) beim Start noch nicht,
   schreibt das Panel zunächst in eine Uptime-Datei und wechselt nach der
   Zeitsynchronisation automatisch auf die Monatsdatei.
-- Umfang: ca. 40 KB pro Tag ≈ 1,2 MB pro Monat — eine übliche Karte
+- Umfang: ca. 32 KB pro Tag ≈ 1 MB pro Monat — eine übliche Karte
   reicht jahrzehntelang.
-- Karte gezogen: Solange keine Karte steckt, werden die Zeilen in einem
-  RAM-Puffer (ca. 1 Stunde) zwischengelagert und nach dem Einstecken
-  nachgeschrieben. Die Service-Seite zeigt den Pufferstand.
+- Karte gezogen: Solange keine Karte steckt, werden die Zeilen im Speicher
+  des Panels zwischengelagert und nach dem Einstecken in der richtigen
+  Reihenfolge nachgeschrieben. Der Puffer fasst **24 Stunden** (288 Zeilen,
+  das ist der Arbeitsspeicher, nicht die Karte). Die Service-Seite zeigt den
+  Pufferstand mit Zeitangabe, z. B. `SD: -- | 137 gepuffert (11 h)`.
 - Die Dateien müssen Sie nicht aus der Karte auslesen: Das Panel liefert sie
   im Netz als Download aus (Kapitel 5).
 
@@ -269,6 +273,36 @@ CSV-Datei (nur bei verbundenem Wechselrichter, keine Nullzeilen):
 > (512 Byte schreiben, lesen, vergleichen) und schaltet andernfalls
 > automatisch auf die langsamere, bewährte Stufe zurück. Sie müssen nichts
 > einstellen.
+
+### Welche Karte das Panel braucht
+
+| Merkmal | Anforderung |
+|---|---|
+| Format | microSD/microSDHC/microSDXC im Steckplatz auf der Platine (TF) |
+| Dateisystem | **FAT32** — empfohlen und erprobt. FAT12/FAT16 funktionieren ebenfalls (eine 2-GB-Karte ist ab Werk FAT16) |
+| Nicht unterstützt | **exFAT** — besonders wichtig: Karten ab 64 GB werden ab Werk exFAT geliefert |
+| Kapazität | 4 GB bis 32 GB ist der unkomplizierte Bereich; jede FAT32-partitionierte Karte ist lesbar und beschreibbar |
+| Formatierung | eine einzige Partition, vor dem ersten Einsatz mit einem FAT32-Dateisystem versehen |
+| Geschwindigkeit | belanglos: 32 kB pro Tag, auch die langsamste Klasse reicht |
+| Schreibschutz | im Steckplatz nicht vorhanden — die Karte muss also nicht auf Schreibschutz stehen |
+
+Praktisch ist jede gebräuchliche 8-GB- oder 16-GB-Karte die richtige Wahl.
+Wenn Sie eine sehr große Karte einsetzen wollen, achten Sie darauf, dass sie
+als **FAT32** formatiert ist: Windows formatiert Karten ab 32 GB nur noch als
+exFAT, dort hilft dann ein FAT32-Werkzeug (z. B. `mkfs.fat -F32` unter Linux/macOS,
+oder ein Formatierer wie „guiformat" mit der Option „FAT32"). exFAT kann das
+Panel weder lesen noch beschreiben — es findet dort kein Dateisystem und meldet
+`SD: --`, wiederholt den Versuch alle 10 Sekunden und puffert die Messwerte
+weiter im RAM.
+
+Das Panel formatiert die Karte **nicht** selbst: Es legt nur die beiden
+Ordner `/hist` (Messwerte) und `/shot` (Screenshots) an, wenn sie fehlen. Alles
+andere auf der Karte bleibt unangetastet, Sie können also eigene Ordner
+daneben anlegen.
+
+Der Platzbedarf ist vernachlässigbar: rund 11,7 MB pro Jahr, eine 1-GB-Karte
+wäre damit rund 85 Jahre lang ausreichend. Auch die Verschleißreserve spielt
+keine Rolle, es wird nur alle fünf Minuten ein Block angehängt.
 
 ### CSV-Format (16 Spalten)
 
@@ -299,11 +333,11 @@ Monatsdatei über die SNTP-Zeit.
 ## 5. Web-Oberfläche <span class="h-sub">Daten abrufen, Firmware aktualisieren</span>
 
 Solange das Panel im Heimnetz ist, betreibt es auf Port 80 einen eigenen
-Webserver. Sie erreichen ihn über die Adresse, die auf der **Service-Seite**
-unter `Adresse` steht — im Beispiel `http://192.168.1.42`. Unter dem Namen
-`rct-panel.local` ist er zusätzlich erreichbar, sofern Ihr Netz solche Namen
-auflöst (das ist eine Bequemlichkeit: wenn Ihr Netz das nicht kann, nehmen Sie
-die IP-Adresse).
+Webserver. Sie erreichen ihn über die IP-Adresse, die auf der **Service-Seite**
+unter `Batterie-Status` steht — im Beispiel `http://192.168.1.42`. Unter dem
+Namen `rct-panel.local` ist er zusätzlich erreichbar, sofern Ihr Netz solche
+Namen auflöst (das ist eine Bequemlichkeit: wenn Ihr Netz das nicht kann,
+nehmen Sie die IP-Adresse).
 
 > **Hinweis:** Es ist ausschließlich das lokale Netz erreichbar, nicht das
 > Internet. Ein Update oder ein Datenabruf findet immer zwischen einem Gerät
@@ -470,6 +504,7 @@ sich prüfen, ob am Port überhaupt etwas passiert.
 | Batterie in der CSV (`bat`) | `+` = Laden |
 | Hausverbrauch | = gemessene Last + S0 (der Wechselrichter misst die Last abzüglich der externen Einspeisung) |
 | PV gesamt | = A + B + S0 |
+| SD-Karte | FAT32, 4–32 GB empfohlen, exFAT wird nicht unterstützt (Abschnitt 4) |
 
 ---
 
@@ -481,9 +516,10 @@ sich prüfen, ob am Port überhaupt etwas passiert.
 | Badge `connecting` bleibt | WLAN-Verbindung wird aufgebaut; wenn es nicht weitergeht, prüfen Sie das WLAN-Passwort (Portal öffnet sich nach ~15 s erneut). |
 | Badge `reconnect` | Datenstrom abgerissen; das Panel versucht automatisch neu zu verbinden. |
 | Kein Konfigurationsportal auffindbar | Panel ist bereits in einem Netzwerk — nutzen Sie „Setup starten" auf der Service-Seite. |
-| `SD: --` auf Service-Seite | Keine Karte erkannt oder Karte gezogen; prüfen Sie die microSD im Steckplatz (FAT32). Daten werden bis ~1 h gepuffert. |
+| `SD: --` auf Service-Seite | Keine Karte erkannt oder Karte gezogen; prüfen Sie die microSD im Steckplatz (**FAT32**, kein exFAT — Abschnitt 4). Ohne Karte werden die Daten bis zu 24 h im Panel gepuffert und danach nachgeschrieben. |
+| `SD: OK \| n Zeilen verloren` | Der Puffer war länger voll als 24 h (Karte mehrere Tage weg) oder die Karte war voll. Die Anzahl ist die Zahl der endgültig verlorenen Zeilen. |
 | Werte auf „–" | Wechselrichter liefert diesen Wert nicht (z. B. keine Batterie) — normal. |
-| Webseite lässt sich nicht öffnen | Adresse von der Service-Seite (unten, `Adresse`) im Browser eintragen; `Adresse` steht auf `–`, ist das Panel nicht im Heimnetz. |
+| Webseite lässt sich nicht öffnen | IP-Adresse von der Service-Seite (unter `Batterie-Status`) im Browser eintragen; steht dort `kein Netz`, ist das Panel nicht im Heimnetz. |
 | „Der Code stimmt nicht" | Code von der Service-Seite; er ändert sich bei jedem Start des Panels. Antippen zieht einen neuen. |
 | Download bricht ab | Der Browser hat die Verbindung geschlossen (Ruhezustand, Netzwechsel). Der Vorgang lässt sich einfach wiederholen. |
 | `/daten` bleibt leer | Auf der Karte steht noch keine Datei — es wird erst ab dem ersten Fünf-Minuten-Wert geschrieben. |
@@ -578,11 +614,11 @@ nicht möglich — die Binärdatei kommt aus dem Netz direkt auf das Gerät.
 | Bedienung | kapazitives Touchpanel (GT911) |
 | Prozessor | ESP32-S3, Dual-Core |
 | Speicher | 16 MB Flash, 8 MB PSRAM |
-| Datenspeicher | microSD/TF-Karte, FAT32 (Steckplatz auf der Platine), SPI 4 MHz mit Selbsttest, Rückfall auf 400 kHz |
+| Datenspeicher | microSD/TF-Karte im Steckplatz auf der Platine; **Dateisystem FAT32** (FAT12/16 auch lesbar, **exFAT wird nicht unterstützt**), empfohlen 4–32 GB, ca. 11,7 MB Datenvolumen pro Jahr; SPI 4 MHz mit Selbsttest, Rückfall auf 400 kHz; Pufferspeicher im Panel für 24 h |
 | Stromversorgung | USB-C, 5 V DC |
 | WLAN | IEEE 802.11 b/g/n (2,4 GHz) |
 | Datenabfrage | RCT-Wechselrichter über TCP (Port 8899) |
-| Datenaufzeichnung | alle 5 Minuten als CSV (ca. 40 KB pro Tag) |
+| Datenaufzeichnung | alle 5 Minuten als CSV (ca. 32 KB pro Tag), 24-h-Puffer im RAM bei fehlender Karte |
 | Weboberfläche | HTTP-Server im lokalen Netz (Port 80): Status, CSV-/Bild-Download, Firmware-Update; änderende Funktionen mit 4-stelligem Code |
 | Schaltausgang | potentialfreier Relaiskontakt am Port „1Way" (GPIO 40), 5 wählbare Funktionen, 20 s Einschaltverzögerung, 60 s Mindesthaltezeit, 20 % Hysterese; aus bei jedem Start |
 | Kontaktbelastbarkeit | siehe Aufdruck am Relais-Port bzw. Datenblatt des verbauten Relais (Ohm/VA, Anlaufstrom bei Motoren und Leuchtstoffmitteln beachten) |

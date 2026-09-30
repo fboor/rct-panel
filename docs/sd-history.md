@@ -66,10 +66,17 @@ The 5-minute cadence already exists in `GuiApp.cpp` refreshCb (the "Verlauf"
 ring buffer, `HIST_INTERVAL_MS`); the SD writer reuses that beats or keeps its
 own timer — the same values are already assembled there.
 
+The row itself lives in **`src/storage/CsvRow.h`**: the column list, the header
+line, the formatter and the reader, plus the mapping of one row to one chart
+point. Both ends of the format are in one header-only file without Arduino, so
+the round trip is host-tested — a format change that would quietly break the
+24 h chart or a downloaded file fails `tools/sd_queue_test` instead.
+
 ## 3. Volume, endurance, power
 
-- CSV line ≈ 110–140 B (13 columns). 288 lines/day ≈ **~40 kB/day**,
-  ≈ 1.2 MB/month, ≈ **15 MB/year**.
+- CSV line ≈ 110 B (16 columns; the longest row the formatter can produce is
+  107 characters, checked by the host test). 288 lines/day ≈ **~32 kB/day**,
+  ≈ 1 MB/month, ≈ **12 MB/year**.
 - Binary (uint32 ts + 14×float32) ≈ 60 B/line ≈ 17 kB/day ≈ 6 MB/year.
 - Either format fits a 1 GB card for decades; SD wear is negligible at this
   rate. Flush after each line: worst case on power loss is the current sample.
@@ -98,7 +105,7 @@ anyway).
   one `sdLogSample()` per 5 min.
 - Errors: a row that cannot be written is **parked in RAM and retried** (see
   section 4a), never silently dropped. Service page shows `SD: OK | 8,4 GB frei`,
-  `SD: -- | 5 gepuffert` or `SD: OK | 2 Zeilen verloren`.
+  `SD: -- | 5 gepuffert (25 min)` or `SD: OK | 2 Zeilen verloren`.
 - Capability check at boot: write a `hist/PROBE` marker once per mount and
   remove it after the first successful flush, as a self-test. The marker is
   **not** re-written when a card is re-inserted during operation: that
@@ -106,21 +113,31 @@ anyway).
   400 kHz bus, and `SD.cardSize()` already answers the same presence
   question for free.
 
-### 4a. Card pulled out while running: RAM queue, one hour deep
+### 4a. Card pulled out while running: RAM queue, 24 h deep
 
 The card sits in an external slot and may be pulled at any time; a write can
 also fail on a full or marginal card. Dropping the row would punch a hole in
 the 24 h chart, so:
 
-- **12-slot ring buffer** of already-formatted CSV rows — 12 × 5 min = one
-  hour. On overflow the oldest row goes (recent data is what the chart needs)
-  and the loss is counted.
+- **288-slot ring buffer** of already-formatted CSV rows — 288 × 5 min = 24 h,
+  the same span the chart shows. A card that is gone for a day therefore costs
+  nothing, and the rows land in the month file in order when it comes back.
+  On overflow the oldest row goes (recent data is what the chart needs) and
+  the loss is counted.
+- The slots live in **PSRAM** (288 × 216 B = 62 kB of the 8 MB), allocated in
+  `sdInit()`. In internal RAM they would be a third of the free heap for
+  something that is touched once per 5 minutes, and nothing in the ring is a
+  DMA buffer. Without PSRAM the queue falls back to the 12 slots (1 h) that a
+  static array in internal RAM provides.
 - Each entry stores the **formatted line plus its target path**, not the
   snapshot. The row therefore keeps its original timestamp, and a month
   rollover during the outage still splits correctly across two files.
 - Retry is throttled (5 s) from the worker's periodic pass, oldest first,
   stopping at the first failure so the file stays chronological. A returning
   card is flushed immediately on mount.
+- A flush writes **consecutive rows of the same file through one open**: after
+  a 24 h outage that is 1 open instead of 288, and each open is a directory
+  lookup plus a sector read on a 4 MHz bus. Two files are the normal case.
 - **Detecting removal**: a card pulled out is invisible to a writer that only
   notices at the next 5-minute write. The worker therefore polls
   `SD.cardSize()` every 5 s while mounted; `0` means the card is gone → unmount,
@@ -128,8 +145,14 @@ the 24 h chart, so:
 - Write success is judged by the **return value of `println()`**, not
   `getWriteError()`: the ESP32 core's FS write path never calls
   `setWriteError()`, so that flag stays 0 even on a failed write.
-- Status text mirrors the queue: `SD: OK | 12 gepuffert | 16,0 GB frei`, and
+- Status text mirrors the queue, with the span the rows reach back to instead
+  of a bare count: `SD: OK | 288 gepuffert (24 h) | 16,0 GB frei`, and
   `SD: OK | 3 Zeilen verloren` while rows have been dropped since boot.
+- The ring and the row format are **host-tested** (`tools/sd_queue_test`):
+  depth, FIFO order, the month split, the behaviour of a card that will not
+  open and of a short write, plus the CSV round trip. That is the part of this
+  design that cannot be checked with the card on the desk — a card that is
+  *absent* is the interesting case.
 
 ### 4b. The card lives in its own task
 

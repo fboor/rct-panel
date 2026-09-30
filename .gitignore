@@ -2,3 +2,4 @@
 examples/
 *.d
 .vscode/
+__pycache__/

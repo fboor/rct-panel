@@ -168,7 +168,42 @@ Start, statisch initialisiert), in einem Test Prozess sehr wohl.
 Auf der Platine bleibt zu prüfen, was der Host nicht kann: Pin 40 und
 Polarität. Dafür der Testknopf.
 
-## 8. Was das nicht ist
+## 8. Gegen den Simulator prüfen
+
+`tools/rct_sim.py` ist ein Wechselrichterersatz auf Port 8899. Für die beiden
+Funktionen, die keinen Störungswort brauchen, ist er das Werkzeug, mit dem die
+Schwelle eingestellt wird:
+
+```
+tools/rct_sim.py --port 8899                            # Standardlast ~870 W
+tools/rct_sim.py --port 8899 --lastung 4                # Haushalt ~2,8 kW
+tools/rct_sim.py --port 8899 --faults 0x00000040,0,0,0  # Störung bit 6
+```
+
+`--lastung` ist nötig, weil im Simulator nur ein Viertel der Last/PV-Differenz
+über den Netzähler läuft (die Batterie nimmt 75 % auf): mit der Standardlast
+entstehen höchstens rund 270 W Netzbezug, also nie die 500 W der
+Voreinstellung. Erst `--lastung 4` macht den Bezug groß genug.
+
+`tools/rct_sim_test.py` prüft den Simulator selbst, ohne Panel: dass er jede
+Kennung beantwortet, die `rctOids[]` in `RctClient.cpp` abfragt, dass die
+Bilanz `Last − PV + Batterie = Netz` in jeder Probe aufgeht, dass der
+Inselbetrieb wieder endet und dass Überschuss und Netzbezug die
+Standardschwelle übersteigen. Läuft mit in `tools/run_host_tests.sh`.
+
+Der Test hat zwei echte Fehler gefunden: der Simulator beantwortete die sechs
+`energy.e_ext_*`-Zähler des Wechselrichters nicht (das Panel hätte dort eine
+Lücke in der S0-Leiste gezeigt), und der Test selbst übersah fünf Kennungen,
+weil sie im Firmware-Array mit sieben statt acht Hexziffern stehen
+(`0x3A39CA2`, Last L1). Der Prüflauf liest `rctOids[]` deshalb direkt aus
+`RctClient.cpp` und vergleicht die Länge mit `RCT_NUM_SLOTS` — eine Liste im
+Test würde genau das verschleiern, wofür er da ist.
+
+Was der Simulator nicht kann: S0 steht auf 0. Ein von außen eingespeister
+Generator ließe sich nur einführen, indem er in die Bilanzidentität
+eingerechnet wird, und dann wäre die Zahl eine Attrappe.
+
+## 9. Was das nicht ist
 
 - **Kein Sicherheitsgerät.** Der Ausgang schaltet nach einer Regel, die auf
   Messwerten beruht. Er ist kein Fehlerstromschutz, kein Überlastschutz und
