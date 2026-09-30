@@ -37,6 +37,8 @@ h2 { font-size: 13.5pt; color: #0b3d6b; border-bottom: 1pt solid #b9d3ec;
      padding-bottom: 2pt; margin: 16pt 0 6pt 0; page-break-after: avoid; }
 h3 { font-size: 11.5pt; color: #0b3d6b; margin: 11pt 0 4pt 0;
      page-break-after: avoid; }
+h1 .h-sub, h2 .h-sub, h3 .h-sub, h4 .h-sub { display: block;
+  font-size: 0.68em; font-weight: 400; margin-top: 2pt; }
 p { margin: 4pt 0; }
 ul, ol { margin: 4pt 0 4pt 0; padding-left: 16pt; }
 li { margin: 1.5pt 0; }

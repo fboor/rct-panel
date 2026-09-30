@@ -1,4 +1,4 @@
-# RCT Power Panel — Benutzerhandbuch
+# RCT Power Panel <span class="h-sub">Benutzerhandbuch</span>
 
 Das **RCT Power Panel** ist ein Wandpanel (4-Zoll-Farb-Touchdisplay) zur
 Anzeige der Live-Daten Ihres RCT-Power-Wechselrichters. Es liest die Werte
@@ -13,7 +13,7 @@ zusätzlich automatisch auf einer microSD-Karte auf.
 
 ---
 
-## Kurzanleitung — Inbetriebnahme in 5 Schritten
+## Kurzanleitung <span class="h-sub">Inbetriebnahme in 5 Schritten</span>
 
 Sie brauchen nur **zwei Angaben**, sonst nichts weiter zu wissen:
 
@@ -302,7 +302,7 @@ Monatsdatei über die SNTP-Zeit.
 
 ---
 
-## 6. Vorzeichen — kompakt
+## 6. Vorzeichen <span class="h-sub">kompakt</span>
 
 | Größe | Konvention |
 |---|---|
