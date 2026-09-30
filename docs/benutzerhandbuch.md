@@ -8,7 +8,7 @@ zusätzlich automatisch auf einer microSD-Karte auf.
 
 <figure class="ports-shot">
   <img src="img/anschluesse.png" alt="Schnittstellen im Überblick: Touch-Display, microSD-Steckplatz, USB-C-Anschluss">
-  <figcaption>Bild 1: Schnittstellen im Überblick — ① Touch-Display, ② microSD (TF)-Steckplatz, ③ USB-C (Stromversorgung)</figcaption>
+  <figcaption>Bild 1: Vorder- und Rückseite des Panels mit Touch-Display, microSD und USB-C</figcaption>
 </figure>
 
 ---
