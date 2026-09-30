@@ -355,6 +355,11 @@ nehmen Sie die IP-Adresse).
 | `/bilder` | Liste der gespeicherten Screenshots |
 | `/update` | Firmware aktualisieren |
 
+<figure class="web-shot">
+  <img src="img/web-uebersicht.png" alt="Weboberfläche des Panels: vier Wertekarten für Netz, PV, Batterie und Verbrauch, darunter eine Tabelle mit Wechselrichter, Firmware, Speicher, SD-Karte, Takt und der Adresse">
+  <figcaption>Bild 3: Die Übersichtseite — oben die aktuellen Werte, unten die Geräteangaben und die Adresse, unter der das Panel erreichbar ist</figcaption>
+</figure>
+
 ### Daten abrufen
 
 Auf `/daten` und `/bilder` steht je Eintrag ein Knopf:
