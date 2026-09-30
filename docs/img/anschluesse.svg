@@ -17,14 +17,16 @@
     <polyline points="43,310 95,270 135,230 180,200 327,170" fill="none" stroke="#ca0c0f" stroke-width="3" stroke-linejoin="round"/>
     <polyline points="43,322 105,245 160,205 210,185 327,160" fill="none" stroke="#3ec97a" stroke-width="3" stroke-linejoin="round"/>
     <polyline points="43,334 145,295 215,280 327,272" fill="none" stroke="#2e93e5" stroke-width="3" stroke-linejoin="round"/>
-    <rect x="66" y="340" width="48" height="26" rx="9" fill="#233040"/>
-    <path d="M74,353 L84,344 L84,362 Z" fill="#dbe4ec"/>
-    <rect x="134" y="340" width="48" height="26" rx="9" fill="#233040"/>
-    <path d="M143,362 L143,350 L155,354 L143,362 Z" fill="#dbe4ec"/>
-    <rect x="202" y="340" width="48" height="26" rx="9" fill="#233040"/>
-    <path d="M232,353 L222,344 L222,362 Z" fill="#dbe4ec"/>
+    <rect x="43" y="340" width="92" height="26" rx="9" fill="#233040"/>
+    <path d="M71,353 L81,344 L81,362 Z" fill="#dbe4ec"/>
+    <rect x="139" y="340" width="92" height="26" rx="9" fill="#233040"/>
+    <path d="M176,352 L194,352 L185,342 Z" fill="#dbe4ec"/>
+    <rect x="176" y="352" width="18" height="12" fill="#dbe4ec"/>
+    <rect x="183" y="358" width="4" height="6" fill="#233040"/>
+    <rect x="235" y="340" width="92" height="26" rx="9" fill="#233040"/>
+    <path d="M291,353 L281,344 L281,362 Z" fill="#dbe4ec"/>
   </g>
-  <text x="185" y="410" fill="#56616e" font-size="13" text-anchor="middle">Vorderseite</text>
+  <text x="185" y="410" fill="#56616e" font-size="16" text-anchor="middle">Vorderseite</text>
 
   <!-- ================= LEGEND (Mitte, gleiche Hoehe wie Ansichten) ================= -->
   <rect x="390" y="65" width="380" height="320" rx="14" fill="#eef5fb" stroke="#b9d3ec" stroke-width="1.5"/>
@@ -79,7 +81,7 @@
   <path d="M1094,118 L1106,94 L1118,112 L1130,94" fill="none" stroke="#39434f" stroke-width="1.6"/>
   <path d="M1094,128 L1106,104 L1118,122 L1130,104" fill="none" stroke="#39434f" stroke-width="1.6"/>
 
-  <text x="975" y="410" fill="#56616e" font-size="13" text-anchor="middle">Rückseite</text>
+  <text x="975" y="410" fill="#56616e" font-size="16" text-anchor="middle">Rückseite</text>
 
   <!-- ================= LEADERS (ansetzen am Kreisrand) ================= -->
   <g stroke-linecap="round" fill="none">
