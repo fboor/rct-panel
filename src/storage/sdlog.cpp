@@ -38,6 +38,8 @@
 #include <freertos/semphr.h>
 #include <freertos/task.h>
 
+#include "storage/RowQueue.h"
+
 namespace {
 
 // TF slot pins (see docs/sd-history.md section 1).
@@ -73,16 +75,17 @@ char s_pathKey[16]; // rotation key of the currently open file ("202609" ...)
 bool s_pathValid = false;
 bool s_warnLogged = false; // one-time write-error message per mount
 
-char s_status[48] = "SD: --";
+// 64, not 48: the status line grew a time span ("288 gepuffert (24 h)"), and
+// the worst case - a full ring, a month of data and free space all at once - is
+// 45 characters.
+char s_status[64] = "SD: --";
 
-const char *const kCsvHeader =
-    "ts,pv_a,pv_b,s0,temp_core,temp_bat,temp_hsink,"
-    "load_l1,load_l2,load_l3,bat,soc,grid_l1,grid_l2,grid_l3,status";
-
-// One formatted CSV row. Long enough for the 16 columns with worst-case
-// negative values and a full 8-digit fault mask (about 102 characters).
-constexpr size_t kLineCap = 176;
-constexpr size_t kPathCap = 40;
+// The row format (16 columns) and its reader live in storage/CsvRow.h, so the
+// writer here, the history scan below and the file the web interface hands
+// out cannot drift apart - tools/sd_queue_test walks a row through the round
+// trip.
+constexpr size_t kLineCap = csvrow::kLineCap;
+constexpr size_t kPathCap = csvrow::kPathCap;
 
 // --------------------------------------------------------------------------
 // Write-failure queue
@@ -92,26 +95,26 @@ constexpr size_t kPathCap = 40;
 // punch a hole in the 24 h chart, so a row that cannot be written right now is
 // parked in RAM and retried later.
 //
-// 12 slots = one hour at the 5-minute cadence. On overflow the oldest row goes,
+// 288 slots = 24 h at the 5-minute cadence, the same span the chart shows, so
+// a card that is gone for a day loses nothing and the rows land in the month
+// file in order when it comes back. The slots live in PSRAM (216 bytes each,
+// ~62 kB of the 8 MB) and the fallback without PSRAM is the 12 slots in
+// internal RAM that earlier releases used. On overflow the oldest row goes,
 // because recent data is what the chart needs; how many rows were lost stays
 // visible in the status text. A row is stored already formatted rather than as
 // a snapshot, so it keeps its original timestamp, and it remembers the path it
 // belongs to - a month rollover during the outage then still splits correctly
 // across two files.
 // --------------------------------------------------------------------------
-constexpr int kQueueCap = 12;
-constexpr int kHistMaxRows = 288; // 288 * 5 min = 24 h (matches GuiApp)
+constexpr int kQueueCap = 288;        // 24 h, PSRAM
+constexpr int kQueueCapNoPsram = 12;  // 1 h, internal RAM
+constexpr int kHistMaxRows = 288;     // 288 * 5 min = 24 h (matches GuiApp)
 constexpr uint32_t kQueueRetryMs = 5000; // retry parked rows from sdTick()
 constexpr uint32_t kProbeMs = 5000;      // ask SD.cardSize() for card presence
 
-struct QueuedRow {
-  char line[kLineCap];
-  char path[kPathCap];
-};
-QueuedRow s_queue[kQueueCap];
-int s_queueCount = 0;     // rows parked right now
-int s_queueHead = 0;      // ring cursor of the oldest parked row
-uint32_t s_queueDropped = 0; // rows lost to overflow since boot
+// The ring itself (storage/RowQueue.h) is unit-tested on the build machine.
+rowq::Slot s_queueSlots[kQueueCapNoPsram]; // always there, the no-PSRAM fallback
+rowq::Queue s_queue;
 uint32_t s_nextQueueRetryMs = 0;
 uint32_t s_nextProbeMs = 0; // next card-presence check
 
@@ -317,7 +320,7 @@ int appendRow(const char *path, const char *line) {
   }
   const bool freshFile = (f.size() == 0);
   if (freshFile) {
-    f.println(kCsvHeader); // fresh file (new month / first ever)
+    f.println(csvrow::kHeader); // fresh file (new month / first ever)
   }
   const size_t want = strlen(line) + 2; // trailing "\r\n"
   const size_t got = f.println(line);
@@ -326,36 +329,58 @@ int appendRow(const char *path, const char *line) {
   return got >= want ? (freshFile ? 1 : 0) : -1;
 }
 
-void queuePush(const char *line, const char *path) {
-  if (s_queueCount == kQueueCap) {
-    s_queueHead = (s_queueHead + 1) % kQueueCap; // drop the oldest row
-    s_queueCount--;
-    s_queueDropped++;
-  }
-  // Next free slot is one past the newest row. When the ring was just full,
-  // head has already moved on by one, so this is exactly the freed slot.
-  const int tail = (s_queueHead + s_queueCount) % kQueueCap;
-  strlcpy(s_queue[tail].line, line, sizeof(s_queue[tail].line));
-  strlcpy(s_queue[tail].path, path, sizeof(s_queue[tail].path));
-  s_queueCount++;
-}
-
-// Retry parked rows, oldest first. Stops at the first failure and keeps the
-// rest, so the rows stay in chronological order inside the file.
-void queueFlush() {
-  int written = 0;
-  while (s_queueCount > 0) {
-    const QueuedRow &q = s_queue[s_queueHead];
-    if (appendRow(q.path, q.line) < 0) {
-      break;
+// The card as a sink for rowq::Queue::flushGrouped() - the only place in the
+// project that writes a parked row, so the ordering and the month split live
+// in the tested header and this stays a thin adapter.
+//
+// Consecutive rows of one file share a single open: after a 24 h outage that is
+// 1 open instead of 288, which matters because each open is a directory lookup
+// plus a sector read on a card that runs at 4 MHz.
+struct CardSink {
+  File f;
+  bool open(const char *path) {
+    f = SD.open(path, FILE_APPEND);
+    if (!f) {
+      return false;
     }
-    s_queueHead = (s_queueHead + 1) % kQueueCap;
-    s_queueCount--;
-    written++;
+    if (f.size() == 0) {
+      f.println(csvrow::kHeader); // fresh file (new month / first ever)
+    }
+    return true;
   }
+  // The result is taken from the return value of println(), not from
+  // getWriteError(): the ESP32 core's FS write path never sets that flag, it
+  // just returns the byte count it managed to write. A short write leaves the
+  // row parked and possibly logged twice, but a short write on a
+  // 512-byte-sector card means the card is failing anyway.
+  bool append(const char *line) { return f.println(line) >= strlen(line) + 2; }
+  void close() {
+    f.flush();
+    f.close();
+  }
+};
+
+// Retry parked rows. Stops at the first failure and keeps the rest, so the rows
+// stay in chronological order inside the file.
+void queueFlush() {
+  CardSink sink;
+  const int written = s_queue.flushGrouped(sink);
   if (written > 0) {
     Serial.printf("SD: %d gepufferte Zeile(n) nachgeschrieben\n", written);
     buildStatus();
+  }
+}
+
+// "5 min", "25 min", "1 h", "24 h" - how far back the oldest parked row
+// reaches. Better than the raw row count: 288 rows means nothing without the
+// 5-minute cadence, and the question in the manual is "how long can the card be
+// away".
+void queueSpan(int rows, char *out, size_t cap) {
+  const int minutes = rows * 5; // one row per log interval
+  if (minutes < 60) {
+    snprintf(out, cap, "%d min", minutes);
+  } else {
+    snprintf(out, cap, "%d h", minutes / 60);
   }
 }
 
@@ -364,21 +389,26 @@ void buildStatus() {
   // is refreshed, and that also happens on the GUI task - so this is card I/O
   // outside the worker, and it gets a name of its own.
   diagPhase("sd.status");
-  char buf[48];
+  char buf[64];
+  char span[12];
+  const int parked = s_queue.count();
+  if (parked > 0) {
+    queueSpan(parked, span, sizeof(span));
+  }
   if (!s_mounted) {
-    if (s_queueCount > 0) {
-      snprintf(buf, sizeof(buf), "SD: -- | %d gepuffert", s_queueCount);
+    if (parked > 0) {
+      snprintf(buf, sizeof(buf), "SD: -- | %d gepuffert (%s)", parked, span);
     } else {
       snprintf(buf, sizeof(buf), "SD: --");
     }
-  } else if (s_queueDropped > 0) {
+  } else if (s_queue.dropped() > 0) {
     // Lost rows outrank the free space: that is the number that matters.
     snprintf(buf, sizeof(buf), "SD: OK | %u %s verloren",
-             (unsigned)s_queueDropped,
-             s_queueDropped == 1 ? "Zeile" : "Zeilen");
-  } else if (s_queueCount > 0) {
-    snprintf(buf, sizeof(buf), "SD: OK | %d gepuffert | %.1f GB frei",
-             s_queueCount,
+             (unsigned)s_queue.dropped(),
+             s_queue.dropped() == 1 ? "Zeile" : "Zeilen");
+  } else if (parked > 0) {
+    snprintf(buf, sizeof(buf), "SD: OK | %d gepuffert (%s) | %.1f GB frei",
+             parked, span,
              (float)(SD.totalBytes() - SD.usedBytes()) / 1.0e9f);
   } else {
     snprintf(buf, sizeof(buf), "SD: OK | %.1f GB frei",
@@ -398,25 +428,11 @@ void buildStatus() {
 // --------------------------------------------------------------------------
 
 static bool parseLine(const char *line, SdHistSample *s) {
-  unsigned long ts, status;
-  float pvA, pvB, s0, tc, tb, th, l1, l2, l3, bat, soc, g1, g2, g3;
-  int n = sscanf(line,
-                 "%lu,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%lX", &ts,
-                 &pvA, &pvB, &s0, &tc, &tb, &th, &l1, &l2, &l3, &bat, &soc,
-                 &g1, &g2, &g3, &status);
-  if (n != 16) {
+  csvrow::Row r;
+  if (!csvrow::parse(line, r)) {
     return false;
   }
-  s->ts = (uint32_t)ts;
-  s->v[0] = g1 + g2 + g3;           // Netz
-  // Verbrauch: the inverter's meter reads the household demand already minus
-  // the S0 generator, so the true consumption is meter + external. Same rule
-  // the live sampler in GuiApp uses.
-  s->v[1] = l1 + l2 + l3 + s0;      // Verbrauch (meter + external)
-  s->v[2] = pvA + pvB;              // PV A+B
-  s->v[3] = s0;                     // S0
-  s->v[4] = bat;                    // Bat
-  s->v[5] = soc;                    // SOC %
+  csvrow::toSample(r, *s);
   return true;
 }
 
@@ -592,7 +608,7 @@ static void sdWorkerPeriodic(uint32_t now) {
     // Retry parked rows in between: a card that comes back or frees up should
     // not have to wait for the next 5-minute sample. Throttled, so a card that
     // is still missing is not hammered every pass.
-    if (s_queueCount > 0 && (int32_t)(now - s_nextQueueRetryMs) >= 0) {
+    if (!s_queue.empty() && (int32_t)(now - s_nextQueueRetryMs) >= 0) {
       s_nextQueueRetryMs = now + kQueueRetryMs;
       queueFlush();
     }
@@ -638,7 +654,7 @@ static void sdWorkerPeriodic(uint32_t now) {
   Serial.printf("SD: mounted at %lu Hz, self-test %.0f kB/s, %.1f GB free (%s)\n",
                 (unsigned long)hz, (double)kbs,
                 (double)(SD.totalBytes() - SD.usedBytes()) / 1.0e9, s_path);
-  if (s_queueCount > 0) {
+  if (!s_queue.empty()) {
     s_nextQueueRetryMs = millis(); // flush parked rows right away
     queueFlush();
   }
@@ -676,7 +692,7 @@ static void sdWorkerWriteRow(const SdReq &req) {
     s_probePending = true;
   }
 
-  queuePush(req.line, req.path);
+  s_queue.push(req.line, req.path);
   buildStatus();
 }
 
@@ -690,29 +706,43 @@ void sdLogSample(const RctSnapshot &s) {
 
   // Formatting stays here: it is pure computation (microseconds) and needs the
   // snapshot, which the worker never sees. Only the card access is handed over,
-  // so a slow card can no longer stall the GUI.
+  // so a slow card can no longer stall the GUI. The row itself is built by
+  // storage/CsvRow.h - the same code the history scan below reads it back with.
   SdReq req;
   req.type = SDREQ_LOG;
   req.waitForClock = false;
   strlcpy(req.path, s_path, sizeof(req.path));
-  const unsigned long faults =
-      (unsigned long)(s.faultBits[0] | s.faultBits[1] | s.faultBits[2] |
-                      s.faultBits[3]);
-  snprintf(req.line, sizeof(req.line),
-           "%lu,%.0f,%.0f,%.0f,%.1f,%.1f,%.1f,"
-           "%.0f,%.0f,%.0f,%.0f,%.0f,%.0f,%.0f,%.0f,%lX",
-           (unsigned long)time(nullptr), s.pvPower[0], s.pvPower[1],
-           s.s0Power, (double)s.coreTemp, (double)s.batteryTemp,
-           (double)s.heatSinkTemp, (double)s.loadPower[0], (double)s.loadPower[1],
-           (double)s.loadPower[2], s.batteryPower, s.batterySoc,
-           (double)s.gridPower[0], (double)s.gridPower[1],
-           (double)s.gridPower[2], faults);
+  csvrow::Row row;
+  row.ts = (uint32_t)time(nullptr);
+  row.faults = (uint32_t)(s.faultBits[0] | s.faultBits[1] | s.faultBits[2] |
+                         s.faultBits[3]);
+  row.pvA = s.pvPower[0];
+  row.pvB = s.pvPower[1];
+  row.s0 = s.s0Power;
+  row.tc = s.coreTemp;
+  row.tb = s.batteryTemp;
+  row.th = s.heatSinkTemp;
+  row.l1 = s.loadPower[0];
+  row.l2 = s.loadPower[1];
+  row.l3 = s.loadPower[2];
+  row.bat = s.batteryPower;
+  row.soc = s.batterySoc;
+  row.g1 = s.gridPower[0];
+  row.g2 = s.gridPower[1];
+  row.g3 = s.gridPower[2];
+  if (csvrow::format(req.line, sizeof(req.line), row) == 0) {
+    // Not reachable with kLineCap as sized - the host test formats the worst
+    // case it can build and checks the margin - but a truncated line would be
+    // unparsable, so the row is dropped loudly instead of written.
+    Serial.println(F("SD: Zeile zu lang, verworfen"));
+    return;
+  }
 
   if (s_reqQ == nullptr || xQueueSend(s_reqQ, &req, 0) != pdTRUE) {
     // Only reachable if the worker is wedged or not started yet; count the loss
     // rather than dropping it silently.
     xSemaphoreTake(s_lock, portMAX_DELAY);
-    s_queueDropped++;
+    s_queue.noteDropped();
     buildStatus();
     xSemaphoreGive(s_lock);
     Serial.println(F("SD: worker unreachable, row dropped"));
@@ -722,7 +752,7 @@ void sdLogSample(const RctSnapshot &s) {
 const char *sdStatusText() {
   // Copied out under the lock: the worker rewrites s_status from its own task.
   // Both readers live on the GUI task, so one scratch buffer is enough.
-  static char buf[48];
+  static char buf[64];
   if (s_lock != nullptr) {
     xSemaphoreTake(s_lock, portMAX_DELAY);
     strlcpy(buf, s_status, sizeof(buf));
@@ -1315,6 +1345,22 @@ void sdInit() {
   }
   s_reqQ = xQueueCreate(kReqQueueLen, sizeof(SdReq));
   s_lock = xSemaphoreCreateMutex();
+  // Parked rows: 24 h in PSRAM, otherwise the 12 slots that are always in
+  // internal RAM (one hour). 288 slots * 216 bytes = 62 kB, which would be a
+  // third of the free internal heap - the ring is touched once per 5-minute
+  // sample, so it has no business living there. Nothing in the ring is a DMA
+  // buffer, so plain PSRAM is fine.
+  s_queue.attach(s_queueSlots, kQueueCapNoPsram);
+  rowq::Slot *bigSlots = (rowq::Slot *)heap_caps_malloc(
+      sizeof(rowq::Slot) * kQueueCap, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (bigSlots != nullptr) {
+    s_queue.attach(bigSlots, kQueueCap);
+    Serial.printf("SD: Puffer %d Zeilen / 24 h (%u bytes, PSRAM)\n", kQueueCap,
+                  (unsigned)(sizeof(rowq::Slot) * kQueueCap));
+  } else {
+    Serial.printf("SD: Puffer nur %d Zeilen / 1 h (kein PSRAM)\n",
+                  kQueueCapNoPsram);
+  }
   // Stream buffer: PSRAM if it is there, internal otherwise. Never fail - a
   // missing buffer only costs the web interface its file downloads, and the
   // card logging below must not be conditional on it.

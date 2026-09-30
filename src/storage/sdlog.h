@@ -5,14 +5,22 @@
 //
 // The card may be pulled out while the panel runs, and a write can fail for
 // other reasons too (full, marginal card). Rows that cannot be written are
-// parked in a 12-slot RAM ring (one hour at the 5-minute cadence) and retried;
-// on overflow the oldest row goes and the loss shows up in sdStatusText().
+// parked in a RAM ring and retried; on overflow the oldest row goes and the
+// loss shows up in sdStatusText(). The ring holds 24 h (288 rows at the
+// 5-minute cadence) in PSRAM when the panel has PSRAM, and falls back to one
+// hour in internal RAM without it.
 //
 // SPDX-License-Identifier: MIT
 #ifndef RCT_SDLOG_H
 #define RCT_SDLOG_H
 
 #include "rct/RctTypes.h"
+#include "storage/CsvRow.h"
+
+// The chart row format lives in storage/CsvRow.h, together with the reader for
+// it, and is used here unchanged: sdWriteRow() writes it, the history scan
+// reads it back.
+typedef csvrow::Sample SdHistSample;
 
 // sdInit(): start the worker task that owns the card. Non-blocking.
 // sdTick(): call every main loop iteration. Kept as the caller's hook, but all
@@ -22,13 +30,14 @@ void sdInit();
 void sdTick();
 
 // Append one 5-minute CSV row. If the card is missing or the write fails, the
-// row is parked in a 12-slot RAM ring (one hour at the 5-minute cadence) and
-// retried; on overflow the oldest row goes and the loss shows up in
-// sdStatusText(). Returns immediately - the card work happens in the worker.
+// row is parked in the RAM ring (up to 24 h) and retried; on overflow the
+// oldest row goes and the loss shows up in sdStatusText(). Returns immediately
+// - the card work happens in the worker.
 void sdLogSample(const RctSnapshot &s);
 
-// Service page status, e.g. "SD: OK | 8,4 GB frei", "SD: -- | 5 gepuffert",
-// "SD: OK | 2 Zeilen verloren". Thread-safe (copied out under a lock).
+// Service page status, e.g. "SD: OK | 8,4 GB frei", "SD: -- | 5 gepuffert
+// (25 min)", "SD: OK | 2 Zeilen verloren". Thread-safe (copied out under a
+// lock).
 const char *sdStatusText();
 bool sdMounted();
 
@@ -53,11 +62,6 @@ bool sdMounted();
 //    -1   deferred, clock not ready yet - ask again
 //    -2   nothing to collect yet, still running or not requested
 // --------------------------------------------------------------------------
-struct SdHistSample {
-  uint32_t ts; // unix seconds of the row
-  float v[6];  // {grid, house, pv, s0, battery, soc} - soc in %, rest in W
-};
-
 void sdRequestHistory(int maxRows, bool waitForClock);
 int sdTakeHistory(SdHistSample *out, int maxRows);
 
