@@ -192,8 +192,8 @@ static bool ruleWantsOn() {
 void relayInit() {
   // Before the pin becomes an output, hold the off level with an internal
   // pull: a pin that is briefly an input must not float to the level that
-  // closes the relay. Then drive it. This is the first thing in setup() for
-  // that reason.
+  // closes the relay. Then drive it. That is why relayInit() is the first call
+  // in setup() after the diagnostics.
   pinMode(RELAY_PIN,
           RELAY_LEVEL_OFF == HIGH ? INPUT_PULLUP : INPUT_PULLDOWN);
   pinMode(RELAY_PIN, OUTPUT);

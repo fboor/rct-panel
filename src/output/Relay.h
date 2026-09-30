@@ -21,8 +21,9 @@
 // - No fresh data means the state is unknown, and unknown switches off. A
 //   latched-on output would keep running whatever the inverter was doing when
 //   the link died.
-// - The panel writes the pin before anything else in setup(), so the output is
-//   at its off level before the display is even initialised.
+// - The pin is driven at the start of setup(), before the display is even
+//   initialised, so the output is at its off level while the rest of the board
+//   is still coming up. Everything after that can only ever open it.
 //
 // SPDX-License-Identifier: MIT
 #ifndef RCT_OUTPUT_RELAY_H

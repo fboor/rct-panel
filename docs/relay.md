@@ -98,8 +98,9 @@ solange der Pin schwebt — und zwischen Reset und `relayInit()` ist er ein Eing
 Auf dem Relais-Port der Platze entscheidet die umgebende Hardware; bei einem
 selbst verdrahteten Modul gehört 10 kOhm vom Pin auf 3V3 (bzw. auf GND bei
 aktiver Hochflanke), damit der Pin beim Hochlauf nicht in der falschen Lage
-steht. `relayInit()` ist der erste Aufruf in `setup()` und legt den Pin vorher
-noch mit internem Pull auf die Aus-Stufe, bevor er auf Ausgang gestellt wird.
+steht. `relayInit()` ist der erste Aufruf in `setup()` nach den beiden
+Diagnoseaufrufen — lange vor `displayInit()` — und legt den Pin vorher noch mit
+internem Pull auf die Aus-Stufe, bevor er auf Ausgang gestellt wird.
 
 ## 4. Aus bei jedem Start
 
