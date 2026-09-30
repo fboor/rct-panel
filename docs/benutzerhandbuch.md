@@ -235,7 +235,9 @@ Die einzige Seite mit Aktionen:
   Sekunden ein Bild des aktuellen Displays als BMP auf die Karte
   (`/shot/shot001.bmp`). Die 5 Sekunden erlauben, vorher zu einer anderen
   Seite zu wechseln. Praktisch, wenn Sie dem Support zeigen möchten, was das
-  Panel anzeigt.
+  Panel anzeigt. Ist eine Aufnahme nicht vollständig auf die Karte gekommen,
+  steht hier `fehlgeschlagen` und die halbe Datei wird gelöscht — eine
+  unvollständige Datei auf der Karte ist schlimmer als gar keine.
 - Web-Oberfläche (rechts, unter den beiden Knöpfen): der vierstellige Code,
   den diese Seiten für Änderungen verlangen. Er ist nur belegt, solange das
   Panel im Netz ist. **Tippen Sie auf den Code**, zieht das Panel sofort einen
@@ -365,6 +367,13 @@ Auf `/daten` und `/bilder` steht je Eintrag ein Knopf:
 - Bei den Bildern öffnet **„anzeigen"** den Screenshot im Browser. Auch hier
   läuft der Download mit Fortschrittsanzeige.
 
+Unter der Bildliste steht ein Knopf **„Screenshot auslösen"**: er nimmt ein Bild
+desselben Fensters auf, in dem Sie gerade sind, und legt es wie die Panel-Taste
+als BMP auf die Karte. Der Knopf verlangt den Code (unten). Das Schreiben dauert
+etwa 3 bis 5 Sekunden; danach lädt sich die Seite **einmal** neu und die neue
+Datei steht in der Liste. Ohne die Wartezeit des Panels, denn im Browser sind Sie
+bereits auf der Seite, die aufgenommen werden soll.
+
 Während ein Download läuft, bedient das Panel keine weiteren Anfragen — der
 Vorgang ist abgeschlossen, bevor der nächste startet. Das ist Absicht: so
 bleibt die Übertragung in sich abgeschlossen und ein zweiter Zugriff kann die
@@ -378,7 +387,8 @@ verlangt den vierstelligen Code:
 - Firmware aktualisieren (`/update`),
 - Neustart,
 - WLAN neu einrichten,
-- Funktion und Schwelle des Schaltausgangs.
+- Funktion und Schwelle des Schaltausgangs,
+- Screenshot auslösen (Knopf unter der Bildliste auf `/bilder`).
 
 Der Code steht auf der Service-Seite und wird bei jedem Start des Panels neu
 gezogen; er wird nicht gespeichert und ist nach einem Neustart ein anderer.

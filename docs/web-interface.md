@@ -30,7 +30,7 @@ teilen sich Port 80 und das Radio, nie gleichzeitig.
 | `/bilder`       | GET                | Liste der Screenshots in `/shot`                   |
 | `/bilder/<name>`| GET                | ein Screenshot (BMP)                               |
 | `/update`       | GET / POST         | Firmware-Update                                    |
-| `/aktion`       | POST               | `was=neustart`, `was=setup`, `was=ausgang`, `was=test` (alle mit Code) |
+| `/aktion`       | POST               | `was=neustart`, `was=setup`, `was=ausgang`, `was=test`, `was=bild` (alle mit Code) |
 
 Alles andere: 404-Seite.
 
@@ -44,6 +44,7 @@ Alles, was das Panel verändert, verlangt den 4-stelligen Code:
 * WLAN neu einrichten (`/aktion`)
 * Funktion und Schwelle des Schaltausgangs (`/aktion?was=ausgang`)
 * Test des Schaltausgangs (`/aktion?was=test`)
+* Screenshot auslösen (`/aktion?was=bild`)
 
 Der Code wird bei jedem Start neu gezogen (`esp_random()`), steht auf der
 Panel-Seite **Service** und ist dort tippbar: ein neuer Code ziehen, wenn jemand
@@ -109,6 +110,44 @@ und geht ohne Antwort zurück, gerendert wird, sobald der Worker sie hat
 (die Verbindung lebt 5 s, der Worker braucht wenigezig Millisekunden). Nach
 4 s ohne Antwort: 503.
 
+Der Puffer ist 2 kB (~60 Zeilen). Läuft er mitten in einer Zeile voll, sagt die
+Seite das — die Prüfung auf das letzte Zeichen muss aber **vor** dem Rendern
+passieren: der Renderer ersetzt die Zeilenumbrüche im Puffer durch `\0`, danach
+ist das letzte Byte immer `\0` und die Meldung stünde auf jeder Seite mit
+Dateien.
+
+## Screenshot auslösen (`/bilder`)
+
+Unter der Bildliste steht ein Formular (Code + **Screenshot auslösen**), das an
+`/aktion?was=bild` geht. `guiRequestShot()` nimmt die Aufnahme **ohne** die
+5-s-Vorlauf der Panel-Taste: die gibt es dort, weil man vorher noch auf die
+richtige Seite blättern muss — im Browser ist die gewünschte Seite bereits die
+sichtbare.
+
+Die Antwort ist ein 303 auf `/bilder?neu=1`, und `?neu` zählt die Schritte des
+**einen** Reloads, der zu einer Aufnahme gehört:
+
+| Schritt | Adresse          | Was passiert                                        |
+| ------- | ---------------- | --------------------------------------------------- |
+| 1       | `/bilder?neu=1`  | dieselbe Liste wie vorher, dazu ein Meta-Refresh nach 6 s |
+| 2       | `/bilder?neu=2`  | **ein** Reload, der die Karte neu liest — danach steht die Seite still |
+
+6 s, weil das Schreiben von 691 kB bei 4 MHz gemessen 3 s und (auf einer Karte,
+die parallel die CSV-Zeile schrieb) 5 s brauchte. Schritt 2 liest das Verzeichnis
+mit `sdRequestListing(dir, /*force=*/true)`: ohne das würde der bis zu 5 s alte
+Listenpuffer die gerade geschriebene Datei noch zurückhalten. Läuft das Schreiben
+dann noch (langsame Karte), fragt Schritt 2 ein weiteres Mal nach, höchstens
+`kShotReloadMax` (8) Schritte — danach ist der Knopf **Seite neu laden** da.
+Eine Seite, die sich endlos selbst neu lädt, ist unlesbar; deshalb genau einer.
+
+Ein unausgeschriebener Schreibvorgang ist ausgeschlossen: `sdWorkerWriteShot()`
+prüft jeden `write()` und wiederholt einen kurzen bis zu viermal, vergleicht
+danach die Dateigröße auf der Karte mit der beabsichtigten und **löscht** eine
+Datei, die zu kurz ist. Auf der Wand gemessen waren 3 von 8 Aufnahmen kurz
+(0, 167 kB, 499 kB von 675 kB), während der Rückgabewert ungelesen blieb und die
+Log-Zeile jedes Mal die Sollgröße meldete. Eine zu kurze Datei gilt im
+Webserver als „gibt es nicht" (404), nicht als Lesefehler der Karte.
+
 ## Firmware-Update (OTA)
 
 `Update.begin/write/end` aus einer einzigen Kontext (`loop()`), denn der
@@ -122,8 +161,24 @@ Ein mißlungenes Update brickt nichts: das Image wird vor dem Booten
 magisch-byte-geprüft, der andere 7-MB-Slot bleibt unangetastet, schlimmstenfalls
 bootet das Panel die alte Firmware.
 
-Abgelehnt wird vor dem ersten geschriebenen Byte: Datei ohne `.bin`, und eine
-Größe außerhalb 1 Byte ... 7 340 032 Byte (die app-Partition).
+Abgelehnt wird vor dem ersten geschriebenen Byte: der Code und ein Dateiname
+ohne `.bin`. Zwei Eigenschaften dieser WebServer-Version haben das Update vorher
+**immer** scheitern lassen, ohne dass ein Byte geschrieben wurde:
+
+- `HTTPUpload::totalSize` ist bei `UPLOAD_FILE_START` **0** — die Bibliothek
+  summiert die Chunkgrößen erst beim Durchlaufen auf und kennt die
+  `Content-Length` der Anfrage nicht. `Update.begin(0, ...)` ist ein
+  `UPDATE_ERROR_SIZE`, also stand im Log immer „Update abgelehnt (Groesse passt
+  nicht)". Jetzt `Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)`: der ganze Slot,
+  und `end(true)` schneidet das Image auf das, was wirklich ankam. Die
+  Größengrenze wird deshalb **während** des Schreibens geprüft
+  (`s_otaBytes + currentSize > kMaxFirmware` → `Update.abort()`), nicht davor.
+- `HTTPUpload::name` ist der **Formularfeldname**, nicht der Dateiname; für
+  dieses Formular sind beide `fw`. Die `.bin`-Prüfung gehört auf `filename`, sonst
+  wird jede Datei abgewiesen (Log: „Update abgelehnt (keine .bin-Datei)").
+
+Beides auf der Wand geprüft: 1 472 560 Byte in 4534 ms, danach Neustart mit
+`rst:0xc`, neuer Wartungscode, Karte und Werte wieder da.
 
 ## Schaltausgang
 
