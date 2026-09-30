@@ -1263,9 +1263,20 @@ static void pageBuildService(AppPage *p) {
   p->labels[SV_BAT_STATUS] =
       makeLabel(root, "--", &lv_font_montserrat_14_uml, COL_TEXT);
   lv_obj_set_pos(p->labels[SV_BAT_STATUS], 20, 58);
+  // The panel's own address, on the second line of the same block: it is the
+  // one thing needed to open the web interface, and the top left is where the
+  // eye starts. The raw bitfield moves to the right of the same line as the
+  // hex it is - it is a read-out for a second look, not something to read
+  // before the address.
+  p->labels[SV_WEB] =
+      makeLabel(root, "-", &lv_font_montserrat_14_uml, COL_TEXT);
+  lv_obj_set_pos(p->labels[SV_WEB], 20, 88);
+  lv_obj_set_width(p->labels[SV_WEB], 190);
   p->labels[SV_BAT_RAW] =
       makeLabel(root, "", &lv_font_montserrat_14_uml, COL_MUTED);
-  lv_obj_set_pos(p->labels[SV_BAT_RAW], 20, 88);
+  lv_obj_set_pos(p->labels[SV_BAT_RAW], 210, 88);
+  lv_obj_set_width(p->labels[SV_BAT_RAW], 80);
+  lv_obj_set_style_text_align(p->labels[SV_BAT_RAW], LV_TEXT_ALIGN_RIGHT, 0);
 
   // --- Faults (decoded, multi-line; several can be active at once) ---
   sectionHead("Störungen", 118);
@@ -1321,12 +1332,12 @@ static void pageBuildService(AppPage *p) {
   lv_obj_set_pos(p->labels[SV_SHOT], 300, 86);
   lv_obj_set_width(p->labels[SV_SHOT], 160);
 
-  // --- Web interface (address + the code that guards its write actions) ---
-  // In the right column, under the two buttons: this is the same web interface
-  // the setup button leads to, so address and code belong next to it rather
-  // than in the lower half, which the output block now uses. It is not on the
-  // Info page either - that one is full at 14 rows, and this is maintenance
-  // information in any case.
+  // --- Web interface: the code that guards its write actions ---
+  // In the right column, under the two buttons. The address itself sits at the
+  // top left with the battery status (that is where it is looked for); what is
+  // left of this block is the code, and the code belongs next to the thing it
+  // unlocks. It is not on the Info page either - that one is full at 14 rows,
+  // and this is maintenance information in any case.
   //
   // The code is a value, not a setting, so it is shown as text and tappable:
   // pressing it draws a new one, which is the answer to "someone read it over
@@ -1334,15 +1345,13 @@ static void pageBuildService(AppPage *p) {
   // rather than a security measure - what it really protects is a network
   // neighbour who guessed the address).
   (void)sectionHead("Web-Oberfläche", 118, 300);
-  p->labels[SV_WEB] =
-      makeLabel(root, "-", &lv_font_montserrat_14_uml, COL_TEXT);
-  lv_obj_set_pos(p->labels[SV_WEB], 300, 140);
   p->labels[SV_CODE] = makeLabel(root, "Code: ----", &lv_font_montserrat_14_uml,
                                  COL_TEXT);
-  lv_obj_set_pos(p->labels[SV_CODE], 300, 162);
+  lv_obj_set_pos(p->labels[SV_CODE], 300, 140);
   // Wide, so the target is a line and not four digits.
   lv_obj_set_width(p->labels[SV_CODE], 140);
   lv_obj_set_style_bg_color(p->labels[SV_CODE], lv_color_hex(0xe8ebef), 0);
+  lv_obj_set_style_bg_opa(p->labels[SV_CODE], LV_OPA_COVER, 0);
   lv_obj_set_style_radius(p->labels[SV_CODE], 6, 0);
   lv_obj_set_style_pad_hor(p->labels[SV_CODE], 8, 0);
   lv_obj_add_flag(p->labels[SV_CODE], LV_OBJ_FLAG_CLICKABLE);
@@ -1350,7 +1359,7 @@ static void pageBuildService(AppPage *p) {
                       nullptr);
   lv_obj_t *hint = makeLabel(root, "antippen = neu", &lv_font_montserrat_14_uml,
                              COL_MUTED);
-  lv_obj_set_pos(hint, 300, 184);
+  lv_obj_set_pos(hint, 300, 162);
 
   // --- Switched output ("Ausgang") ---
   // The function it follows is a setting, but the setting that is changed most
@@ -2091,7 +2100,9 @@ static void refreshCb(lv_timer_t *t) {
       char tmp[64];
       serviceBatteryDecode(s.batteryStatus, s.batteryPower, tmp, sizeof(tmp));
       lv_label_set_text(sv.labels[SV_BAT_STATUS], tmp);
-      setText(sv.labels[SV_BAT_RAW], "Rohwert: 0x%08X", s.batteryStatus);
+      // Just the hex: the heading says what the value is, and the line is
+      // shared with the panel's own address.
+      setText(sv.labels[SV_BAT_RAW], "0x%08X", s.batteryStatus);
     }
 
     if (!s.haveData) {
@@ -2165,19 +2176,20 @@ static void refreshCb(lv_timer_t *t) {
     }
   }
 
-  // Web interface: address and code. Both exist only in normal operation, and
-  // both are read on every 1 s tick so the code also shows up directly after a
-  // tap without waiting for a page change.
+  // Web interface: the panel's own address (top left, under the battery status)
+  // and the code next to it on the right. Both exist only in normal operation,
+  // and both are read on every 1 s tick so the code also shows up directly after
+  // a tap without waiting for a page change.
   if (sv.labels[SV_WEB]) {
     if (webRunning()) {
       char ip[20];
       strlcpy(ip, WiFi.localIP().toString().c_str(), sizeof(ip));
-      setText(sv.labels[SV_WEB], "%s", ip);
+      setText(sv.labels[SV_WEB], "IP: %s", ip);
       setText(sv.labels[SV_CODE], "Code: %s", webCode(nullptr));
     } else if (s_webWasUp) {
       // The server is gone (provisioning started, or the link dropped): clear
       // the code, which is no longer valid for anything.
-      setText(sv.labels[SV_WEB], "-");
+      setText(sv.labels[SV_WEB], "kein Netz");
       setText(sv.labels[SV_CODE], "Code: ----");
     }
   }
