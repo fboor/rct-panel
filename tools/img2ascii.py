@@ -23,7 +23,7 @@ def main(path, cols=110, edges=False):
     im = im.resize((cols, rows))
     px = im.load()
     for y in range(rows):
-        print("".join(RAMP[min(9, 255 - px[x, y] * 10 // 256)] for x in range(cols)))
+        print("".join(RAMP[min(9, px[x, y] * 10 // 256)] for x in range(cols)))
 
 
 if __name__ == "__main__":
