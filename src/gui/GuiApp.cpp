@@ -603,9 +603,9 @@ static void pageBuildOverview(AppPage *p) {
 
   // Haus value sits right of the vertical battery line (x=240) so the line no
   // longer runs through the text.
-  // House consumption: 10 px up and 5 px right of the old spot so the number
-  // visually belongs to the house node above it.
-  p->labels[OV_HOUSE_VAL] = makeValueLabel(root, 255, 125);
+  // House consumption: nudged up and left (10 up / 5 right, then 5 up / 5 left)
+  // so the number visually belongs to the house node above it.
+  p->labels[OV_HOUSE_VAL] = makeValueLabel(root, 250, 120);
   p->labels[OV_PV_VAL] = makeValueLabel(root, 0, 116);
   p->labels[OV_BAT_VAL] = makeValueLabel(root, 180, 247);
 
