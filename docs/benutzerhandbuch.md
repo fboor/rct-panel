@@ -6,6 +6,11 @@ direkt über das Netzwerk aus dem Wechselrichter (TCP, Standard-Port 8899),
 zeigt sie auf sieben übersichtlichen Seiten an und zeichnet die Messwerte
 zusätzlich automatisch auf einer microSD-Karte auf.
 
+<figure class="ports-shot">
+  <img src="img/anschluesse.png" alt="Schnittstellen im Überblick: Touch-Display, microSD-Steckplatz, USB-C-Anschluss">
+  <figcaption>Bild 1: Schnittstellen im Überblick — ① Touch-Display, ② microSD (TF)-Steckplatz, ③ USB-C (Stromversorgung)</figcaption>
+</figure>
+
 ---
 
 ## Kurzanleitung — Inbetriebnahme in 5 Schritten
@@ -23,27 +28,19 @@ So geht's:
 
 1. **Panel anschließen** — USB-C-Kabel an ein Netzteil, das Display zeigt
    sofort die Übersicht.
-2. **WLAN „RCT-Panel" wählen** — beim ersten Start (oder wenn kein
-   gespeichertes Netzwerk erreichbar ist) erzeugt das Panel einen eigenen
-   WLAN-Zugangspunkt mit diesem Namen.
+2. **WLAN „RCT-Panel" wählen** — den Zugangspunkt erzeugt das Panel beim
+   ersten Start (oder wenn kein gespeichertes Netzwerk erreichbar ist).
 3. **Portal öffnen** — im Browser `http://192.168.4.1` aufrufen (die
    Konfigurationsseite öffnet sich meist von selbst).
-
-<figure class="portal-shot">
-  <div class="portal-shot-ph">Platzhalter: Screenshot des Webportals (Screenshot folgt)</div>
-  <figcaption>Bild: Konfigurationsportal unter http://192.168.4.1</figcaption>
-</figure>
-
 4. **Zwei Felder ausfüllen und speichern** — WLAN-Name/-Passwort sowie die
    RCT-IP-Adresse (der Port ist bereits voreingestellt).
 5. **Fertig.** Das Panel verbindet sich mit Ihrem WLAN und zeigt die
    Live-Daten. Der Zugangspunkt „RCT-Panel" verschwindet dabei von selbst.
 
-**So sieht es danach aus:** Oben sitzt die Statusleiste mit dem
-Verbindungsstatus (`live`, grün = alles gut). In der Mitte liegt die aktuelle
-Seite; unten blättern Sie mit **◀** und **▶** durch die sieben Seiten, **⌂**
-(Home) springt zur Übersicht. Welche Seite was zeigt, steht in Kapitel 4 —
-die Details zur Einrichtung ab Kapitel 2.
+**So sieht es danach aus:** Oben die Statusleiste mit dem Verbindungsstatus
+(`live`, grün = alles gut), in der Mitte die aktuelle Seite; unten blättern
+**◀** / **▶** durch die sieben Seiten, **⌂** springt zur Übersicht. Details
+zu den Seiten stehen in Kapitel 4, zur Einrichtung ab Kapitel 2.
 
 ---
 
@@ -107,6 +104,11 @@ Bestätigen Sie das Formular. Das Panel speichert die Angaben dauerhaft
 > konfiguriert ist. Bei falschem Passwort oder nicht erreichbarem Netzwerk
 > öffnet sich das Portal automatisch wieder, damit Sie die Angaben
 > korrigieren können.
+
+<figure class="portal-shot">
+  <div class="portal-shot-ph">Platzhalter: Screenshot des Webportals (Screenshot folgt)</div>
+  <figcaption>Bild 2: Konfigurationsportal unter http://192.168.4.1</figcaption>
+</figure>
 
 ### 2.3 Später erneut konfigurieren
 

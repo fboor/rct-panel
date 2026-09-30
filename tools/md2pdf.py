@@ -18,6 +18,10 @@ with open(MD, "r", encoding="utf-8") as f:
         output_format="html5",
     )
 
+# Make relative image references absolute so the temp HTML can load them.
+doc_dir = (ROOT / "docs").as_uri()
+body = body.replace('src="img/', f'src="{doc_dir}/img/')
+
 css = """
 :root { color-scheme: light; }
 @page { size: A4; margin: 17mm 15mm 18mm 15mm; }
@@ -60,6 +64,11 @@ figure.portal-shot { margin: 8pt 0 10pt 0; page-break-inside: avoid; }
   font-style: italic; font-size: 10pt; }
 figure.portal-shot figcaption { font-size: 9pt; color: #5a6672;
   margin-top: 3pt; text-align: center; }
+figure.ports-shot { margin: 10pt 0 12pt 0; page-break-inside: avoid;
+  text-align: center; }
+figure.ports-shot img { width: 60%; }
+figure.ports-shot figcaption { font-size: 9pt; color: #5a6672;
+  margin-top: 4pt; }
 """
 
 html = f"""<!DOCTYPE html>

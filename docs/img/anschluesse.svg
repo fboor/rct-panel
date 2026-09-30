@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="330" viewBox="0 0 760 330" font-family="DejaVu Sans, sans-serif">
+  <defs>
+    <clipPath id="scr"><rect x="50" y="30" width="264" height="264" rx="14"/></clipPath>
+  </defs>
+
+  <!-- ground shadow -->
+  <ellipse cx="228" cy="362" rx="215" ry="26" fill="#00000026"/>
+
+  <!-- device: right face -->
+  <path d="M332,12 L378,58 L378,358 L332,312 Z" fill="#202633" stroke="#00000028" stroke-width="1.5"/>
+  <!-- device: bottom face -->
+  <path d="M32,312 L78,358 L378,358 L332,312 Z" fill="#191f2a" stroke="#00000028" stroke-width="1.5"/>
+  <!-- device: front face (bezel) -->
+  <rect x="32" y="12" width="300" height="300" rx="10" fill="#2a3040" stroke="#ffffff14" stroke-width="1.5"/>
+  <!-- top edge highlight -->
+  <line x1="33" y1="13" x2="331" y2="13" stroke="#ffffff30" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- USB-C on the right face (u = depth 0..1, v = height 0..1) -->
+  <g transform="matrix(46,46,0,300,332,12)">
+    <rect x="0.30" y="0.78" width="0.40" height="0.09" fill="#3a4350"/>
+    <rect x="0.32" y="0.795" width="0.36" height="0.06" fill="#06080c"/>
+    <line x1="0.44" y1="0.80" x2="0.44" y2="0.85" stroke="#9fb4c7" stroke-width="0.018"/>
+    <line x1="0.56" y1="0.80" x2="0.56" y2="0.85" stroke="#9fb4c7" stroke-width="0.018"/>
+  </g>
+
+  <!-- screen -->
+  <rect x="50" y="30" width="264" height="264" rx="14" fill="#0d1722" stroke="#00000055" stroke-width="1.5"/>
+  <g clip-path="url(#scr)">
+    <!-- status bar -->
+    <rect x="48" y="28" width="268" height="28" fill="#16232f"/>
+    <text x="64" y="47" fill="#e8edf2" font-size="16" font-weight="600">RCT Power Panel</text>
+    <rect x="270" y="37" width="36" height="14" rx="7" fill="#1f9d55"/>
+    <text x="288" y="47" fill="#ffffff" font-size="10.5" text-anchor="middle">live</text>
+    <!-- chart grid -->
+    <g stroke="#ffffff0c" stroke-width="1">
+      <line x1="50" y1="96" x2="314" y2="96"/>
+      <line x1="50" y1="132" x2="314" y2="132"/>
+      <line x1="50" y1="168" x2="314" y2="168"/>
+      <line x1="50" y1="204" x2="314" y2="204"/>
+      <line x1="50" y1="240" x2="314" y2="240"/>
+    </g>
+    <!-- chart series -->
+    <polyline points="50,236 95,212 140,224 185,158 230,120 275,140 314,116" fill="none" stroke="#ca0c0f" stroke-width="2.6" stroke-linejoin="round"/>
+    <polyline points="50,246 95,196 140,142 185,106 230,96 275,112 314,84" fill="none" stroke="#3ec97a" stroke-width="2.6" stroke-linejoin="round"/>
+    <polyline points="50,252 140,226 230,210 314,200" fill="none" stroke="#2e93e5" stroke-width="2.6" stroke-linejoin="round"/>
+    <polyline points="50,264 95,244 185,232 314,238" fill="none" stroke="#f0a202" stroke-width="2.6" stroke-linejoin="round"/>
+    <!-- nav buttons -->
+    <rect x="64" y="266" width="44" height="26" rx="8" fill="#233040"/>
+    <path d="M79,279 L88,271 L88,287 Z" fill="#dbe4ec"/>
+    <rect x="150" y="266" width="44" height="26" rx="8" fill="#233040"/>
+    <path d="M161,285 L161,274 L172,279 L161,285 Z" fill="none" stroke="#dbe4ec" stroke-width="2"/>
+    <rect x="162" y="278" width="7" height="7" fill="#dbe4ec"/>
+    <rect x="236" y="266" width="44" height="26" rx="8" fill="#233040"/>
+    <path d="M265,279 L256,271 L256,287 Z" fill="#dbe4ec"/>
+  </g>
+
+  <!-- microSD card on the bottom face (u = along front edge, v = depth) -->
+  <g transform="matrix(300,0,46,46,32,312)">
+    <!-- slot opening -->
+    <rect x="0.55" y="0.085" width="0.20" height="0.075" fill="#05070b"/>
+    <!-- card, partially inserted, protruding past the back edge -->
+    <rect x="0.57" y="0.09" width="0.16" height="1.14" fill="#0b6bcb" stroke="#084a8f" stroke-width="0.012"/>
+    <rect x="0.57" y="0.09" width="0.16" height="0.10" fill="#d9a520"/>
+    <path d="M0.73,1.23 L0.665,1.23 L0.665,1.12 L0.73,1.12 Z" fill="#d9a520"/>
+  </g>
+
+  <!-- callout leaders (white halo + blue line) -->
+  <g stroke-linecap="round" fill="none">
+    <!-- 1: touch display -->
+    <path d="M158,96 L404,96 L452,104" stroke="#ffffff" stroke-width="4.5" opacity="0.9"/>
+    <path d="M158,96 L404,96 L452,104" stroke="#0b6bcb" stroke-width="1.8"/>
+    <!-- 2: microSD -->
+    <path d="M252,332 L300,194 L452,194" stroke="#ffffff" stroke-width="4.5" opacity="0.9"/>
+    <path d="M252,332 L300,194 L452,194" stroke="#0b6bcb" stroke-width="1.8"/>
+    <!-- 3: usb-c -->
+    <path d="M366,282 L404,282 L452,284" stroke="#ffffff" stroke-width="4.5" opacity="0.9"/>
+    <path d="M366,282 L404,282 L452,284" stroke="#0b6bcb" stroke-width="1.8"/>
+  </g>
+
+  <!-- legend -->
+  <rect x="410" y="18" width="330" height="296" rx="14" fill="#eef5fb" stroke="#b9d3ec" stroke-width="1.5"/>
+  <text x="432" y="54" fill="#0b3d6b" font-size="26" font-weight="700">Schnittstellen</text>
+  <line x1="432" y1="66" x2="718" y2="66" stroke="#b9d3ec" stroke-width="1.5"/>
+
+  <!-- row 1: touch -->
+  <circle cx="452" cy="104" r="16" fill="#0b6bcb"/>
+  <text x="452" y="110" fill="#ffffff" font-size="18" font-weight="700" text-anchor="middle">1</text>
+  <text x="482" y="101" fill="#0b3d6b" font-size="21" font-weight="600">Touch-Display</text>
+  <text x="482" y="125" fill="#44525f" font-size="17">kapazitiv · 480 × 480 px · Bedienung</text>
+
+  <!-- row 2: microSD -->
+  <circle cx="452" cy="194" r="16" fill="#0b6bcb"/>
+  <text x="452" y="200" fill="#ffffff" font-size="18" font-weight="700" text-anchor="middle">2</text>
+  <text x="482" y="191" fill="#0b3d6b" font-size="21" font-weight="600">microSD (TF)</text>
+  <text x="482" y="215" fill="#44525f" font-size="17">Steckplatz auf der Platine · Aufzeichnung</text>
+
+  <!-- row 3: USB-C -->
+  <circle cx="452" cy="284" r="16" fill="#0b6bcb"/>
+  <text x="452" y="290" fill="#ffffff" font-size="18" font-weight="700" text-anchor="middle">3</text>
+  <text x="482" y="281" fill="#0b3d6b" font-size="21" font-weight="600">USB-C</text>
+  <text x="482" y="305" fill="#44525f" font-size="17">Stromversorgung (5 V)</text>
+</svg>
