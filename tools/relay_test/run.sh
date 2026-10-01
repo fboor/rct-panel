@@ -10,8 +10,12 @@
 # 60 s minimum hold, the 20 % hysteresis band, "no data means off", the S0
 # handling of the surplus rule, the test sequence, the mode cycle and the NVS
 # round-trip including out-of-range values.
+#
+# The German table comes along because Relay.cpp takes the name of a function
+# from it (the display shows it) - a missing table is a link error, not a wrong
+# name.
 set -e
 cd "$(dirname "$0")/../.."
 g++ -std=c++17 -Wall -Itools/relay_test/stubs -Isrc \
-    -o /tmp/relay_test tools/relay_test/test_relay.cpp
+    -o /tmp/relay_test tools/relay_test/test_relay.cpp src/i18n/LangDe.cpp
 exec /tmp/relay_test

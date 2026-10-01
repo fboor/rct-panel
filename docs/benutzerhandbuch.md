@@ -38,7 +38,7 @@ So geht's:
    Live-Daten. Der Zugangspunkt „RCT-Panel" verschwindet dabei von selbst.
 
 So sieht es danach aus: Oben die Statusleiste mit dem Verbindungsstatus
-(`live`, grün = alles gut), in der Mitte die aktuelle Seite; unten blättern
+(`aktiv`, grün = alles gut), in der Mitte die aktuelle Seite; unten blättern
 ◀ / ▶ durch die sieben Seiten, ⌂ springt zur Übersicht. Details
 zu den Seiten stehen in Kapitel 3, zur Einrichtung ab Kapitel 1.
 
@@ -109,10 +109,10 @@ Verbindungsstatus:
 
 | Badge | Bedeutung |
 |---|---|
-| `live` (grün) | Wechselrichter verbunden, Daten aktuell |
-| `connecting` (gelb) | WLAN und Verbindung werden gerade aufgebaut |
-| `no data` (rot) | WLAN steht, aber es kommen keine RCT-Daten an |
-| `reconnect` (gelb) | Daten kamen, der Datenstrom ist abgerissen — Neustart der Verbindung |
+| `aktiv` (grün) | Wechselrichter verbunden, Daten aktuell |
+| `verbinde` (gelb) | WLAN und Verbindung werden gerade aufgebaut |
+| `keine Daten` (rot) | WLAN steht, aber es kommen keine RCT-Daten an |
+| `verbinde neu` (gelb) | Daten kamen, der Datenstrom ist abgerissen — Neustart der Verbindung |
 
 Zeigt eine Seite „–" statt eines Wertes, ist dieser Wert noch nicht
 eingetroffen (z. B. weil der Wechselrichter keine Batterie meldet oder die
@@ -198,7 +198,7 @@ Liniendiagramm der letzten 24 Stunden (ein Punkt alle 5 Minuten, 288 Punkte):
 
 Technische und Verbindungsdaten (Reihenfolge wie angezeigt):
 
-`Name` · `Software` · `RCT host` · `RCT port` · `Link` (connected/offline) ·
+`Name` · `Software` · `RCT host` · `RCT port` · `Link` (verbunden/getrennt) ·
 `Last data` (Sekunden seit letztem Datenpaket) · `Uptime` ·
 `Netz L1..L3` · `PV` (A+B+S0) · `Kern` · `Kühlkörper` · `Netzfrequenz`.
 
@@ -527,9 +527,9 @@ sich prüfen, ob am Port überhaupt etwas passiert.
 
 | Symptom | Ursache / Lösung |
 |---|---|
-| Badge `no data` (rot) | WLAN steht, der Wechselrichter antwortet nicht. Prüfen Sie `rct_host`/`rct_port` im Setup-Portal und ob der Wechselrichter erreichbar ist. |
-| Badge `connecting` bleibt | WLAN-Verbindung wird aufgebaut; wenn es nicht weitergeht, prüfen Sie das WLAN-Passwort (Portal öffnet sich nach ~15 s erneut). |
-| Badge `reconnect` | Datenstrom abgerissen; das Panel versucht automatisch neu zu verbinden. |
+| Badge `keine Daten` (rot) | WLAN steht, der Wechselrichter antwortet nicht. Prüfen Sie `rct_host`/`rct_port` im Setup-Portal und ob der Wechselrichter erreichbar ist. |
+| Badge `verbinde` bleibt | WLAN-Verbindung wird aufgebaut; wenn es nicht weitergeht, prüfen Sie das WLAN-Passwort (Portal öffnet sich nach ~15 s erneut). |
+| Badge `verbinde neu` | Datenstrom abgerissen; das Panel versucht automatisch neu zu verbinden. |
 | Kein Konfigurationsportal auffindbar | Panel ist bereits in einem Netzwerk — nutzen Sie „Setup starten" auf der Service-Seite. |
 | `SD: --` auf Service-Seite | Keine Karte erkannt oder Karte gezogen; prüfen Sie die microSD im Steckplatz (**FAT32**, kein exFAT — Abschnitt 4). Ohne Karte werden die Daten bis zu 24 h im Panel gepuffert und danach nachgeschrieben. |
 | `SD: OK \| n Zeilen verloren` | Der Puffer war länger voll als 24 h (Karte mehrere Tage weg) oder die Karte war voll. Die Anzahl ist die Zahl der endgültig verlorenen Zeilen. |

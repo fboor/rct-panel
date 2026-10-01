@@ -4,11 +4,11 @@
 # The shipped tables are compiled as they are, once per language, and the C++
 # part asks each text of them what a text has to be: there, one line, in this
 # language. check.py then compares the two tables with each other and with the
-# enum, which is the half no compiler can do.
+# enum, which is the half no compiler can do, and looks for texts that are in a
+# table and in the code at the same time.
 #
-# Last: a scan of the directories that have been moved to the tables. A German
-# character outside src/i18n/ is a text that was left behind - the web pages are
-# through that, the display pages are the next stage.
+# Last: a scan of the directories that hold no German text outside the tables
+# any more.
 set -e
 cd "$(dirname "$0")/../.."
 
@@ -30,9 +30,14 @@ printf '  -- Tabellen gegeneinander --\n'
 python3 tools/i18n_test/check.py
 
 printf '  -- Deutscher Text ausserhalb der Tabellen --\n'
-# Umlaute and a sharp s are what German looks like in the source; the tables
-# are the one place where they belong. -r for the whole tree, and the two
-# directories that have been converted so far.
+# Two checks for the same thing: the umlauts in a string, and the texts that
+# have been moved into the tables but are still in the code as literals. The
+# second one is check.py's job because it knows the texts; this one catches the
+# umlauts anywhere, including ones nobody put in a table yet.
+#
+# src/gui is not in the umlaut scan: its comments are German, like the rest of
+# the source, and only the string literals are a text for the reader. check.py
+# reads them with the comments removed.
 for d in src/web src/storage; do
   hits=$(grep -rn '[äöüÄÖÜß]' "$d" --include='*.cpp' --include='*.h' || true)
   if [ -n "$hits" ]; then

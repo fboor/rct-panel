@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT
 #include "Relay.h"
 
+#include "../i18n/Lang.h"
 #include "../rct/RctTypes.h"
 #include "RelayPins.h"
 #include <Preferences.h>
@@ -89,15 +90,16 @@ void relaySetMode(RelayMode mode) {
 }
 
 const char *relayModeName(RelayMode mode) {
-  // With umlauts: these strings are what the display shows. The serial lines
-  // below stay ASCII, because a log is read in terminals that do not all
-  // handle UTF-8.
+  // With umlauts: these strings are what the display shows, so they are the
+  // table entries - the same ones the web page uses for the long text, only
+  // shorter. The serial lines stay ASCII, because a log is read in terminals
+  // that do not all handle UTF-8.
   switch (mode) {
-  case RelayMode::Off: return "Aus";
-  case RelayMode::GridDraw: return "Netzbezug";
-  case RelayMode::PvSurplus: return "Überschuss";
-  case RelayMode::Fault: return "Störung";
-  case RelayMode::Island: return "Inselbetrieb";
+  case RelayMode::Off: return tr(T_RELAY_SHORT_OFF);
+  case RelayMode::GridDraw: return tr(T_RELAY_SHORT_GRID);
+  case RelayMode::PvSurplus: return tr(T_RELAY_SHORT_SURPLUS);
+  case RelayMode::Fault: return tr(T_RELAY_SHORT_FAULT);
+  case RelayMode::Island: return tr(T_RELAY_SHORT_ISLAND);
   default: return "?";
   }
 }

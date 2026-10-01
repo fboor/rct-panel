@@ -148,6 +148,286 @@ const char *const kLang[T_COUNT] = {
     "SD: OK | %d gepuffert (%s) | %.1f GB frei",  // T_SD_QUEUED
     "SD: OK | %.1f GB frei",               // T_SD_FREE
     "SD: --",                              // T_SD_OK
+
+    // --- Anzeige: die Seitenüberschrift ----------------------------
+    "Übersicht",     // T_D_HEAD_OVERVIEW
+    "Energie",       // T_D_HEAD_ENERGY
+    "Heute",         // T_D_HEAD_HEUTE
+    "24 h Verlauf",  // T_D_HEAD_GRAPH
+    "Info",          // T_D_HEAD_INFO
+    "Akku",          // T_D_HEAD_BATTERY
+    "Service",       // T_D_HEAD_SERVICE
+
+    // --- Anzeige: Übersicht, die vier Zeilen unter dem Flussdiagramm ---
+    "Erzeugung",  // T_D_ROW_PRODUCTION
+    "Verbrauch",  // T_D_ROW_CONSUMPTION
+    "Netz",       // T_D_ROW_GRID
+    "Batterie",   // T_D_ROW_BATTERY
+
+    // --- Anzeige: was diese Zeilen gerade sagen (Portal-Tendenzwörter) ---
+    "Produzierend",    // T_D_TEND_PRODUCING
+    "Keine",           // T_D_TEND_NONE
+    "Netzstrom",       // T_D_TEND_MAINS
+    "Unabhängig",      // T_D_TEND_SELF
+    "Bezug",           // T_D_TEND_IMPORT
+    "Einspeisung",     // T_D_TEND_EXPORT
+    "Entladen",        // T_D_TEND_DISCHARGE
+    "Laden",           // T_D_TEND_CHARGE
+    "Standby",         // T_D_TEND_STANDBY
+    "keine Batterie",  // T_D_TEND_NOBAT
+
+    // --- Anzeige: Energie, die fünf Zeilen und die vier Zeiträume ---
+    "PV Erzeugung",     // T_D_EN_PV
+    "Eigenverbrauch",   // T_D_EN_SELFUSE
+    "Netzeinspeisung",  // T_D_EN_EXPORT
+    "Netzbezug",        // T_D_EN_IMPORT
+    "Verbrauch",        // T_D_EN_LOAD
+    "Tag",              // T_D_PER_DAY
+    "Monat",            // T_D_PER_MONTH
+    "Jahr",             // T_D_PER_YEAR
+    "Gesamt",           // T_D_PER_TOTAL
+
+    // --- Anzeige: Heute, die sieben Karten -------------------------
+    "Erzeugt",         // T_D_CARD_PRODUCED
+    "Eigenverbrauch",  // T_D_CARD_SELFUSE
+    "Eingespeist",     // T_D_CARD_FEDIN
+    "Verbrauch",       // T_D_CARD_CONSUMED
+    "Bezug",           // T_D_CARD_IMPORTED
+    "Autarkie",        // T_D_CARD_SELF
+    "Eigenverbrauch",  // T_D_CARD_SELFRATE
+
+    // --- Anzeige: 24 h Verlauf -------------------------------------
+    "Netz",                               // T_D_SER_GRID
+    "Verbrauch",                          // T_D_SER_CONSUMPTION
+    "PV",                                 // T_D_SER_PV
+    "EXT",                                // T_D_SER_EXT
+    "Batterie",                           // T_D_SER_BATTERY
+    "SOC",                                // T_D_SER_SOC
+    "1 Lücke, %lu min ohne Messwerte",    // T_D_GAP_ONE
+    "%d Lücken, %lu min ohne Messwerte",  // T_D_GAP_MANY
+
+    // --- Anzeige: Info ---------------------------------------------
+    "Name:",          // T_D_IF_NAME
+    "Software:",      // T_D_IF_SOFTWARE
+    "RCT host:",      // T_D_IF_HOST
+    "RCT port:",      // T_D_IF_PORT
+    "Link:",          // T_D_IF_LINK
+    "Last data:",     // T_D_IF_LASTDATA
+    "Uptime:",        // T_D_IF_UPTIME
+    "Netz L1:",       // T_D_IF_L1
+    "Netz L2:",       // T_D_IF_L2
+    "Netz L3:",       // T_D_IF_L3
+    "PV:",            // T_D_IF_PV
+    "Kern:",          // T_D_IF_CORE
+    "Kühlkörper:",    // T_D_IF_HEATSINK
+    "Netzfrequenz:",  // T_D_IF_FREQ
+    "verbunden",      // T_D_LINK_UP
+    "getrennt",       // T_D_LINK_DOWN
+    "vor %lu s",      // T_D_LASTDATA_AGO
+
+    // --- Anzeige: Akku ---------------------------------------------
+    "Batterie-SOC:",      // T_D_BA_SOC
+    "Batterie:",          // T_D_BA_POWER
+    "Batterie-Temp:",     // T_D_BA_TEMP
+    "Kalibrierung:",      // T_D_BA_CALIB
+    "Zyklen:",            // T_D_BA_CYCLES
+    "SOH:",               // T_D_BA_SOH
+    "Inselbetrieb:",      // T_D_BA_ISLAND
+    "ja",                 // T_D_YES
+    "nein",               // T_D_NO
+    "%s (überfällig)",    // T_D_CALIB_OVERDUE
+    "%s (heute)",         // T_D_CALIB_TODAY
+    "%s (in %ld Tagen)",  // T_D_CALIB_DAYS
+
+    // --- Anzeige: der ausgelesene Batteriezustand auf der Service-Seite ---
+    "Bereit",                       // T_D_ST_READY
+    "Kalibrierung (Ladephase)",     // T_D_ST_CALCHARGE
+    "Kalibrierung (Entladephase)",  // T_D_ST_CALDISCHARGE
+    "Balancing",                    // T_D_ST_BALANCING
+    "Unterspannung",                // T_D_ST_UNDERVOLT
+    "Getrennt",                     // T_D_ST_OFF
+    "Status %lu",                   // T_D_ST_RAW
+    " + Balancing",                 // T_D_ST_BALPLUS
+    "  (entlaedt)",                 // T_D_ST_DISCHARGING
+    "  (laedt)",                    // T_D_ST_CHARGING
+
+    // --- Anzeige: Service, die Abschnitte --------------------------
+    "Batterie-Status",        // T_D_SV_HEAD_BAT
+    "SD-Log",                 // T_D_SV_HEAD_SD
+    "Störungen",              // T_D_SV_HEAD_FAULTS
+    "Web-Oberfläche",         // T_D_SV_HEAD_WEB
+    "Ausgang",                // T_D_SV_HEAD_OUTPUT
+    "Keine Störungen",        // T_D_NO_FAULTS
+    " ... und %d weitere",    // T_D_MORE_FAULTS
+    "F%d %s\n",               // T_D_FAULT_LINE
+    " Setup starten",         // T_D_BTN_SETUP
+    " Screenshot",            // T_D_BTN_SHOT
+    "Test: 5 s an, 5 s aus",  // T_D_BTN_TEST
+    "Code: ----",             // T_D_CODE_EMPTY
+    "Code: %s",               // T_D_CODE
+    "antippen = neu",         // T_D_CODE_HINT
+    "IP: %s",                 // T_D_IP
+    "kein Netz",              // T_D_NO_NET
+
+    // --- Anzeige: der geschaltete Ausgang --------------------------
+    "%s > %d W",          // T_D_OUT_THRESHOLD
+    "Test: %s",           // T_D_OUT_TEST
+    "%s · %s",            // T_D_OUT_MODE
+    "%s · %d W jetzt",    // T_D_OUT_NOW
+    "AN",                 // T_D_OUT_ON
+    "AUS",                // T_D_OUT_OFF
+    "nichts geschaltet",  // T_D_OUT_NOTHING
+
+    // --- Anzeige: die Screenshot-Ausgabe ---------------------------
+    "Aufnahme laeuft bereits",  // T_D_SHOT_BUSY
+    "keine SD-Karte",           // T_D_SHOT_NOCARD
+    "Aufnahme in %d s ...",     // T_D_SHOT_COUNT
+    "wird geschrieben",         // T_D_SHOT_WRITING
+    "auf /shot gespeichert",    // T_D_SHOT_SAVED
+    "fehlgeschlagen",           // T_D_SHOT_FAILED
+    "kein Speicher",            // T_D_SHOT_NOMEM
+
+    // --- Anzeige: die WLAN-Einrichtung als Vollbild ----------------
+    "Setup: WLAN konfigurieren",  // T_D_AP_TITLE
+    "Mit dem Netzwerk verbinden und im Browser\n"
+    "http://192.168.4.1 öffnen", // T_D_AP_HINT
+
+    // --- Anzeige: das Statusabzeichen in der Kopfzeile -------------
+    "verbinde",      // T_D_BADGE_CONNECTING
+    "keine Daten",   // T_D_BADGE_NODATA
+    "aktiv",         // T_D_BADGE_LIVE
+    "verbinde neu",  // T_D_BADGE_RECONNECT
+
+    // --- Anzeige: die 128 Fehlertexte (Bit n aus fault[0..3].flt)
+    "TRAP ausgelöst",                               // T_FAULT_0
+    "RTC nicht konfigurierbar",                     // T_FAULT_1
+    "RTC-1-Hz-Signal-Timeout",                      // T_FAULT_2
+    "Hardware-Stopp durch 3,3-V-Fehler",            // T_FAULT_3
+    "Hardware-Stopp durch PWM-Logik",               // T_FAULT_4
+    "Hardware-Stopp durch Uzk-Überspannung",        // T_FAULT_5
+    "Uzk+ über Grenzwert",                          // T_FAULT_6
+    "Uzk- über Grenzwert",                          // T_FAULT_7
+    "Überstrom Drossel Phase L1",                   // T_FAULT_8
+    "Überstrom Drossel Phase L2",                   // T_FAULT_9
+    "Überstrom Drossel Phase L3",                   // T_FAULT_10
+    "Pufferkondensator-Spannung",                   // T_FAULT_11
+    "Quarzfehler",                                  // T_FAULT_12
+    "Netzunterspannung Phase 1",                    // T_FAULT_13
+    "Netzunterspannung Phase 2",                    // T_FAULT_14
+    "Netzunterspannung Phase 3",                    // T_FAULT_15
+    "Batterieüberstrom",                            // T_FAULT_16
+    "Relais-Test fehlgeschlagen",                   // T_FAULT_17
+    "Platinen-Übertemperatur",                      // T_FAULT_18
+    "Kern-Übertemperatur",                          // T_FAULT_19
+    "Übertemperatur Kühlkörper 1",                  // T_FAULT_20
+    "Übertemperatur Kühlkörper 2",                  // T_FAULT_21
+    "I2C-Fehler mit Power-Board",                   // T_FAULT_22
+    "Power-Board-Fehler",                           // T_FAULT_23
+    "PWM-Ausgänge defekt",                          // T_FAULT_24
+    "Isolation zu gering oder unplausibel",         // T_FAULT_25
+    "I-Gleichanteil max (1 A)",                     // T_FAULT_26
+    "I-Gleichanteil max langsam (47 mA)",           // T_FAULT_27
+    "Möglicher Defekt DSD-Kanal (Offset zu groß)",  // T_FAULT_28
+    "RS485-Fehler Relaisbox",                       // T_FAULT_29
+    "Überspannung zwischen Phasen",                 // T_FAULT_30
+    "IGBT L1 BH defekt",                            // T_FAULT_31
+    "IGBT L1 BL defekt",                            // T_FAULT_32
+    "IGBT L2 BH defekt",                            // T_FAULT_33
+    "IGBT L2 BL defekt",                            // T_FAULT_34
+    "IGBT L3 BH defekt",                            // T_FAULT_35
+    "IGBT L3 BL defekt",                            // T_FAULT_36
+    "Langzeit-Überspannung Phase 1",                // T_FAULT_37
+    "Langzeit-Überspannung Phase 2",                // T_FAULT_38
+    "Langzeit-Überspannung Phase 3",                // T_FAULT_39
+    "Überspannung Phase 1, Stufe 1",                // T_FAULT_40
+    "Überspannung Phase 1, Stufe 2",                // T_FAULT_41
+    "Überspannung Phase 2, Stufe 1",                // T_FAULT_42
+    "Überspannung Phase 2, Stufe 2",                // T_FAULT_43
+    "Überspannung Phase 3, Stufe 1",                // T_FAULT_44
+    "Überspannung Phase 3, Stufe 2",                // T_FAULT_45
+    "Überfrequenz, Stufe 1",                        // T_FAULT_46
+    "Überfrequenz, Stufe 2",                        // T_FAULT_47
+    "Unterspannung Phase 1, Stufe 1",               // T_FAULT_48
+    "Unterspannung Phase 1, Stufe 2",               // T_FAULT_49
+    "Unterspannung Phase 2, Stufe 1",               // T_FAULT_50
+    "Unterspannung Phase 2, Stufe 2",               // T_FAULT_51
+    "Unterspannung Phase 3, Stufe 1",               // T_FAULT_52
+    "Unterspannung Phase 3, Stufe 2",               // T_FAULT_53
+    "Unterfrequenz, Stufe 1",                       // T_FAULT_54
+    "Unterfrequenz, Stufe 2",                       // T_FAULT_55
+    "CPU-Ausnahme NMI",                             // T_FAULT_56
+    "CPU-Ausnahme HardFault",                       // T_FAULT_57
+    "CPU-Ausnahme MemManage",                       // T_FAULT_58
+    "CPU-Ausnahme BusFault",                        // T_FAULT_59
+    "CPU-Ausnahme UsageFault",                      // T_FAULT_60
+    "RTC Power-on-Reset",                           // T_FAULT_61
+    "RTC-Oszillator gestoppt",                      // T_FAULT_62
+    "RTC-Versorgungsspannung eingebrochen",         // T_FAULT_63
+    "RCD-Sprung DC + AC > 30 mA",                   // T_FAULT_64
+    "RCD-Sprung DC > 60 mA",                        // T_FAULT_65
+    "RCD-Sprung AC > 150 mA",                       // T_FAULT_66
+    "RCD-Strom > 300 mA",                           // T_FAULT_67
+    "+5 V fehlerhaft",                              // T_FAULT_68
+    "-9 V fehlerhaft",                              // T_FAULT_69
+    "+9 V fehlerhaft",                              // T_FAULT_70
+    "+3,3 V fehlerhaft",                            // T_FAULT_71
+    "RDC-Kalibrierung fehlgeschlagen",              // T_FAULT_72
+    "I2C-Fehler",                                   // T_FAULT_73
+    "AFI-Frequenzgenerator-Fehler",                 // T_FAULT_74
+    "Kühlkörpertemperatur zu hoch",                 // T_FAULT_75
+    "Uzk über Grenzwert",                           // T_FAULT_76
+    "Usg A über Grenzwert",                         // T_FAULT_77
+    "Usg B über Grenzwert",                         // T_FAULT_78
+    "Einschaltbedingung Umin Phase 1",              // T_FAULT_79
+    "Einschaltbedingung Umax Phase 1",              // T_FAULT_80
+    "Einschaltbedingung Fmin Phase 1",              // T_FAULT_81
+    "Einschaltbedingung Fmax Phase 1",              // T_FAULT_82
+    "Einschaltbedingung Umin Phase 2",              // T_FAULT_83
+    "Einschaltbedingung Umax Phase 2",              // T_FAULT_84
+    "Batteriestromsensor defekt",                   // T_FAULT_85
+    "Batterie-Booster defekt",                      // T_FAULT_86
+    "Einschaltbedingung Umin Phase 3",              // T_FAULT_87
+    "Einschaltbedingung Umax Phase 3",              // T_FAULT_88
+    "Spannungssprung/Offset an AC-Klemmen zu groß"
+    "(Phasenausfall)", // T_FAULT_89
+    "Wechselrichter vom Hausnetz getrennt",                  // T_FAULT_90
+    "+9-V-Differenz DSP/PIC zu groß",                        // T_FAULT_91
+    "1,5-V-Fehler",                                          // T_FAULT_92
+    "2,5-V-Fehler",                                          // T_FAULT_93
+    "1,5-V-Messdifferenz",                                   // T_FAULT_94
+    "2,5-V-Messdifferenz",                                   // T_FAULT_95
+    "Batteriespannung außerhalb des erwarteten Bereichs",    // T_FAULT_96
+    "PIC-Software nicht startbar",                           // T_FAULT_97
+    "PIC-Bootloader unerwartet erkannt",                     // T_FAULT_98
+    "Phasenlagefehler (nicht 120°)",                         // T_FAULT_99
+    "Batterieüberspannung",                                  // T_FAULT_100
+    "Drosselstrom instabil",                                 // T_FAULT_101
+    "Netzspannungsdifferenz intern/extern zu groß Phase 1",  // T_FAULT_102
+    "Netzspannungsdifferenz intern/extern zu groß Phase 2",  // T_FAULT_103
+    "Netzspannungsdifferenz intern/extern zu groß Phase 3",  // T_FAULT_104
+    "Externer Not-Aus aktiv",                                // T_FAULT_105
+    "Batterie leer: keine Energie für Standby",              // T_FAULT_106
+    "CAN-Timeout mit Batterie",                              // T_FAULT_107
+    "Timing-Problem",                                        // T_FAULT_108
+    "Übertemperatur Kühlkörper Batterie-IGBT",               // T_FAULT_109
+    "Batterie-Kühlkörpertemperatur zu hoch",                 // T_FAULT_110
+    "Interner Relaisbox-Fehler",                             // T_FAULT_111
+    "Relaisbox PE-Aus-Fehler",                               // T_FAULT_112
+    "Relaisbox PE-Ein-Fehler",                               // T_FAULT_113
+    "Interner Batteriefehler",                               // T_FAULT_114
+    "Parameter geändert",                                    // T_FAULT_115
+    "3 Inselbildungsversuche fehlgeschlagen",                // T_FAULT_116
+    "Unterspannung zwischen Phasen",                         // T_FAULT_117
+    "System-Reset erkannt",                                  // T_FAULT_118
+    "Update erkannt",                                        // T_FAULT_119
+    "FRT-Überspannung",                                      // T_FAULT_120
+    "FRT-Unterspannung",                                     // T_FAULT_121
+    "IGBT-L1-Freilaufdiode defekt",                          // T_FAULT_122
+    "IGBT-L2-Freilaufdiode defekt",                          // T_FAULT_123
+    "IGBT-L3-Freilaufdiode defekt",                          // T_FAULT_124
+    "Einphasenmodus aktiv, für Geräteklasse nicht erlaubt",  // T_FAULT_125
+    "Inselbetrieb erkannt",                                  // T_FAULT_126
+    "Neutralleiterfehler",                                   // T_FAULT_127
 };
 
 #endif // !RCT_LANG_EN

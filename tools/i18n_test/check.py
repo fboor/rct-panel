@@ -12,8 +12,17 @@ So the three files are read as text and compared:
   src/i18n/LangDe.cpp one entry per ID, the ID named at the end of the entry
   src/i18n/LangEn.cpp the same
 
-An ID that is in the enum but used nowhere in the code is also reported: it is
-either a text nobody shows any more or a leftover of a change half done.
+Two more things are looked for, in the code around the tables:
+
+  An ID that is in the enum but used nowhere is reported: it is either a text
+  nobody shows any more or a leftover of a change half done. The 128 fault
+  texts are the exception - they are addressed as T_FAULT_0 + bit, because the
+  bit is what the inverter reports.
+
+  A German text that is in a table *and* still in the code as a string literal
+  is the same mistake the other way round: the table would not be what the
+  display shows. The serial log and the Wi-Fi portal are exempt, see
+  sources_without_comments().
 
 Run from tools/i18n_test/run.sh, from the project root.
 """
@@ -87,6 +96,123 @@ def placeholders(text):
                       text)
 
 
+def strip_comments(src):
+    """The source without its comments - what is left is code and text.
+
+    A comment-stripper has to know about string literals first: a "//" inside
+    "http://192.168.4.1" is text, not the start of a comment.
+    """
+    out = []
+    i, n = 0, len(src)
+    while i < n:
+        c = src[i]
+        if c in '"\'':
+            quote = c
+            out.append(c)
+            i += 1
+            while i < n:
+                if src[i] == "\\" and i + 1 < n:
+                    out.append(src[i:i + 2])
+                    i += 2
+                    continue
+                out.append(src[i])
+                if src[i] == quote:
+                    i += 1
+                    break
+                i += 1
+            continue
+        if src.startswith("//", i):
+            while i < n and src[i] != "\n":
+                i += 1
+            continue
+        if src.startswith("/*", i):
+            i += 2
+            while i < n and not src.startswith("*/", i):
+                i += 1
+            i += 2
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
+# The directories whose texts a reader of this project sees: the display
+# pages, the web pages, the SD status line. A table text has to come from here.
+DISPLAY_DIRS = ("gui", "web", "storage")
+
+
+def sources_without_comments():
+    """[(path, code)] for every source file of the project, sans comments."""
+    out = []
+    for p in sorted((ROOT / "src").rglob("*")):
+        if p.suffix in (".cpp", ".h") and p.parent.name != "i18n":
+            code = strip_comments(p.read_text(encoding="utf-8"))
+            kept, logging = [], False
+            for ln in code.splitlines():
+                if logging:
+                    # Bis zum Semikolon gehoert die Zeile noch zum Aufruf.
+                    logging = not ln.rstrip().endswith(";")
+                    continue
+                if "Serial." in ln:
+                    logging = not ln.rstrip().endswith(";")
+                    continue
+                kept.append(ln)
+            out.append((p, "\n".join(kept)))
+    return out
+
+
+def literal_pattern(text):
+    """A regex for one text as it would stand in the source.
+
+    The conversion specs stay what they are, so a format string is only found
+    where it is really there; the letters around them are matched as words, so
+    "Netz" is not found inside "Netzfrequenz".
+    """
+    parts = re.split(r"(%[-+ #0-9.*]*[a-zA-Z])", text)
+    out = []
+    for i, part in enumerate(parts):
+        if i % 2:
+            out.append(re.escape(part))
+            continue
+        out.append(r"(?<![\wäöüÄÖÜß])" + re.escape(part) +
+                   r"(?![\wäöüÄÖÜß])")
+    return "".join(out)
+
+
+def hardcoded_texts(de_by_id, files):
+    """The German texts that are in a table and in the code at the same time.
+
+    Only the three display directories are searched, and two kinds of text are
+    left out on purpose:
+
+      The serial log is developer text and stays German in every build, so a
+      text there is no proof that a table entry is unused. A log line is skipped
+      as a whole, because a long one continues over several lines and "Serial."
+      is only on the first of them.
+
+      src/config holds the texts of the Wi-Fi provisioning portal. The portal
+      is a library page with a language of its own, kept in English; see the
+      note in src/i18n/Lang.h.
+    """
+    hits = 0
+    for tid, text in de_by_id.items():
+        if not tid.startswith(("T_D_", "T_FAULT_")):
+            continue  # a web text cannot turn up on the display
+        if len(text.strip()) < 2:
+            continue
+        pat = literal_pattern(text)
+        for path, code in files:
+            if path.parent.name not in DISPLAY_DIRS:
+                continue
+            m = re.search(pat, code)
+            if m:
+                line = code[:m.start()].count("\n") + 1
+                bad("%s steht noch im Text von %s (Zeile %d): %r" %
+                    (tid, path.name, line, text))
+                hits += 1
+    return hits
+
+
 def main():
     ids = enum_ids(I18N / "Lang.h")
     de = table(I18N / "LangDe.cpp")
@@ -118,15 +244,17 @@ def main():
             bad("%s: Platzhalter %s auf Deutsch, %s auf Englisch" %
                 (tid, pd or "keine", pe or "keine"))
 
-    # An ID nobody asks for any more.
-    src = []
-    for p in sorted((ROOT / "src").rglob("*")):
-        if p.suffix in (".cpp", ".h") and p.parent.name != "i18n":
-            src.append(p.read_text(encoding="utf-8"))
-    code = "\n".join(src)
+    # An ID nobody asks for any more. The 128 fault texts are addressed as
+    # T_FAULT_0 + bit, so the one use of T_FAULT_0 is the use of all of them.
+    files = sources_without_comments()
+    code = "\n".join(c for _, c in files)
     for tid in ids:
-        if not re.search(r"\b%s\b" % tid, code):
+        if not re.search(r"\b%s\b" % tid, code) and not re.match(
+                r"T_FAULT_[1-9]\d*$", tid):
             note("%s wird im Code nicht benutzt" % tid)
+
+    # A German text that is both in a table and in the code.
+    hardcoded_texts(de_by_id, files)
 
     print("  %d Texte, %d mit Platzhaltern, %d Hinweise" %
           (len(ids),

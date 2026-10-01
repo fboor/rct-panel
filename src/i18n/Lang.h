@@ -165,8 +165,295 @@ enum LangId : int {
   T_SD_FREE,
   T_SD_OK,
 
+  // --- Anzeige: die Seitenüberschrift --------------------------------------
+  T_D_HEAD_OVERVIEW,
+  T_D_HEAD_ENERGY,
+  T_D_HEAD_HEUTE,
+  T_D_HEAD_GRAPH,
+  T_D_HEAD_INFO,
+  T_D_HEAD_BATTERY,
+  T_D_HEAD_SERVICE,
+
+  // --- Anzeige: Übersicht, die vier Zeilen unter dem Flussdiagramm ---------
+  T_D_ROW_PRODUCTION,
+  T_D_ROW_CONSUMPTION,
+  T_D_ROW_GRID,
+  T_D_ROW_BATTERY,
+
+  // --- Anzeige: was diese Zeilen gerade sagen (Portal-Tendenzwörter) -------
+  T_D_TEND_PRODUCING,
+  T_D_TEND_NONE,
+  T_D_TEND_MAINS,
+  T_D_TEND_SELF,
+  T_D_TEND_IMPORT,
+  T_D_TEND_EXPORT,
+  T_D_TEND_DISCHARGE,
+  T_D_TEND_CHARGE,
+  T_D_TEND_STANDBY,
+  T_D_TEND_NOBAT,
+
+  // --- Anzeige: Energie, die fünf Zeilen und die vier Zeiträume ------------
+  T_D_EN_PV,
+  T_D_EN_SELFUSE,
+  T_D_EN_EXPORT,
+  T_D_EN_IMPORT,
+  T_D_EN_LOAD,
+  T_D_PER_DAY,
+  T_D_PER_MONTH,
+  T_D_PER_YEAR,
+  T_D_PER_TOTAL,
+
+  // --- Anzeige: Heute, die sieben Karten -----------------------------------
+  T_D_CARD_PRODUCED,
+  T_D_CARD_SELFUSE,
+  T_D_CARD_FEDIN,
+  T_D_CARD_CONSUMED,
+  T_D_CARD_IMPORTED,
+  T_D_CARD_SELF,
+  T_D_CARD_SELFRATE,
+
+  // --- Anzeige: 24 h Verlauf -----------------------------------------------
+  T_D_SER_GRID,
+  T_D_SER_CONSUMPTION,
+  T_D_SER_PV,
+  T_D_SER_EXT,
+  T_D_SER_BATTERY,
+  T_D_SER_SOC,
+  T_D_GAP_ONE,
+  T_D_GAP_MANY,
+
+  // --- Anzeige: Info -------------------------------------------------------
+  T_D_IF_NAME,
+  T_D_IF_SOFTWARE,
+  T_D_IF_HOST,
+  T_D_IF_PORT,
+  T_D_IF_LINK,
+  T_D_IF_LASTDATA,
+  T_D_IF_UPTIME,
+  T_D_IF_L1,
+  T_D_IF_L2,
+  T_D_IF_L3,
+  T_D_IF_PV,
+  T_D_IF_CORE,
+  T_D_IF_HEATSINK,
+  T_D_IF_FREQ,
+  T_D_LINK_UP,
+  T_D_LINK_DOWN,
+  T_D_LASTDATA_AGO,
+
+  // --- Anzeige: Akku -------------------------------------------------------
+  T_D_BA_SOC,
+  T_D_BA_POWER,
+  T_D_BA_TEMP,
+  T_D_BA_CALIB,
+  T_D_BA_CYCLES,
+  T_D_BA_SOH,
+  T_D_BA_ISLAND,
+  T_D_YES,
+  T_D_NO,
+  T_D_CALIB_OVERDUE,
+  T_D_CALIB_TODAY,
+  T_D_CALIB_DAYS,
+
+  // --- Anzeige: der ausgelesene Batteriezustand auf der Service-Seite ------
+  T_D_ST_READY,
+  T_D_ST_CALCHARGE,
+  T_D_ST_CALDISCHARGE,
+  T_D_ST_BALANCING,
+  T_D_ST_UNDERVOLT,
+  T_D_ST_OFF,
+  T_D_ST_RAW,
+  T_D_ST_BALPLUS,
+  T_D_ST_DISCHARGING,
+  T_D_ST_CHARGING,
+
+  // --- Anzeige: Service, die Abschnitte ------------------------------------
+  T_D_SV_HEAD_BAT,
+  T_D_SV_HEAD_SD,
+  T_D_SV_HEAD_FAULTS,
+  T_D_SV_HEAD_WEB,
+  T_D_SV_HEAD_OUTPUT,
+  T_D_NO_FAULTS,
+  T_D_MORE_FAULTS,
+  T_D_FAULT_LINE,
+  T_D_BTN_SETUP,
+  T_D_BTN_SHOT,
+  T_D_BTN_TEST,
+  T_D_CODE_EMPTY,
+  T_D_CODE,
+  T_D_CODE_HINT,
+  T_D_IP,
+  T_D_NO_NET,
+
+  // --- Anzeige: der geschaltete Ausgang ------------------------------------
+  T_D_OUT_THRESHOLD,
+  T_D_OUT_TEST,
+  T_D_OUT_MODE,
+  T_D_OUT_NOW,
+  T_D_OUT_ON,
+  T_D_OUT_OFF,
+  T_D_OUT_NOTHING,
+
+  // --- Anzeige: die Screenshot-Ausgabe -------------------------------------
+  T_D_SHOT_BUSY,
+  T_D_SHOT_NOCARD,
+  T_D_SHOT_COUNT,
+  T_D_SHOT_WRITING,
+  T_D_SHOT_SAVED,
+  T_D_SHOT_FAILED,
+  T_D_SHOT_NOMEM,
+
+  // --- Anzeige: die WLAN-Einrichtung als Vollbild --------------------------
+  T_D_AP_TITLE,
+  T_D_AP_HINT,
+
+  // --- Anzeige: das Statusabzeichen in der Kopfzeile -----------------------
+  T_D_BADGE_CONNECTING,
+  T_D_BADGE_NODATA,
+  T_D_BADGE_LIVE,
+  T_D_BADGE_RECONNECT,
+
+  // --- Anzeige: die 128 Fehlertexte (Bit n aus fault[0..3].flt)
+  // Der Index ist das Bit, nach dem der Wechselrichter meldet:
+  // serviceFaultText() holt T_FAULT_0 + n, die Reihenfolge hier ist
+  // also die Reihenfolge der Bits.
+  T_FAULT_0,
+  T_FAULT_1,
+  T_FAULT_2,
+  T_FAULT_3,
+  T_FAULT_4,
+  T_FAULT_5,
+  T_FAULT_6,
+  T_FAULT_7,
+  T_FAULT_8,
+  T_FAULT_9,
+  T_FAULT_10,
+  T_FAULT_11,
+  T_FAULT_12,
+  T_FAULT_13,
+  T_FAULT_14,
+  T_FAULT_15,
+  T_FAULT_16,
+  T_FAULT_17,
+  T_FAULT_18,
+  T_FAULT_19,
+  T_FAULT_20,
+  T_FAULT_21,
+  T_FAULT_22,
+  T_FAULT_23,
+  T_FAULT_24,
+  T_FAULT_25,
+  T_FAULT_26,
+  T_FAULT_27,
+  T_FAULT_28,
+  T_FAULT_29,
+  T_FAULT_30,
+  T_FAULT_31,
+  T_FAULT_32,
+  T_FAULT_33,
+  T_FAULT_34,
+  T_FAULT_35,
+  T_FAULT_36,
+  T_FAULT_37,
+  T_FAULT_38,
+  T_FAULT_39,
+  T_FAULT_40,
+  T_FAULT_41,
+  T_FAULT_42,
+  T_FAULT_43,
+  T_FAULT_44,
+  T_FAULT_45,
+  T_FAULT_46,
+  T_FAULT_47,
+  T_FAULT_48,
+  T_FAULT_49,
+  T_FAULT_50,
+  T_FAULT_51,
+  T_FAULT_52,
+  T_FAULT_53,
+  T_FAULT_54,
+  T_FAULT_55,
+  T_FAULT_56,
+  T_FAULT_57,
+  T_FAULT_58,
+  T_FAULT_59,
+  T_FAULT_60,
+  T_FAULT_61,
+  T_FAULT_62,
+  T_FAULT_63,
+  T_FAULT_64,
+  T_FAULT_65,
+  T_FAULT_66,
+  T_FAULT_67,
+  T_FAULT_68,
+  T_FAULT_69,
+  T_FAULT_70,
+  T_FAULT_71,
+  T_FAULT_72,
+  T_FAULT_73,
+  T_FAULT_74,
+  T_FAULT_75,
+  T_FAULT_76,
+  T_FAULT_77,
+  T_FAULT_78,
+  T_FAULT_79,
+  T_FAULT_80,
+  T_FAULT_81,
+  T_FAULT_82,
+  T_FAULT_83,
+  T_FAULT_84,
+  T_FAULT_85,
+  T_FAULT_86,
+  T_FAULT_87,
+  T_FAULT_88,
+  T_FAULT_89,
+  T_FAULT_90,
+  T_FAULT_91,
+  T_FAULT_92,
+  T_FAULT_93,
+  T_FAULT_94,
+  T_FAULT_95,
+  T_FAULT_96,
+  T_FAULT_97,
+  T_FAULT_98,
+  T_FAULT_99,
+  T_FAULT_100,
+  T_FAULT_101,
+  T_FAULT_102,
+  T_FAULT_103,
+  T_FAULT_104,
+  T_FAULT_105,
+  T_FAULT_106,
+  T_FAULT_107,
+  T_FAULT_108,
+  T_FAULT_109,
+  T_FAULT_110,
+  T_FAULT_111,
+  T_FAULT_112,
+  T_FAULT_113,
+  T_FAULT_114,
+  T_FAULT_115,
+  T_FAULT_116,
+  T_FAULT_117,
+  T_FAULT_118,
+  T_FAULT_119,
+  T_FAULT_120,
+  T_FAULT_121,
+  T_FAULT_122,
+  T_FAULT_123,
+  T_FAULT_124,
+  T_FAULT_125,
+  T_FAULT_126,
+  T_FAULT_127,
   T_COUNT
 };
+
+// Ab hier in der Reihenfolge des enum kommen die Anzeigetexte. Zwei Dinge
+// unterscheiden sie von den Web-Texten: sie enthalten einen Zeilenumbruch, wo
+// es einer noetig ist (die Fehlerliste bricht selbst um), und sie sind in
+// beiden Sprachen UTF-8, weil die Schrift auf dem Panel die Umlaute hat und
+// zeigt. tools/i18n_test benutzt diese Grenze, um beides zu pruefen.
+static constexpr int T_DISPLAY_FROM = (int)T_D_HEAD_OVERVIEW;
 
 // Defined once: LangDe.cpp without the flag, LangEn.cpp with it.
 extern const char *const kLang[T_COUNT];
@@ -187,6 +474,18 @@ inline char langDecPoint() {
   return '.';
 #else
   return ',';
+#endif
+}
+
+// How this language writes a date, as a strftime format. German puts the day
+// first (24.03.2026), English the ISO order (2026-03-24) - one format for both
+// would put the month where the year stands in the English one, so the format
+// follows the language.
+inline const char *langDateFmt() {
+#if defined(RCT_LANG_EN)
+  return "%Y-%m-%d";
+#else
+  return "%d.%m.%Y";
 #endif
 }
 

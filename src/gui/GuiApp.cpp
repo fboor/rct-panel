@@ -48,6 +48,7 @@
 #include "../Diag.h"
 #include "../display/Display.h"
 #include "../display/Touch.h"
+#include "../i18n/Lang.h"
 #include "../output/Relay.h"
 #include "../rct/RctTypes.h"
 #include "../storage/sdlog.h"
@@ -191,10 +192,12 @@ static const int ENERGY_PERIODS = 4; // Tag | Monat | Jahr | Gesamt
 // Portal palette (examples/RCT Portal _ ...-page2.html).
 static const uint32_t kEnergyColor[ENERGY_ROWS] = {0xEBD300, 0x12A40A, 0xF48756,
                                                    0xCA0C0F, 0x3CBCD4};
-static const char *const kEnergyName[ENERGY_ROWS] = {
-    "PV Erzeugung", "Eigenverbrauch", "Netzeinspeisung", "Netzbezug", "Verbrauch"};
-static const char *const kPeriodName[ENERGY_PERIODS] = {"Tag", "Monat", "Jahr",
-                                                         "Gesamt"};
+// The five energy rows and the four periods, as IDs: the wording comes from
+// src/i18n, so the names here cannot drift apart from the web page.
+static const LangId kEnergyId[ENERGY_ROWS] = {
+    T_D_EN_PV, T_D_EN_SELFUSE, T_D_EN_EXPORT, T_D_EN_IMPORT, T_D_EN_LOAD};
+static const LangId kPeriodId[ENERGY_PERIODS] = {
+    T_D_PER_DAY, T_D_PER_MONTH, T_D_PER_YEAR, T_D_PER_TOTAL};
 static lv_obj_t *s_ebarFill[ENERGY_ROWS] = {nullptr}; // bar fills, resized live
 static lv_obj_t *s_ebarBtn[ENERGY_PERIODS] = {nullptr};
 static int s_energyPeriod = 0; // selected period, 0 = Tag
@@ -252,8 +255,9 @@ static const uint32_t HIST_SEED_WINDOW_MS = 60000; // boot grace without a card
 // orange battery line next to it (0xF0A202).
 static const uint32_t kHistColor[HIST_SERIES] = {0xCA0C0F, 0xA45EE5, 0x3EC97A,
                                                  0x2E93E5, 0xF0A202, 0xFFEA00};
-static const char *const kHistName[HIST_SERIES] = {"Netz", "Verbrauch", "PV",
-                                                   "EXT", "Batterie", "SOC"};
+static const LangId kHistId[HIST_SERIES] = {
+    T_D_SER_GRID, T_D_SER_CONSUMPTION, T_D_SER_PV,
+    T_D_SER_EXT,  T_D_SER_BATTERY,      T_D_SER_SOC};
 static const int LEGEND_GAP = 24; // space between two legend entries
 // Chart frame on the Verlauf page. Shifts the chart right so a left gutter
 // stays free for the min/0/max scale markers of the power axis.
@@ -648,18 +652,18 @@ static void pageBuildOverview(AppPage *p) {
   // Status table (2x2): Erzeugung / Verbrauch / Netz / Batterie.
   struct {
     int x, y;
-    const char *name;
+    LangId id;
     int labelIdx;
   } cells[4] = {
-      {12, 284, "Erzeugung", OV_T_ERZ},
-      {248, 284, "Verbrauch", OV_T_VERB},
-      {12, 324, "Netz", OV_T_NETZ},
-      {248, 324, "Batterie", OV_T_BAT},
+      {12, 284, T_D_ROW_PRODUCTION, OV_T_ERZ},
+      {248, 284, T_D_ROW_CONSUMPTION, OV_T_VERB},
+      {12, 324, T_D_ROW_GRID, OV_T_NETZ},
+      {248, 324, T_D_ROW_BATTERY, OV_T_BAT},
   };
   for (int i = 0; i < 4; i++) {
     // Names muted, values white: the value is what the eye should land on.
     lv_obj_t *nm =
-        makeLabel(root, cells[i].name, &lv_font_montserrat_14_uml, COL_MUTED);
+        makeLabel(root, tr(cells[i].id), &lv_font_montserrat_14_uml, COL_MUTED);
     lv_obj_set_pos(nm, cells[i].x, cells[i].y);
     lv_obj_t *st = makeLabel(root, "--", &lv_font_montserrat_14_uml, FLOW_WHITE);
     lv_obj_set_pos(st, cells[i].x + 110, cells[i].y);
@@ -687,7 +691,7 @@ static void pageBuildEnergy(AppPage *p) {
     lv_obj_set_style_border_color(btn, COL_BORDER, 0);
     lv_obj_add_event_cb(btn, energyPeriodCb, LV_EVENT_CLICKED,
                         (void *)(intptr_t)i);
-    lv_obj_t *l = makeLabel(btn, kPeriodName[i], &lv_font_montserrat_14_uml,
+    lv_obj_t *l = makeLabel(btn, tr(kPeriodId[i]), &lv_font_montserrat_14_uml,
                             COL_MUTED);
     lv_obj_center(l);
     s_ebarBtn[i] = btn;
@@ -702,8 +706,8 @@ static void pageBuildEnergy(AppPage *p) {
 
     // Label white: the bar underneath already carries the series color, a
     // colored name on top of a colored bar was just noise.
-    lv_obj_t *name = makeLabel(root, kEnergyName[i], &lv_font_montserrat_16_uml,
-                               COL_TEXT);
+    lv_obj_t *name =
+        makeLabel(root, tr(kEnergyId[i]), &lv_font_montserrat_16_uml, COL_TEXT);
     lv_obj_set_pos(name, EB_BAR_X, y);
 
     p->labels[i] = makeLabel(root, "--", &lv_font_montserrat_16_uml, COL_TEXT);
@@ -743,22 +747,22 @@ static void pageBuildHeute(AppPage *p) {
 
   struct {
     int x, y, w, h;
-    const char *caption;
+    LangId caption;
     int valIdx, capIdx;
   } cards[] = {
-      {16, 36, 144, 96, "Erzeugt", EN_GEN_VAL, EN_GEN_LBL},
-      {164, 36, 144, 96, "Eigenverbrauch", EN_SELF_VAL, EN_SELF_LBL},
-      {312, 36, 144, 96, "Eingespeist", EN_FEED_VAL, EN_FEED_LBL},
+      {16, 36, 144, 96, T_D_CARD_PRODUCED, EN_GEN_VAL, EN_GEN_LBL},
+      {164, 36, 144, 96, T_D_CARD_SELFUSE, EN_SELF_VAL, EN_SELF_LBL},
+      {312, 36, 144, 96, T_D_CARD_FEDIN, EN_FEED_VAL, EN_FEED_LBL},
       // Lower rows: two cards with the same 4 px gap as the first row, so
       // 222 px wide starting at 16 and 242.
-      {16, 146, 222, 88, "Verbrauch", EN_VERB_VAL, EN_VERB_LBL},
-      {242, 146, 222, 88, "Bezug", EN_BEZU_VAL, EN_BEZU_LBL},
-      {16, 248, 222, 100, "Autarkie", EN_AUT_VAL, EN_AUT_LBL},
-      {242, 248, 222, 100, "Eigenverbrauch", EN_EVB_VAL, EN_EVB_LBL},
+      {16, 146, 222, 88, T_D_CARD_CONSUMED, EN_VERB_VAL, EN_VERB_LBL},
+      {242, 146, 222, 88, T_D_CARD_IMPORTED, EN_BEZU_VAL, EN_BEZU_LBL},
+      {16, 248, 222, 100, T_D_CARD_SELF, EN_AUT_VAL, EN_AUT_LBL},
+      {242, 248, 222, 100, T_D_CARD_SELFRATE, EN_EVB_VAL, EN_EVB_LBL},
   };
   for (unsigned i = 0; i < sizeof(cards) / sizeof(cards[0]); i++) {
     makeStatCard(root, cards[i].x, cards[i].y, cards[i].w, cards[i].h,
-                 cards[i].caption, &p->labels[cards[i].valIdx],
+                 tr(cards[i].caption), &p->labels[cards[i].valIdx],
                  &p->labels[cards[i].capIdx]);
   }
   p->labelCount = EN_LABEL_COUNT;
@@ -782,17 +786,18 @@ static void makeRow(AppPage *p, lv_obj_t *root, int i, const char *name,
 }
 
 static void pageBuildInfo(AppPage *p) {
-  static const char *const names[INF_LABEL_COUNT] = {
-      "Name:",     "Software:",  "RCT host:",  "RCT port:",  "Link:",
-      "Last data:", "Uptime:",   "Netz L1:",   "Netz L2:",   "Netz L3:",
-      "PV:",        "Kern:",     "Kühlkörper:", "Netzfrequenz:",
+  static const LangId names[INF_LABEL_COUNT] = {
+      T_D_IF_NAME,     T_D_IF_SOFTWARE, T_D_IF_HOST,   T_D_IF_PORT,
+      T_D_IF_LINK,     T_D_IF_LASTDATA, T_D_IF_UPTIME, T_D_IF_L1,
+      T_D_IF_L2,       T_D_IF_L3,       T_D_IF_PV,     T_D_IF_CORE,
+      T_D_IF_HEATSINK, T_D_IF_FREQ,
   };
   static const char *const values[INF_LABEL_COUNT] = {
       "--",     "--",     "--",     "--",     "--",     "-- s",   "-- s",
       "-- kW",  "-- kW",  "-- kW",  "-- kW",  "-- °C",  "-- °C",  "-- Hz",
   };
   for (int i = 0; i < INF_LABEL_COUNT; i++) {
-    makeRow(p, p->root, i, names[i], values[i]);
+    makeRow(p, p->root, i, tr(names[i]), values[i]);
   }
   p->labelCount = INF_LABEL_COUNT;
 }
@@ -801,16 +806,16 @@ static void pageBuildInfo(AppPage *p) {
 // / cycles / SOH / island mode - everything battery-specific, moved here from
 // the old "Gerät" page. Same two-column row layout as the Info page.
 static void pageBuildDevice(AppPage *p) {
-  static const char *const names[DEV_LABEL_COUNT] = {
-      "Batterie-SOC:", "Batterie:",     "Batterie-Temp:", "Kalibrierung:",
-      "Zyklen:",       "SOH:",          "Inselbetrieb:",
+  static const LangId names[DEV_LABEL_COUNT] = {
+      T_D_BA_SOC,   T_D_BA_POWER, T_D_BA_TEMP, T_D_BA_CALIB,
+      T_D_BA_CYCLES, T_D_BA_SOH, T_D_BA_ISLAND,
   };
   static const char *const values[DEV_LABEL_COUNT] = {
       "-- %", "--", "-- °C", "--",
       "--", "-- %", "--",
   };
   for (int i = 0; i < DEV_LABEL_COUNT; i++) {
-    makeRow(p, p->root, i, names[i], values[i]);
+    makeRow(p, p->root, i, tr(names[i]), values[i]);
   }
   p->labelCount = DEV_LABEL_COUNT;
 }
@@ -819,140 +824,6 @@ static void pageBuildDevice(AppPage *p) {
 // Service page: decoded battery status, a "back to provisioning" button and
 // the decoded inverter faults.
 // ---------------------------------------------------------------------------
-
-// Fault descriptions from rctclient "Faults": index = bit number in
-// fault[0..3].flt (bit n -> "F<n>"). German; kept as a plain table so the
-// texts are easy to review / translate later.
-static const char *const kFaultDe[128] = {
-    "TRAP ausgelöst",                                            //   0
-    "RTC nicht konfigurierbar",                                  //   1
-    "RTC-1-Hz-Signal-Timeout",                                   //   2
-    "Hardware-Stopp durch 3,3-V-Fehler",                         //   3
-    "Hardware-Stopp durch PWM-Logik",                            //   4
-    "Hardware-Stopp durch Uzk-Überspannung",                     //   5
-    "Uzk+ über Grenzwert",                                       //   6
-    "Uzk- über Grenzwert",                                       //   7
-    "Überstrom Drossel Phase L1",                                //   8
-    "Überstrom Drossel Phase L2",                                //   9
-    "Überstrom Drossel Phase L3",                                //  10
-    "Pufferkondensator-Spannung",                                //  11
-    "Quarzfehler",                                               //  12
-    "Netzunterspannung Phase 1",                                 //  13
-    "Netzunterspannung Phase 2",                                 //  14
-    "Netzunterspannung Phase 3",                                 //  15
-    "Batterieüberstrom",                                         //  16
-    "Relais-Test fehlgeschlagen",                                //  17
-    "Platinen-Übertemperatur",                                   //  18
-    "Kern-Übertemperatur",                                       //  19
-    "Übertemperatur Kühlkörper 1",                               //  20
-    "Übertemperatur Kühlkörper 2",                               //  21
-    "I2C-Fehler mit Power-Board",                                //  22
-    "Power-Board-Fehler",                                        //  23
-    "PWM-Ausgänge defekt",                                       //  24
-    "Isolation zu gering oder unplausibel",                      //  25
-    "I-Gleichanteil max (1 A)",                                  //  26
-    "I-Gleichanteil max langsam (47 mA)",                        //  27
-    "Möglicher Defekt DSD-Kanal (Offset zu groß)",               //  28
-    "RS485-Fehler Relaisbox",                                    //  29
-    "Überspannung zwischen Phasen",                              //  30
-    "IGBT L1 BH defekt",                                         //  31
-    "IGBT L1 BL defekt",                                         //  32
-    "IGBT L2 BH defekt",                                         //  33
-    "IGBT L2 BL defekt",                                         //  34
-    "IGBT L3 BH defekt",                                         //  35
-    "IGBT L3 BL defekt",                                         //  36
-    "Langzeit-Überspannung Phase 1",                             //  37
-    "Langzeit-Überspannung Phase 2",                             //  38
-    "Langzeit-Überspannung Phase 3",                             //  39
-    "Überspannung Phase 1, Stufe 1",                             //  40
-    "Überspannung Phase 1, Stufe 2",                             //  41
-    "Überspannung Phase 2, Stufe 1",                             //  42
-    "Überspannung Phase 2, Stufe 2",                             //  43
-    "Überspannung Phase 3, Stufe 1",                             //  44
-    "Überspannung Phase 3, Stufe 2",                             //  45
-    "Überfrequenz, Stufe 1",                                     //  46
-    "Überfrequenz, Stufe 2",                                     //  47
-    "Unterspannung Phase 1, Stufe 1",                            //  48
-    "Unterspannung Phase 1, Stufe 2",                            //  49
-    "Unterspannung Phase 2, Stufe 1",                            //  50
-    "Unterspannung Phase 2, Stufe 2",                            //  51
-    "Unterspannung Phase 3, Stufe 1",                            //  52
-    "Unterspannung Phase 3, Stufe 2",                            //  53
-    "Unterfrequenz, Stufe 1",                                    //  54
-    "Unterfrequenz, Stufe 2",                                    //  55
-    "CPU-Ausnahme NMI",                                          //  56
-    "CPU-Ausnahme HardFault",                                    //  57
-    "CPU-Ausnahme MemManage",                                    //  58
-    "CPU-Ausnahme BusFault",                                     //  59
-    "CPU-Ausnahme UsageFault",                                   //  60
-    "RTC Power-on-Reset",                                        //  61
-    "RTC-Oszillator gestoppt",                                   //  62
-    "RTC-Versorgungsspannung eingebrochen",                      //  63
-    "RCD-Sprung DC + AC > 30 mA",                                //  64
-    "RCD-Sprung DC > 60 mA",                                     //  65
-    "RCD-Sprung AC > 150 mA",                                    //  66
-    "RCD-Strom > 300 mA",                                        //  67
-    "+5 V fehlerhaft",                                           //  68
-    "-9 V fehlerhaft",                                           //  69
-    "+9 V fehlerhaft",                                           //  70
-    "+3,3 V fehlerhaft",                                         //  71
-    "RDC-Kalibrierung fehlgeschlagen",                           //  72
-    "I2C-Fehler",                                                //  73
-    "AFI-Frequenzgenerator-Fehler",                              //  74
-    "Kühlkörpertemperatur zu hoch",                              //  75
-    "Uzk über Grenzwert",                                        //  76
-    "Usg A über Grenzwert",                                      //  77
-    "Usg B über Grenzwert",                                      //  78
-    "Einschaltbedingung Umin Phase 1",                           //  79
-    "Einschaltbedingung Umax Phase 1",                           //  80
-    "Einschaltbedingung Fmin Phase 1",                           //  81
-    "Einschaltbedingung Fmax Phase 1",                           //  82
-    "Einschaltbedingung Umin Phase 2",                           //  83
-    "Einschaltbedingung Umax Phase 2",                           //  84
-    "Batteriestromsensor defekt",                                //  85
-    "Batterie-Booster defekt",                                   //  86
-    "Einschaltbedingung Umin Phase 3",                           //  87
-    "Einschaltbedingung Umax Phase 3",                           //  88
-    "Spannungssprung/Offset an AC-Klemmen zu groß (Phasenausfall)", // 89
-    "Wechselrichter vom Hausnetz getrennt",                      //  90
-    "+9-V-Differenz DSP/PIC zu groß",                            //  91
-    "1,5-V-Fehler",                                              //  92
-    "2,5-V-Fehler",                                              //  93
-    "1,5-V-Messdifferenz",                                       //  94
-    "2,5-V-Messdifferenz",                                       //  95
-    "Batteriespannung außerhalb des erwarteten Bereichs",        //  96
-    "PIC-Software nicht startbar",                               //  97
-    "PIC-Bootloader unerwartet erkannt",                         //  98
-    "Phasenlagefehler (nicht 120°)",                             //  99
-    "Batterieüberspannung",                                      // 100
-    "Drosselstrom instabil",                                     // 101
-    "Netzspannungsdifferenz intern/extern zu groß Phase 1",      // 102
-    "Netzspannungsdifferenz intern/extern zu groß Phase 2",      // 103
-    "Netzspannungsdifferenz intern/extern zu groß Phase 3",      // 104
-    "Externer Not-Aus aktiv",                                    // 105
-    "Batterie leer: keine Energie für Standby",                  // 106
-    "CAN-Timeout mit Batterie",                                  // 107
-    "Timing-Problem",                                            // 108
-    "Übertemperatur Kühlkörper Batterie-IGBT",                   // 109
-    "Batterie-Kühlkörpertemperatur zu hoch",                     // 110
-    "Interner Relaisbox-Fehler",                                 // 111
-    "Relaisbox PE-Aus-Fehler",                                   // 112
-    "Relaisbox PE-Ein-Fehler",                                   // 113
-    "Interner Batteriefehler",                                   // 114
-    "Parameter geändert",                                        // 115
-    "3 Inselbildungsversuche fehlgeschlagen",                    // 116
-    "Unterspannung zwischen Phasen",                             // 117
-    "System-Reset erkannt",                                      // 118
-    "Update erkannt",                                            // 119
-    "FRT-Überspannung",                                          // 120
-    "FRT-Unterspannung",                                         // 121
-    "IGBT-L1-Freilaufdiode defekt",                              // 122
-    "IGBT-L2-Freilaufdiode defekt",                              // 123
-    "IGBT-L3-Freilaufdiode defekt",                              // 124
-    "Einphasenmodus aktiv, für Geräteklasse nicht erlaubt",      // 125
-    "Inselbetrieb erkannt",                                      // 126
-    "Neutralleiterfehler",                                       // 127
-};
 
 // battery.bat_status (OID 0x70A2AF4F) decode.
 //
@@ -977,27 +848,27 @@ static void serviceBatteryDecode(uint32_t v, float batPower, char *out,
   char state[40] = "";
   bool namesPhase = false; // Zustand nennt die Lade-/Entladerichtung selbst
   if (v == 0) {
-    strlcpy(state, "Bereit", sizeof(state));
+    strlcpy(state, tr(T_D_ST_READY), sizeof(state));
   } else if (v & (1u << 3)) {
-    strlcpy(state, "Kalibrierung (Ladephase)", sizeof(state));
+    strlcpy(state, tr(T_D_ST_CALCHARGE), sizeof(state));
     namesPhase = true;
   } else if (v & (1u << 10)) {
-    strlcpy(state, "Kalibrierung (Entladephase)", sizeof(state));
+    strlcpy(state, tr(T_D_ST_CALDISCHARGE), sizeof(state));
     namesPhase = true;
   } else if (v & (1u << 11)) {
-    strlcpy(state, "Balancing", sizeof(state));
+    strlcpy(state, tr(T_D_ST_BALANCING), sizeof(state));
   } else if (v & (1u << 9)) {
-    strlcpy(state, "Unterspannung", sizeof(state));
+    strlcpy(state, tr(T_D_ST_UNDERVOLT), sizeof(state));
   } else if (v & 1u) {
-    strlcpy(state, "Getrennt", sizeof(state));
+    strlcpy(state, tr(T_D_ST_OFF), sizeof(state));
   } else {
     // Unbekannte Bits: nicht raten, der Rohwert steht darunter.
-    snprintf(state, sizeof(state), "Status %lu", (unsigned long)v);
+    snprintf(state, sizeof(state), tr(T_D_ST_RAW), (unsigned long)v);
   }
   // Zusatz, der unabhaengig vom Register gilt. Mehrere Zustaende koennen
   // gleichzeitig gesetzt sein, deshalb werden sie verknuepft statt als else-if.
   if (v & (1u << 11) && !(v & ((1u << 3) | (1u << 10)))) {
-    strncat(state, " + Balancing", sizeof(state) - strlen(state) - 1);
+    strncat(state, tr(T_D_ST_BALPLUS), sizeof(state) - strlen(state) - 1);
   }
   // Lade-/Entladerichtung aus der Leistung. Entfaellt, wenn der Zustand sie
   // bereits nennt - "Kalibrierung (Entladephase) (entlaedt)" waere doppelt.
@@ -1005,14 +876,20 @@ static void serviceBatteryDecode(uint32_t v, float batPower, char *out,
   // the other way round than one would guess from the register name.
   if (!namesPhase) {
     if (batPower > 50.0f) {
-      strncat(state, "  (entlaedt)", sizeof(state) - strlen(state) - 1);
+      strncat(state, tr(T_D_ST_DISCHARGING), sizeof(state) - strlen(state) - 1);
     } else if (batPower < -50.0f) {
-      strncat(state, "  (laedt)", sizeof(state) - strlen(state) - 1);
+      strncat(state, tr(T_D_ST_CHARGING), sizeof(state) - strlen(state) - 1);
     }
   }
   strlcpy(out, state, n);
 }
 
+// Fault descriptions from rctclient "Faults": the index is the bit number in
+// fault[0..3].flt (bit n -> "F<n>"). The 128 texts live in src/i18n, one per
+// bit, as T_FAULT_0 + n - so the wording is a table entry like every other text
+// on the display, and the German build shows exactly what the list has always
+// shown.
+//
 // Active faults -> "F<n> <description>" lines, capped so the list stays inside
 // the text area reserved for it; surplus faults are summarized. Returns the
 // total number of active faults (0 = none).
@@ -1033,11 +910,12 @@ static int serviceFaultText(const uint32_t *bits, char *out, size_t n) {
   int shown = 0;
   for (int bit = 0; bit < 128; bit++) {
     if (bits[bit / 32] & (1u << (bit % 32))) {
+      const char *fault = tr((LangId)(T_FAULT_0 + bit));
       count++;
-      if (used + 4 + strlen(kFaultDe[bit]) > budget) {
+      if (used + 4 + strlen(fault) > budget) {
         continue; // would push the list into the heading below
       }
-      int w = snprintf(out + used, n - used, "F%d %s\n", bit, kFaultDe[bit]);
+      int w = snprintf(out + used, n - used, tr(T_D_FAULT_LINE), bit, fault);
       if (w <= 0 || (size_t)w >= n - used) {
         break;
       }
@@ -1049,7 +927,7 @@ static int serviceFaultText(const uint32_t *bits, char *out, size_t n) {
     if (used > 0) {
       used--; // drop the trailing newline ...
     }
-    snprintf(out + used, n - used, " ... und %d weitere", count - shown);
+    snprintf(out + used, n - used, tr(T_D_MORE_FAULTS), count - shown);
   }
   return count;
 }
@@ -1071,7 +949,7 @@ static void webCodeNewCb(lv_event_t *e) {
   if (!webRunning()) {
     return;
   }
-  setText(chip, "Code: %s", webNewCode());
+  setText(chip, tr(T_D_CODE), webNewCode());
 }
 
 // Tap on the output's function: the next one in the list. Stored immediately,
@@ -1104,7 +982,8 @@ static void relayTestCb(lv_event_t *e) {
 static void relayModeText(char *out, size_t n) {
   const RelayMode m = relayMode();
   if (m == RelayMode::GridDraw || m == RelayMode::PvSurplus) {
-    snprintf(out, n, "%s > %d W", relayModeName(m), relayThreshold());
+    snprintf(out, n, tr(T_D_OUT_THRESHOLD), relayModeName(m),
+             relayThreshold());
   } else {
     snprintf(out, n, "%s", relayModeName(m));
   }
@@ -1123,20 +1002,24 @@ static void serviceRelayState() {
     return;
   }
   const RelayMode m = relayMode();
+  // "AN" / "AUS" in beiden Zeilen darunter: der Test und die Funktion zeigen
+  // fuer denselben Zustand immer dasselbe Wort.
+  const char *on = tr(T_D_OUT_ON);
+  const char *off = tr(T_D_OUT_OFF);
   if (relayTestRunning()) {
     // While the test runs, what it is doing is the point: "AN" and "AUS" every
     // 5 s, not the mode it is temporarily overriding.
-    setText(st, "Test: %s", relayIsOn() ? "AN" : "AUS");
+    setText(st, tr(T_D_OUT_TEST), relayIsOn() ? on : off);
     lv_obj_set_style_text_color(st, relayIsOn() ? COL_OK : COL_MUTED, 0);
     return;
   }
   if (m == RelayMode::Off) {
-    setText(st, "nichts geschaltet");
+    setText(st, "%s", tr(T_D_OUT_NOTHING));
   } else if (m == RelayMode::GridDraw || m == RelayMode::PvSurplus) {
-    setText(st, "%s · %d W jetzt", relayIsOn() ? "AN" : "AUS",
+    setText(st, tr(T_D_OUT_NOW), relayIsOn() ? on : off,
             (int)lroundf(relayTriggerValue()));
   } else {
-    setText(st, "%s · %s", relayIsOn() ? "AN" : "AUS", relayModeName(m));
+    setText(st, tr(T_D_OUT_MODE), relayIsOn() ? on : off, relayModeName(m));
   }
   lv_obj_set_style_text_color(st, relayIsOn() ? COL_OK : COL_MUTED, 0);
 }
@@ -1201,7 +1084,7 @@ static void takeShotNow() {
     if (s_shotBuf == nullptr) {
       Serial.printf("Screenshot: %lu B nicht freier\n", (unsigned long)need);
       lv_label_set_text(s_pages[PAGE_SERVICE].labels[SV_SHOT],
-                        "kein Speicher");
+                        tr(T_D_SHOT_NOMEM));
       return;
     }
   }
@@ -1222,7 +1105,8 @@ static void takeShotNow() {
                        0, s_shotBuf, (uint32_t)need) != LV_RESULT_OK) {
     Serial.printf("Screenshot: draw_buf %dx%d, %lu B abgelehnt\n", w, h,
                   (unsigned long)need);
-    lv_label_set_text(s_pages[PAGE_SERVICE].labels[SV_SHOT], "fehlgeschlagen");
+    lv_label_set_text(s_pages[PAGE_SERVICE].labels[SV_SHOT],
+                      tr(T_D_SHOT_FAILED));
     return;
   }
   lv_result_t rc =
@@ -1236,7 +1120,8 @@ static void takeShotNow() {
                   "Puffer %dx%d\n",
                   (int)rc, (int)lv_obj_get_width(lv_screen_active()),
                   (int)lv_obj_get_height(lv_screen_active()), w, h);
-    lv_label_set_text(s_pages[PAGE_SERVICE].labels[SV_SHOT], "fehlgeschlagen");
+    lv_label_set_text(s_pages[PAGE_SERVICE].labels[SV_SHOT],
+                      tr(T_D_SHOT_FAILED));
     return;
   }
   const size_t px = (size_t)w * (size_t)h;
@@ -1247,7 +1132,8 @@ static void takeShotNow() {
   Serial.printf("Screenshot: %dx%d, %lu B an den SD-Worker\n", w, h,
                 (unsigned long)(px * sizeof(uint16_t)));
   sdScreenshot(s_shotBuf, w, h);
-  lv_label_set_text(s_pages[PAGE_SERVICE].labels[SV_SHOT], "wird geschrieben");
+  lv_label_set_text(s_pages[PAGE_SERVICE].labels[SV_SHOT],
+                    tr(T_D_SHOT_WRITING));
 }
 
 static void shotTimerCb(lv_timer_t *t) {
@@ -1262,15 +1148,15 @@ static void shotCb(lv_event_t *e) {
   if (s_shotDueMs != 0 || s_shotBuf != nullptr) {
     // A countdown is running, or the card worker still has the buffer from the
     // previous shot. A second capture would hand it memory it is finished with.
-    setText(sp.labels[SV_SHOT], "Aufnahme laeuft bereits");
+    setText(sp.labels[SV_SHOT], "%s", tr(T_D_SHOT_BUSY));
     return;
   }
   if (!sdMounted()) {
-    setText(sp.labels[SV_SHOT], "keine SD-Karte");
+    setText(sp.labels[SV_SHOT], "%s", tr(T_D_SHOT_NOCARD));
     return;
   }
   s_shotDueMs = millis() + SHOT_DELAY_MS;
-  setText(sp.labels[SV_SHOT], "Aufnahme in %d s ...", SHOT_DELAY_MS / 1000);
+  setText(sp.labels[SV_SHOT], tr(T_D_SHOT_COUNT), SHOT_DELAY_MS / 1000);
   // One-shot: LVGL itself deletes the timer once its repeat count reaches 0, so
   // there is no handle to keep and nothing to free here.
   lv_timer_t *timer = lv_timer_create(shotTimerCb, SHOT_DELAY_MS, nullptr);
@@ -1294,7 +1180,7 @@ bool guiRequestShot() {
   }
   if (!sdMounted()) {
     if (sp.labels[SV_SHOT] != nullptr) {
-      setText(sp.labels[SV_SHOT], "keine SD-Karte");
+      setText(sp.labels[SV_SHOT], "%s", tr(T_D_SHOT_NOCARD));
     }
     return false;
   }
@@ -1328,13 +1214,18 @@ static void pageBuildService(AppPage *p) {
   lv_obj_set_style_pad_hor(btn, 8, 0);
   lv_obj_add_event_cb(btn, serviceSetupCb, LV_EVENT_CLICKED, nullptr);
   lv_obj_t *bl = lv_label_create(btn);
-  lv_label_set_text(bl, LV_SYMBOL_WIFI " Setup starten");
+  // Symbol plus Text. Das Symbol ist ein Zeichen der Schrift und kein Wort, es
+  // kann also nicht Teil des Tabelleneintrags sein - es wird hier vorgesetzt.
+  // LVGL kopiert den Text in das Label, der Puffer darf ein lokaler sein.
+  char blBuf[48];
+  snprintf(blBuf, sizeof(blBuf), LV_SYMBOL_WIFI "%s", tr(T_D_BTN_SETUP));
+  lv_label_set_text(bl, blBuf);
   lv_obj_set_style_text_font(bl, &lv_font_montserrat_16_uml, 0);
   lv_obj_set_style_text_color(bl, FLOW_WHITE, 0);
   lv_obj_center(bl);
 
   // --- Battery status (decoded from battery.bat_status) ---
-  sectionHead("Batterie-Status", 36);
+  sectionHead(tr(T_D_SV_HEAD_BAT), 36);
   // Value deliberately one step smaller than the section title, so the decoded
   // state reads as data under a heading rather than competing with it. The raw
   // register value rides along in brackets ("Unterspannung (0x00000200)"):
@@ -1358,14 +1249,14 @@ static void pageBuildService(AppPage *p) {
   // runs over five, and next to each other they read as one field with two
   // headings. This order also puts the two things most often looked at ("is the
   // card working", "is something wrong") above the detail.
-  (void)sectionHead("SD-Log", 116);
+  (void)sectionHead(tr(T_D_SV_HEAD_SD), 116);
   p->labels[SV_SD] =
       makeLabel(root, sdStatusText(), &lv_font_montserrat_16_uml, COL_TEXT);
   lv_obj_set_pos(p->labels[SV_SD], 20, 138);
   lv_obj_set_width(p->labels[SV_SD], 440);
 
   // --- Faults (decoded, multi-line; several can be active at once) ---
-  sectionHead("Störungen", 184);
+  sectionHead(tr(T_D_SV_HEAD_FAULTS), 184);
   p->labels[SV_FLT_LIST] =
       makeLabel(root, "--", &lv_font_montserrat_14_uml, COL_TEXT);
   lv_obj_set_pos(p->labels[SV_FLT_LIST], 20, 208);
@@ -1400,7 +1291,9 @@ static void pageBuildService(AppPage *p) {
   lv_obj_t *sl = lv_label_create(shot);
   // LVGL 9's symbol set has no camera; IMAGE reads closer to "capture" here
   // than SAVE, which suggests the file rather than taking it.
-  lv_label_set_text(sl, LV_SYMBOL_IMAGE " Screenshot");
+  char slBuf[48];
+  snprintf(slBuf, sizeof(slBuf), LV_SYMBOL_IMAGE "%s", tr(T_D_BTN_SHOT));
+  lv_label_set_text(sl, slBuf);
   lv_obj_set_style_text_font(sl, &lv_font_montserrat_16_uml, 0);
   lv_obj_set_style_text_color(sl, FLOW_WHITE, 0);
   lv_obj_center(sl);
@@ -1431,9 +1324,9 @@ static void pageBuildService(AppPage *p) {
   // white, so the code was there and could not be read. The pressed colour is
   // there for the same reason: a tap that changes nothing visible reads as a
   // field that does not work.
-  (void)sectionHead("Web-Oberfläche", 118, 300);
-  p->labels[SV_CODE] = makeLabel(root, "Code: ----", &lv_font_montserrat_14_uml,
-                                 COL_TEXT);
+  (void)sectionHead(tr(T_D_SV_HEAD_WEB), 118, 300);
+  p->labels[SV_CODE] = makeLabel(root, tr(T_D_CODE_EMPTY),
+                                 &lv_font_montserrat_14_uml, COL_TEXT);
   lv_obj_set_pos(p->labels[SV_CODE], 300, 140);
   lv_obj_set_width(p->labels[SV_CODE], 160);
   lv_obj_set_style_text_align(p->labels[SV_CODE], LV_TEXT_ALIGN_CENTER, 0);
@@ -1447,8 +1340,8 @@ static void pageBuildService(AppPage *p) {
   lv_obj_add_flag(p->labels[SV_CODE], LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(p->labels[SV_CODE], webCodeNewCb, LV_EVENT_CLICKED,
                       nullptr);
-  lv_obj_t *hint = makeLabel(root, "antippen = neu", &lv_font_montserrat_14_uml,
-                             COL_MUTED);
+  lv_obj_t *hint = makeLabel(root, tr(T_D_CODE_HINT),
+                             &lv_font_montserrat_14_uml, COL_MUTED);
   lv_obj_set_pos(hint, 300, 172);
 
   // --- Switched output ("Ausgang") ---
@@ -1462,9 +1355,11 @@ static void pageBuildService(AppPage *p) {
   // row that runs down into the navigation bar. Function and threshold share one
   // tappable row for the same reason they sit side by side on the web page:
   // the threshold belongs to the function.
-  (void)sectionHead("Ausgang", 204, 300);
-  p->labels[SV_RELAY] = makeLabel(root, "Aus", &lv_font_montserrat_14_uml,
-                                   COL_TEXT);
+  (void)sectionHead(tr(T_D_SV_HEAD_OUTPUT), 204, 300);
+  // "Aus" ist nur, was die Zeile vor dem ersten Durchlauf zeigt, in dem die
+  // gespeicherte Funktion gelesen wurde; danach traegt sie die Funktion selbst.
+  p->labels[SV_RELAY] = makeLabel(root, relayModeName(RelayMode::Off),
+                                   &lv_font_montserrat_14_uml, COL_TEXT);
   lv_obj_set_pos(p->labels[SV_RELAY], 300, 226);
   lv_obj_set_width(p->labels[SV_RELAY], 160);
   lv_obj_set_style_text_align(p->labels[SV_RELAY], LV_TEXT_ALIGN_CENTER, 0);
@@ -1501,7 +1396,7 @@ static void pageBuildService(AppPage *p) {
   lv_obj_set_style_pad_hor(test, 8, 0);
   lv_obj_add_event_cb(test, relayTestCb, LV_EVENT_CLICKED, nullptr);
   lv_obj_t *tl = lv_label_create(test);
-  lv_label_set_text(tl, "Test: 5 s an, 5 s aus");
+  lv_label_set_text(tl, tr(T_D_BTN_TEST));
   lv_obj_set_style_text_font(tl, &lv_font_montserrat_14_uml, 0);
   lv_obj_set_style_text_color(tl, FLOW_WHITE, 0);
   lv_obj_center(tl);
@@ -1615,7 +1510,7 @@ static void pageBuildGraph(AppPage *p) {
     lv_obj_set_style_border_width(dot, 0, 0);
     lv_obj_set_style_shadow_width(dot, 0, 0);
     lv_obj_t *nm =
-        makeLabel(root, kHistName[i], &lv_font_montserrat_14_uml, COL_TEXT);
+        makeLabel(root, tr(kHistId[i]), &lv_font_montserrat_14_uml, COL_TEXT);
     lv_obj_set_pos(nm, lx + 14, 29);
     lv_obj_update_layout(nm);
     lx += 14 + lv_obj_get_width(nm) + LEGEND_GAP;
@@ -1749,7 +1644,7 @@ static void buildApOverlay() {
   lv_obj_set_style_pad_row(s_apOverlay, 12, 0);
 
   lv_obj_t *title = lv_label_create(s_apOverlay);
-  lv_label_set_text(title, "Setup: WLAN konfigurieren");
+  lv_label_set_text(title, tr(T_D_AP_TITLE));
   lv_obj_set_style_text_font(title, &lv_font_montserrat_20_uml, 0);
   lv_obj_set_style_text_color(title, COL_TEXT, 0);
 
@@ -1765,9 +1660,7 @@ static void buildApOverlay() {
   lv_obj_set_style_text_color(s_apSsid, FLOW_WHITE, 0);
 
   lv_obj_t *hint = lv_label_create(s_apOverlay);
-  lv_label_set_text(hint,
-                    "Mit dem Netzwerk verbinden und im Browser\n"
-                    "http://192.168.4.1 öffnen");
+  lv_label_set_text(hint, tr(T_D_AP_HINT));
   lv_obj_set_style_text_font(hint, &lv_font_montserrat_14_uml, 0);
   lv_obj_set_style_text_color(hint, COL_MUTED, 0);
   lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, 0);
@@ -1831,16 +1724,16 @@ static void refreshCb(lv_timer_t *t) {
   const char *badge;
   lv_color_t badgeCol;
   if (networkConnecting()) {
-    badge = "connecting";
+    badge = tr(T_D_BADGE_CONNECTING);
     badgeCol = COL_WARN;
   } else if (!s.haveData) {
-    badge = "no data"; // link is up, but no RCT frame arrives
+    badge = tr(T_D_BADGE_NODATA); // link is up, but no RCT frame arrives
     badgeCol = COL_ERR;
   } else if (s.connected) {
-    badge = "live";
+    badge = tr(T_D_BADGE_LIVE);
     badgeCol = COL_OK;
   } else {
-    badge = "reconnect"; // data was there, then the stream stopped
+    badge = tr(T_D_BADGE_RECONNECT); // data was there, then the stream stopped
     badgeCol = COL_WARN;
   }
   lv_label_set_text(s_statusLabel, badge);
@@ -1987,34 +1880,36 @@ static void refreshCb(lv_timer_t *t) {
       bool batFlowing = fabsf(pBat) >= batActive;
 
       if (pvTotal >= pvActive) {
-        setText(ov.labels[OV_T_ERZ], "Produzierend");
+        setText(ov.labels[OV_T_ERZ], "%s", tr(T_D_TEND_PRODUCING));
       } else {
-        setText(ov.labels[OV_T_ERZ], "Keine");
+        setText(ov.labels[OV_T_ERZ], "%s", tr(T_D_TEND_NONE));
       }
 
       // Verbrauch says where the household power comes from: "Netzstrom" as
       // soon as the grid is importing, otherwise the house runs on its own
       // (PV and/or battery), which is what "Unabhängig" names.
       if (gridImport && fabsf(pTot) >= gridActive) {
-        setText(ov.labels[OV_T_VERB], "Netzstrom");
+        setText(ov.labels[OV_T_VERB], "%s", tr(T_D_TEND_MAINS));
       } else {
-        setText(ov.labels[OV_T_VERB], "Unabhängig");
+        setText(ov.labels[OV_T_VERB], "%s", tr(T_D_TEND_SELF));
       }
 
       if (gridFlowing) {
-        setText(ov.labels[OV_T_NETZ], gridImport ? "Bezug" : "Einspeisung");
+        setText(ov.labels[OV_T_NETZ], "%s",
+                tr(gridImport ? T_D_TEND_IMPORT : T_D_TEND_EXPORT));
       } else {
-        setText(ov.labels[OV_T_NETZ], "Unabhängig");
+        setText(ov.labels[OV_T_NETZ], "%s", tr(T_D_TEND_SELF));
       }
 
       if (s.haveBattery) {
         if (batFlowing) {
-          setText(ov.labels[OV_T_BAT], pBat > 0 ? "Entladen" : "Laden");
+          setText(ov.labels[OV_T_BAT], "%s",
+                  tr(pBat > 0 ? T_D_TEND_DISCHARGE : T_D_TEND_CHARGE));
         } else {
-          setText(ov.labels[OV_T_BAT], "Standby");
+          setText(ov.labels[OV_T_BAT], "%s", tr(T_D_TEND_STANDBY));
         }
       } else {
-        setText(ov.labels[OV_T_BAT], "keine Batterie");
+        setText(ov.labels[OV_T_BAT], "%s", tr(T_D_TEND_NOBAT));
       }
     } else {
       setText(ov.labels[OV_T_ERZ], dash);
@@ -2120,8 +2015,8 @@ static void refreshCb(lv_timer_t *t) {
     setText(inf.labels[INF_HOST], "%s", rct_host);
     setText(inf.labels[INF_PORT], "%s", rct_port);
     setText(inf.labels[INF_LINK], "%s",
-            s.connected ? "connected" : "offline");
-    setText(inf.labels[INF_LAST], "%lu s ago",
+            s.connected ? tr(T_D_LINK_UP) : tr(T_D_LINK_DOWN));
+    setText(inf.labels[INF_LAST], tr(T_D_LASTDATA_AGO),
             s.lastUpdateMs ? (millis() - s.lastUpdateMs) / 1000 : 0UL);
     setText(inf.labels[INF_UPTIME], "%lu s", millis() / 1000);
     setNum(inf.labels[INF_L1], "%.3f kW", s.gridPower[0] / 1000.0f);
@@ -2150,21 +2045,25 @@ static void refreshCb(lv_timer_t *t) {
 
       // Next calibration: the inverter reports a Unix timestamp; turn it
       // into a date plus a day countdown once SNTP has a valid wall clock.
+      // The date is written the way this language writes dates
+      // (langDateFmt): 24.03.2026 in the German build, 2026-03-24 in the
+      // English one - one format for both would put the month where the year
+      // stands in English.
       if (s.nextCalibTs) {
         const time_t calib = (time_t)s.nextCalibTs;
         struct tm tmv;
         localtime_r(&calib, &tmv);
         char date[16];
-        strftime(date, sizeof(date), "%d.%m.%Y", &tmv);
+        strftime(date, sizeof(date), langDateFmt(), &tmv);
         const time_t nowT = time(nullptr);
         if (nowT > 1000000000) { // synced (epoch after 2001-09-09)
           const long days = (long)((calib - nowT) / 86400);
           if (days < 0) {
-            setText(dev.labels[DEV_CALIB], "%s (überfällig)", date);
+            setText(dev.labels[DEV_CALIB], tr(T_D_CALIB_OVERDUE), date);
           } else if (days == 0) {
-            setText(dev.labels[DEV_CALIB], "%s (heute)", date);
+            setText(dev.labels[DEV_CALIB], tr(T_D_CALIB_TODAY), date);
           } else {
-            setText(dev.labels[DEV_CALIB], "%s (in %ld Tagen)", date, days);
+            setText(dev.labels[DEV_CALIB], tr(T_D_CALIB_DAYS), date, days);
           }
         } else {
           setText(dev.labels[DEV_CALIB], "%s", date);
@@ -2176,7 +2075,7 @@ static void refreshCb(lv_timer_t *t) {
       setNum(dev.labels[DEV_CYCLES], "%.0f", s.batteryCycles);
       setNum(dev.labels[DEV_SOH], "%.1f %%", s.batterySoh);
       setText(dev.labels[DEV_ISLAND], "%s",
-              s.islandKnown ? (s.islandMode ? "ja" : "nein") : "--");
+              s.islandKnown ? tr(s.islandMode ? T_D_YES : T_D_NO) : "--");
     }
   }
 
@@ -2184,7 +2083,7 @@ static void refreshCb(lv_timer_t *t) {
   AppPage &sv = s_pages[PAGE_SERVICE];
   if (sv.labels[SV_BAT_STATUS]) {
     if (!s.haveBattery) {
-      lv_label_set_text(sv.labels[SV_BAT_STATUS], "keine Batterie");
+      lv_label_set_text(sv.labels[SV_BAT_STATUS], tr(T_D_TEND_NOBAT));
     } else if (!s.haveData) {
       lv_label_set_text(sv.labels[SV_BAT_STATUS], "--");
     } else {
@@ -2204,7 +2103,7 @@ static void refreshCb(lv_timer_t *t) {
       char tmp[512];
       int nFlt = serviceFaultText(s.faultBits, tmp, sizeof(tmp));
       lv_label_set_text(sv.labels[SV_FLT_LIST],
-                        nFlt > 0 ? tmp : "Keine Störungen");
+                        nFlt > 0 ? tmp : tr(T_D_NO_FAULTS));
       lv_obj_set_style_text_color(sv.labels[SV_FLT_LIST],
                                   nFlt > 0 ? COL_TEXT : COL_OK, 0);
     }
@@ -2222,7 +2121,7 @@ static void refreshCb(lv_timer_t *t) {
   if (s_shotDueMs != 0) {
     const int32_t leftMs = (int32_t)(s_shotDueMs - millis());
     if (sv.labels[SV_SHOT]) {
-      setText(sv.labels[SV_SHOT], "Aufnahme in %d s ...",
+      setText(sv.labels[SV_SHOT], tr(T_D_SHOT_COUNT),
               leftMs > 0 ? (int)(leftMs / 1000) + 1 : 0);
     }
   }
@@ -2240,7 +2139,8 @@ static void refreshCb(lv_timer_t *t) {
       // the card whole: an incomplete BMP is deleted rather than kept, so there is
       // nothing to point at, and the log line next to it says how far it got.
       lv_label_set_text(sv.labels[SV_SHOT],
-                        sdShotOk() ? "auf /shot gespeichert" : "fehlgeschlagen");
+                        sdShotOk() ? tr(T_D_SHOT_SAVED)
+                                   : tr(T_D_SHOT_FAILED));
     }
   }
 
@@ -2264,13 +2164,13 @@ static void refreshCb(lv_timer_t *t) {
     if (webRunning()) {
       char ip[20];
       strlcpy(ip, WiFi.localIP().toString().c_str(), sizeof(ip));
-      setText(sv.labels[SV_WEB], "IP: %s", ip);
-      setText(sv.labels[SV_CODE], "Code: %s", webCode(nullptr));
+      setText(sv.labels[SV_WEB], tr(T_D_IP), ip);
+      setText(sv.labels[SV_CODE], tr(T_D_CODE), webCode(nullptr));
     } else if (s_webWasUp) {
       // The server is gone (provisioning started, or the link dropped): clear
       // the code, which is no longer valid for anything.
-      setText(sv.labels[SV_WEB], "kein Netz");
-      setText(sv.labels[SV_CODE], "Code: ----");
+      setText(sv.labels[SV_WEB], "%s", tr(T_D_NO_NET));
+      setText(sv.labels[SV_CODE], "%s", tr(T_D_CODE_EMPTY));
     }
   }
   s_webWasUp = webRunning();
@@ -2284,10 +2184,10 @@ static void refreshCb(lv_timer_t *t) {
     } else {
       char g[64];
       if (s_gapCount == 1) {
-        snprintf(g, sizeof(g), "1 Lücke, %lu min ohne Messwerte",
+        snprintf(g, sizeof(g), tr(T_D_GAP_ONE),
                  (unsigned long)((s_gapSeconds + 30) / 60));
       } else {
-        snprintf(g, sizeof(g), "%d Lücken, %lu min ohne Messwerte", s_gapCount,
+        snprintf(g, sizeof(g), tr(T_D_GAP_MANY), s_gapCount,
                  (unsigned long)((s_gapSeconds + 30) / 60));
       }
       setText(gp.labels[GH_GAPS], "%s", g);
@@ -2494,14 +2394,14 @@ void guiStartApp() {
   lv_obj_set_style_pad_bottom(content, 0, 0);
 
   // Pages. One heading per page, drawn centrally at HEAD_Y (see below).
-  static const char *titles[PAGE_COUNT] = {"Übersicht", "Energie", "Heute",
-                                          "24 h Verlauf", "Info", "Akku",
-                                          "Service"};
+  static const LangId titleIds[PAGE_COUNT] = {
+      T_D_HEAD_OVERVIEW, T_D_HEAD_ENERGY,  T_D_HEAD_HEUTE, T_D_HEAD_GRAPH,
+      T_D_HEAD_INFO,     T_D_HEAD_BATTERY, T_D_HEAD_SERVICE};
   void (*builders[PAGE_COUNT])(AppPage *) = {
       pageBuildOverview, pageBuildEnergy, pageBuildHeute, pageBuildGraph,
       pageBuildInfo, pageBuildDevice, pageBuildService};
   for (int i = 0; i < PAGE_COUNT; i++) {
-    s_pages[i].title = titles[i];
+    s_pages[i].title = tr(titleIds[i]);
     s_pages[i].labelCount = 0;
     s_pages[i].root = lv_obj_create(content);
     lv_obj_set_size(s_pages[i].root, 480, CONTENT_H);
@@ -2515,7 +2415,7 @@ void guiStartApp() {
     // Page heading: every page gets the same one at the top left, in the same
     // white and font as the "RCT Power Panel" text in the title bar. Created
     // here rather than per page so the seven pages cannot drift apart again.
-    lv_obj_t *head = makeLabel(s_pages[i].root, titles[i],
+    lv_obj_t *head = makeLabel(s_pages[i].root, s_pages[i].title,
                               &lv_font_montserrat_16_uml, COL_TEXT);
     lv_obj_set_pos(head, 20, HEAD_Y);
     builders[i](&s_pages[i]);
