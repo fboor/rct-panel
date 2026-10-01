@@ -24,6 +24,7 @@
 // SPDX-License-Identifier: MIT
 #include "web/WebServer.h"
 
+#include "../DataStatus.h"
 #include "../Diag.h"
 #include "../NumFmt.h"
 #include "../config/Configuration.h"
@@ -316,8 +317,20 @@ void handleRoot() {
     b += F("</td></tr>");
   };
   char escName[48];
-  row(T_ROW_INVERTER,
-      s.connected ? tr(T_ROW_INVERTER_OK) : tr(T_ROW_INVERTER_NO));
+  // The same decision the panel's badge makes (DataStatus.h), so the page and
+  // the panel never disagree about whether the numbers on it are current. The
+  // page cannot show "connecting" or "never answered" separately - it only
+  // exists when the link is up - but it can say that the values are old.
+  const DataStatus ds =
+      dataStatus(networkConnecting(), s.haveData, s.connected,
+                 dataAgeMs(millis(), s.lastUpdateMs));
+  const char *inverterText = tr(T_ROW_INVERTER_NO);
+  if (ds == DataStatus::Waiting) {
+    inverterText = tr(T_ROW_INVERTER_WAIT);
+  } else if (ds == DataStatus::Live) {
+    inverterText = tr(T_ROW_INVERTER_OK);
+  }
+  row(T_ROW_INVERTER, inverterText);
   escape(s.firmwareVersion, escName, sizeof(escName));
   row(T_ROW_CONTROLLER, escName[0] ? escName : "--");
   row(T_ROW_FW_PANEL, kPanelVersion);

@@ -43,6 +43,7 @@
 
 #include "GuiApp.h"
 
+#include "../DataStatus.h"
 #include "../NumFmt.h"
 #include "../config/Configuration.h"
 #include "../Diag.h"
@@ -1014,15 +1015,25 @@ static void serviceRelayState() {
     lv_obj_set_style_text_color(st, relayIsOn() ? COL_OK : COL_MUTED, 0);
     return;
   }
+  // Only the two threshold modes show a number, and only they can say how old
+  // that number is. The threshold for "old" is the same one the badge uses, so
+  // "wartet" above and "(letzte Messung)" here always mean the same moment.
+  const bool stale = dataAgeMs(millis(), rctState.lastUpdateMs) > kDataStaleMs;
   if (m == RelayMode::Off) {
     setText(st, "%s", tr(T_D_OUT_NOTHING));
   } else if (m == RelayMode::GridDraw || m == RelayMode::PvSurplus) {
-    setText(st, tr(T_D_OUT_NOW), relayIsOn() ? on : off,
+    setText(st, tr(stale ? T_D_OUT_NOW_STALE : T_D_OUT_NOW), relayIsOn() ? on : off,
             (int)lroundf(relayTriggerValue()));
   } else {
     setText(st, tr(T_D_OUT_MODE), relayIsOn() ? on : off, relayModeName(m));
   }
-  lv_obj_set_style_text_color(st, relayIsOn() ? COL_OK : COL_MUTED, 0);
+  // Stale and therefore no news: dimmed, whatever the contact is doing. The
+  // rule may well be acting on this number for several more minutes
+  // (DATA_MAX_AGE_MS in Relay.cpp), so saying so is not decoration.
+  lv_obj_set_style_text_color(st,
+                              stale ? COL_MUTED
+                                    : (relayIsOn() ? COL_OK : COL_MUTED),
+                              0);
 }
 
 void guiRelayStateChanged() {
@@ -1722,20 +1733,38 @@ static void refreshCb(lv_timer_t *t) {
   // data supplier is unreachable" are different problems and must not share a
   // colour: the connect phase can take up to CONNECT_BUDGET_MS and would
   // otherwise flash a red "no data" for a full minute.
+  // Which of the five states applies is decided in DataStatus.h, because the
+  // order of the cases is the logic: a device that never answered stays red
+  // ("keine Daten") instead of being softened to a yellow "wartet", and the
+  // waiting state only appears with a link that is up and data that is merely
+  // old. tools/badge_test checks that order; the texts and colours are here.
   const char *badge;
   lv_color_t badgeCol;
-  if (networkConnecting()) {
+  switch (dataStatus(networkConnecting(), s.haveData, s.connected,
+                     dataAgeMs(millis(), s.lastUpdateMs))) {
+  case DataStatus::Connecting:
     badge = tr(T_D_BADGE_CONNECTING);
     badgeCol = COL_WARN;
-  } else if (!s.haveData) {
+    break;
+  case DataStatus::NoData:
     badge = tr(T_D_BADGE_NODATA); // link is up, but no RCT frame arrives
     badgeCol = COL_ERR;
-  } else if (s.connected) {
-    badge = tr(T_D_BADGE_LIVE);
-    badgeCol = COL_OK;
-  } else {
+    break;
+  case DataStatus::Reconnect:
     badge = tr(T_D_BADGE_RECONNECT); // data was there, then the stream stopped
     badgeCol = COL_WARN;
+    break;
+  case DataStatus::Waiting:
+    // Link up, but nothing new for over a minute. The values on the pages are
+    // the last ones that arrived - which the switching output says so about
+    // itself below.
+    badge = tr(T_D_BADGE_WAITING);
+    badgeCol = COL_WARN;
+    break;
+  default:
+    badge = tr(T_D_BADGE_LIVE);
+    badgeCol = COL_OK;
+    break;
   }
   lv_label_set_text(s_statusLabel, badge);
   lv_obj_set_style_text_color(s_statusLabel, badgeCol, 0);

@@ -21,7 +21,20 @@ static const int BAND_PERMILLE = 200;
 // 10 s is the poll interval; below that there is nothing new to read.
 static const uint32_t EVAL_MS = 1000;
 // No fresh data for this long: the state is unknown, and unknown switches off.
-static const uint32_t DATA_MAX_AGE_MS = 120000;
+//
+// Ten minutes, and it was two. Reason: measured on the installed device, the
+// inverter delivers no values for several minutes at a time while the TCP link
+// stays open. With the old two minutes the output dropped out during every such
+// pause and came back with the next frame - the rule worked against the device
+// it was supposed to follow. The price is honest and worth naming: for up to
+// ten minutes the output may act on a value that is that old, and may even
+// switch on because of it. That is why the display marks the number while it
+// is stale ("letzte Messung", DataStatus.h) - the value stays visible and is
+// named as what it is, instead of the rule quietly running on a stale number.
+//
+// One line to change if a device ever pauses longer; nothing else depends on
+// the number.
+static const uint32_t DATA_MAX_AGE_MS = 600000;
 
 // --- Test sequence (5 s on / 5 s off, twice) --------------------------------
 

@@ -16,6 +16,9 @@
 #                  character left in the code that has been moved out
 #   backlight_test the backlight timers: dim after 3 min, off after 5, a touch
 #                  wakes it, and a panel without touch never switches itself off
+#   badge_test     the data-status decision behind the badge, the switching
+#                  output line and the web page: five states, their order, and
+#                  the one-minute boundary
 #   rct_sim_test   the RCT simulator: that it answers every id the firmware
 #                  polls, that its numbers add up, and that its relay modes
 #                  are reachable
@@ -31,7 +34,7 @@ set -e
 cd "$(dirname "$0")/.."
 
 fail=0
-for t in relay_test sd_queue_test numfmt_test i18n_test backlight_test; do
+for t in relay_test sd_queue_test numfmt_test i18n_test backlight_test badge_test; do
   printf '\n=== %s ===\n' "$t"
   if sh "tools/$t/run.sh"; then
     :

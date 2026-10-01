@@ -137,6 +137,11 @@ Verbindungsstatus:
 | `verbinde` (gelb) | WLAN und Verbindung werden gerade aufgebaut |
 | `keine Daten` (rot) | WLAN steht, aber es kommen keine RCT-Daten an |
 | `verbinde neu` (gelb) | Daten kamen, der Datenstrom ist abgerissen — Neustart der Verbindung |
+| `wartet` (gelb) | Verbindung steht, aber seit über einer Minute kam kein neuer Wert — die angezeigten Zahlen sind die zuletzt eingetroffenen |
+
+Die Wartezeit ist kein Fehler: Manche Wechselrichter liefern über mehrere Minuten
+keine Werte, ohne dass etwas kaputt ist. Das Panel hält dann die letzten Zahlen
+und sagt dazu, dass sie alt sind — der Ausgang schaltet dabei dennoch weiter.
 
 Zeigt eine Seite „–“ statt eines Wertes, ist dieser Wert noch nicht
 eingetroffen (z. B. weil der Wechselrichter keine Batterie meldet oder die
@@ -604,15 +609,19 @@ Hysterese:
 - Die **Hysterese** beträgt 20 % der Schwelle: bei 500 W schaltet der Ausgang
   bei 500 W ein und bei 400 W wieder aus. Ohne das würde ein Wert, der genau auf
   der Schwelle steht, alle zehn Sekunden umschalten.
-- Keine Daten vom Wechselrichter (länger als zwei Minuten) heißt: aus. Ein
+- Keine Daten vom Wechselrichter (länger als zehn Minuten) heißt: aus. Ein
   Ausgang, der wegen eines verschwundenen Wechselrichters eingeschaltet
   bliebe, wäre die schlechtere Variante.
 
-Die Zwei-Minuten-Frist steht fest in der Firmware und ist eine Annahme, keine
-Messung. Manche Wechselrichter liefern mehrere Minuten keine Werte, obwohl die
-Verbindung offen ist — dann schaltet der Ausgang in dieser Zeit einmal ab und
-sobald wieder Werte kommen wieder ein. Wenn das an Ihrem Gerät auftaucht, gehört
-die Frist verlängert; das ist eine Zeile in der Firmware, kein Umbau.
+Die Zehn-Minuten-Frist ist eine bewusste Kompromissentscheidung: Manche
+Wechselrichter liefern über mehrere Minuten keine Werte, ohne dass etwas
+kaputt ist — mit einer kürzeren Frist hätte der Ausgang in jeder solchen Pause
+einmal ab- und wieder zugeschaltet. Der Preis dafür: bis zu zehn Minuten lang
+handelt der Ausgang nach dem zuletzt empfangenen Wert, im Extremfall also auch
+einmal nach einer neun Minuten alten Begründung. Damit das nicht heimlich
+passiert, schreibt die Zeile unter dem Ausgang in dieser Zeit
+`AN · 512 W (letzte Messung)` statt `AN · 512 W jetzt`, und die Statusleiste
+zeigt `wartet` (Kapitel 2).
 
 ### Anzeige und Test
 
@@ -668,7 +677,8 @@ sich prüfen, ob am Port überhaupt etwas passiert.
 | `/daten` bleibt leer | Auf der Karte steht noch keine Datei — es wird erst ab dem ersten Fünf-Minuten-Wert geschrieben. |
 | Ausgang schaltet nicht | Erst die Funktion prüfen (Service-Seite, Feld `Ausgang`): `Aus` schaltet nie. Bei `Netzbezug`/`Überschuss` muss der Wert die Schwelle 20 s lang übersteigen — die angezeigte Zahl ist der Wert, der gerade verglichen wird. |
 | Ausgang schaltet ständig | Schwelle zu niedrig angesetzt. Der Wert pendelt um die Schwelle, weil 20 % Hysterese zu wenig sind, wenn die Last grob springt. Schwelle erhöhen. |
-| Ausgang war 2 Minuten lang aus | Zwei Minuten lang keine Werte vom Wechselrichter — das kann auch bei offener TCP-Verbindung passieren. Ohne Daten schaltet der Ausgang aus, siehe Kapitel 6. |
+| Ausgang war länger aus | Zehn Minuten lang keine Werte vom Wechselrichter — das kann auch bei offener TCP-Verbindung passieren. Ohne Daten schaltet der Ausgang aus, siehe Kapitel 6. |
+| Badge `wartet` (gelb) | Die Verbindung steht, aber seit über einer Minute kam kein neuer Wert. Die Seiten zeigen die zuletzt eingetroffenen Zahlen; die Zeile unter dem Ausgang sagt dann „letzte Messung“. |
 | Ausgang schaltet nach dem Neustart nicht | Er schaltet 20 Sekunden nach dem Start frühestens ein. Das Display zeigt aber sofort, welche Funktion eingestellt ist. |
 | Display ist schwarz | Nach 5 Minuten ohne Bedienung ist das Licht aus (Abschnitt 2) — einmal das Display berühren. Bleibt es dunkel, ist der Touch-Regler nicht erkannt; dann hilft nur ein Neustart, und das Licht bleibt anschließend dauerhaft an. |
 
@@ -821,7 +831,7 @@ Angabe auf dem Netzteil gilt ohne Last ohnehin nichts.
 | Datenaufzeichnung | alle 5 Minuten als CSV (ca. 48 KB pro Tag), 24-h-Puffer im RAM bei fehlender Karte |
 | Weboberfläche | HTTP-Server im lokalen Netz (Port 80): Status, CSV-/Bild-Download, Firmware-Update; änderende Funktionen mit 4-stelligem Code |
 | Schaltausgang | potentialfreier Kontakt zwischen zwei Pins des Headers H1, 5 wählbare Funktionen, 20 s Einschaltverzögerung, 60 s Mindesthaltezeit, 20 % Hysterese; aus bei jedem Start |
-| Ausgang bei Datenausfall | schaltet aus, wenn der Wechselrichter länger als 2 min keine Daten liefert |
+| Ausgang bei Datenausfall | schaltet aus, wenn der Wechselrichter länger als 10 min keine Daten liefert; bis dahin arbeitet er mit dem letzten empfangenen Wert, sichtbar als „letzte Messung“ |
 
 Das Panel zeigt ausschließlich Messwerte an — es verändert keine Einstellungen
 am Wechselrichter (eine Ausnahme: der Setup-Modus legt nur die eigenen

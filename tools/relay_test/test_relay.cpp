@@ -263,9 +263,14 @@ static void testDataLoss() {
   runFor(25 * 1000);
   check(on(), "on while data arrives");
 
-  // The link dies: lastUpdateMs stays where it was, no new values.
+  // The link dies: lastUpdateMs stays where it was, no new values. The device
+  // in question pauses for several minutes as a matter of course, so the rule
+  // has to survive that - with the old two minutes it switched off during every
+  // pause and back on with the next frame.
   step(2 * 60 * 1000 + 1000, false);
-  check(!on(), "off after two minutes without data");
+  check(on(), "still on after two minutes: a pause is not a failure");
+  step(8 * 60 * 1000, false); // ten minutes in total
+  check(!on(), "off after ten minutes without data");
   check(g_pinLevel == offLevel(), "pin back at the off level");
 
   // Coming back with the same values re-arms the delay rather than switching

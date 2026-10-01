@@ -74,6 +74,7 @@ enum LangId : int {
   T_ROW_INVERTER,
   T_ROW_INVERTER_OK,
   T_ROW_INVERTER_NO,
+  T_ROW_INVERTER_WAIT, // link up, had data, but nothing new for a while
   T_ROW_CONTROLLER,
   T_ROW_FW_PANEL,
   T_ROW_UPTIME,
@@ -290,6 +291,7 @@ enum LangId : int {
   T_D_OUT_TEST,
   T_D_OUT_MODE,
   T_D_OUT_NOW,
+  T_D_OUT_NOW_STALE, // same, but the value is older than a minute
   T_D_OUT_ON,
   T_D_OUT_OFF,
   T_D_OUT_NOTHING,
@@ -312,6 +314,7 @@ enum LangId : int {
   T_D_BADGE_NODATA,
   T_D_BADGE_LIVE,
   T_D_BADGE_RECONNECT,
+  T_D_BADGE_WAITING,
 
   // --- Anzeige: die 128 Fehlertexte (Bit n aus fault[0..3].flt)
   // Der Index ist das Bit, nach dem der Wechselrichter meldet:

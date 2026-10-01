@@ -38,6 +38,7 @@ const char *const kLang[T_COUNT] = {
     "Wechselrichter",                   // T_ROW_INVERTER
     "verbunden",                        // T_ROW_INVERTER_OK
     "nicht erreichbar",                 // T_ROW_INVERTER_NO
+    "wartet",                           // T_ROW_INVERTER_WAIT
     "Steuerger&auml;t",                 // T_ROW_CONTROLLER
     "Firmware Panel",                   // T_ROW_FW_PANEL
     "Laufzeit",                         // T_ROW_UPTIME
@@ -274,6 +275,7 @@ const char *const kLang[T_COUNT] = {
     "Test: %s",           // T_D_OUT_TEST
     "%s · %s",            // T_D_OUT_MODE
     "%s · %d W jetzt",    // T_D_OUT_NOW
+    "%s · %d W (letzte Messung)", // T_D_OUT_NOW_STALE
     "AN",                 // T_D_OUT_ON
     "AUS",                // T_D_OUT_OFF
     "nichts geschaltet",  // T_D_OUT_NOTHING
@@ -297,6 +299,7 @@ const char *const kLang[T_COUNT] = {
     "keine Daten",   // T_D_BADGE_NODATA
     "aktiv",         // T_D_BADGE_LIVE
     "verbinde neu",  // T_D_BADGE_RECONNECT
+    "wartet",        // T_D_BADGE_WAITING
 
     // --- Anzeige: die 128 Fehlertexte (Bit n aus fault[0..3].flt)
     "TRAP ausgelöst",                               // T_FAULT_0

@@ -60,7 +60,7 @@ ON_DELAY_MS   = 20000   // Regel muss so lange "an" wollen, dann schaltet sie
 MIN_HOLD_MS   = 60000   // einmal an, mindestens so lange an
 BAND_PERMILLE =  200    // Hysterese: aus erst unter (Schwelle − 20 %)
 EVAL_MS       =  1000   // Regel wird 1 Hz geprüft (RCT-Daten kommen alle 10 s)
-DATA_MAX_AGE_MS = 120000// keine frischen Daten -> aus
+DATA_MAX_AGE_MS = 600000// keine frischen Daten -> aus (10 min, siehe unten)
 ```
 
 Die Verzögerung und die Mindesthaltezeit waren ursprünglich 10 s und 30 s und
@@ -79,27 +79,41 @@ Wechselrichters hängen bleibt, wäre die schlechtere Variante — er würde
 weiterlaufen, egal was das Gerät zuletzt getan hat. Deshalb ist
 `!haveData || Alter > 2 min` ein „aus", und zwar bei *jeder* Funktion.
 
-### Die Zwei-Minuten-Frist ist eine Annahme (Stand Oktober 2026)
+### Die Datenfrist: 2 min → 10 min (Oktober 2026)
 
 Beobachtet an der Anlage des Anwenders: der Wechselrichter liefert mitunter
 mehrere Minuten **keine** Werte, obwohl die TCP-Verbindung die ganze Zeit steht.
-Die Frist ist damit zu kurz: bei einer Funktion wie `Netzbezug` schaltet der
-Ausgang in dieser Pause einmal ab und beim nächsten Wert wieder ein.
+Mit den alten zwei Minuten war die Frist damit zu kurz — bei einer Funktion wie
+`Netzbezug` schaltete der Ausgang in jeder solchen Pause einmal ab und beim
+nächsten Wert wieder ein. Die Regel hat gegen das Gerät gearbeitet, dem sie
+folgen soll.
 
-Zwei Wege, beide noch nicht entschieden:
+`DATA_MAX_AGE_MS` ist deshalb **600000** (10 min). Die Alternative wäre, die
+Altersgrenze ganz abzuschalten und nur noch auf `haveData` zu schalten, also auf
+einen tatsächlich geschlossenen Strom; das ist die strengere und für eine
+Heizlast die gefährlichere Variante, weil der Ausgang dann auch dann an bliebe,
+wenn das Gerät seit Stunden tot ist. Verworfen.
 
-- `DATA_MAX_AGE_MS` auf ein Vielfaches von `RCT_POLL_MS` heben (der Poll
-  läuft alle 10 s; 10 min wären z. B. der 60-fache Wert). Dann übersteht eine
-  zehnminütige Sendepause den Betrieb, ohne dass ein echter Ausfall zu lange
-  unbemerkt bleibt.
-- Die Altersgrenze abschalten und stattdessen auf `haveData` setzen, also nur
-  auf einen tatsächlich geschlossenen Strom. Das ist die strengere und für eine
-  Heizlast die gefährlichere Variante — der Ausgang bliebe dann auch dann an,
-  wenn das Gerät seit Stunden tot ist.
+Der Preis der Verlängerung, ausgeschrieben: bis zu zehn Minuten lang handelt der
+Ausgang nach einem Wert, der bis zu zehn Minuten alt ist — im Extremfall auch
+einmal **ein**, mit einer neun Minuten alten Begründung. Deshalb wird die Zahl
+sichtbar als alt gekennzeichnet, statt die Regel still auf einer alten Zahl
+laufen zu lassen:
 
-Wichtig für jede der beiden Varianten: der Wert steht in `Relay.cpp` und wird
-nicht in NVS gespeichert. Er ist damit eine Eigenschaft des Builds und nicht
-der Anlage — wer eine andere Frist braucht, braucht eine andere Firmware.
+- die **Statusleiste** zeigt nach 60 s ohne neuen Frame `wartet` (gelb) statt
+  `aktiv` (grün) — die Werte auf den Seiten sind dann die zuletzt
+  eingetroffenen;
+- die **Zeile unter dem Ausgang** schreibt `AN · 512 W (letzte Messung)` statt
+  `AN · 512 W jetzt` und ist gedämpft;
+- die **Weboberfläche** sagt in der Zeile „Wechselrichter“ ebenfalls `wartet`.
+
+Alle drei benutzen dieselbe Schwelle und dieselbe Entscheidung
+(`src/DataStatus.h`, geprüft in `tools/badge_test`) — sie können nicht
+auseinanderlaufen.
+
+Der Wert steht in `Relay.cpp` und wird nicht in NVS gespeichert. Er ist damit
+eine Eigenschaft des Builds und nicht der Anlage — wer eine andere Frist
+braucht, braucht eine andere Firmware.
 
 ## 3. Pin und Polarität
 

@@ -38,6 +38,7 @@ const char *const kLang[T_COUNT] = {
     "Inverter",                         // T_ROW_INVERTER
     "connected",                        // T_ROW_INVERTER_OK
     "not reachable",                    // T_ROW_INVERTER_NO
+    "waiting",                          // T_ROW_INVERTER_WAIT
     "Controller",                       // T_ROW_CONTROLLER
     "Panel firmware",                   // T_ROW_FW_PANEL
     "Uptime",                           // T_ROW_UPTIME
@@ -271,6 +272,7 @@ const char *const kLang[T_COUNT] = {
     "Test: %s",          // T_D_OUT_TEST
     "%s · %s",           // T_D_OUT_MODE
     "%s · %d W now",     // T_D_OUT_NOW
+    "%s · %d W (last reading)", // T_D_OUT_NOW_STALE
     "ON",                // T_D_OUT_ON
     "OFF",               // T_D_OUT_OFF
     "nothing switched",  // T_D_OUT_NOTHING
@@ -294,6 +296,7 @@ const char *const kLang[T_COUNT] = {
     "no data",       // T_D_BADGE_NODATA
     "live",          // T_D_BADGE_LIVE
     "reconnecting",  // T_D_BADGE_RECONNECT
+    "waiting",       // T_D_BADGE_WAITING
 
     // --- Anzeige: die 128 Fehlertexte (Bit n aus fault[0..3].flt)
     "TRAP triggered",                                             // T_FAULT_0
