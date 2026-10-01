@@ -61,16 +61,18 @@ gehören zusammen; „links“ und „rechts“ meinen die Rückseitenansicht.
 | 1 | Touch-Display | Vorderseite | Anzeige und Bedienung |
 | 2 | microSD (TF) | linke Kante, oben | Aufzeichnung der Messwerte (Kapitel 4) |
 | 3 | USB-C | linke Kante, unten | Versorgung mit 5 V, Firmware-Aktualisierung per Kabel (Kapitel 10) |
-| 4 | Relais-Port „1Way“ | rechte Kante, unten | Schaltkontakt (Kapitel 6) |
+| 4 | Schaltkontakt | rechte Kante | potentialfreier Kontakt, drei Anschlüsse (Kapitel 6) |
 
 <figure class="board-shot">
-  <img src="img/kanten.png" alt="Kantenansicht: links die Plattenkante mit microSD-Slot und USB-C-Buchse, an der die Karte und der Stecker von der Seite einstecken; rechts die Kante mit dem dreipoligen Relais-Port, an der ein Stecker mit drei Adern von der Seite einsteckt">
-  <figcaption>Bild 2: Die beiden Seitenkanten. Stecker und Karte stecken seitlich ein — neben dem Panel muss dafür etwas Platz bleiben.</figcaption>
+  <img src="img/rueckseite.png" alt="Vollständige Rückansicht der Platine: microSD-Slot oben und Lautsprecher sowie USB-C an der linken Kante, ESP32-S3-Modul in der Mitte, UART-Steckverbindung, Schaltkontakt, zweites UART-Feld und Batterie-Port an der rechten Kante">
+  <figcaption>Bild 2: Rückseite der Platine mit allen Anschlüssen an ihrer Stelle. Grau: von der Firmware nicht benutzt.</figcaption>
 </figure>
 
-Der Relais-Port ist potentialfrei und schaltet die Last selbst — dazu mehr in
+Der Schaltkontakt ist potentialfrei und schaltet die Last selbst — dazu mehr in
 Kapitel 6. Am Panel selbst liegen nur die 5 V der USB-Versorgung an; an keinem
-Anschluss darf Netzspannung angeschlossen werden.
+Anschluss darf Netzspannung angeschlossen werden. Auf der Platine ist nicht
+beschriftet, welcher der drei Anschlüsse welcher ist; Bild 2 zeigt die Kante,
+an der sie liegen.
 
 ### 1.2 Erstes Einschalten
 
@@ -476,14 +478,14 @@ Voraussetzung ist ein Build, wie in Kapitel 10 beschrieben
 
 ## 6. Der Schaltausgang <span class="h-sub">Verbraucher automatisch schalten</span>
 
-Am Relais-Port des Panels (Aufdruck „1Way“) sitzt ein potentialfreier
-Schaltkontakt: kein eigener Transformator, sondern ein Relais, das Ihren
-Verbrauch direkt schaltet. Damit das Panel mehr kann als anzeigen, folgt der
+Am Schaltkontakt des Panels (Aufdruck „1Way“) sitzt ein potentialfreier
+Kontakt: kein eigener Transformator, sondern ein Relais, das Ihren Verbraucher
+direkt schaltet. Damit das Panel mehr kann als anzeigen, folgt der
 Ausgang einer Regel, die Sie wählen.
 
 ### Anschluss
 
-Der Port ist dreipolig. Am Relais selbst steht, welcher Anschluss welcher ist;
+Der Port ist dreipolig. Auf der Platine steht nicht, welcher Anschluss welcher ist;
 auf der Platine steht es nicht. Der Testknopf auf der Service-Seite entscheidet
 es: Bei ausge schaltetem Ausgang (Funktion `Aus`) hat ein Paar der drei
 Anschlüsse immer Durchgang — das ist gemeinsamer Anschluss und Öffner. Der
@@ -725,7 +727,7 @@ nicht möglich — die Binärdatei kommt aus dem Netz direkt auf das Gerät.
 | Bedienung | kapazitives Touchpanel (GT911) |
 | Prozessor | ESP32-S3, Dual-Core |
 | Speicher | 16 MB Flash, 8 MB PSRAM |
-| Anschlüsse | USB-C (Versorgung und Firmware per Kabel), microSD/TF, Relais-Kontakt (3-polig), UART (nur Service); Bild 1 |
+| Anschlüsse | USB-C (Versorgung und Firmware per Kabel), microSD/TF, Schaltkontakt (3-polig); Bild 1 |
 | Beleuchtung | LED-Hintergrundbeleuchtung hinter dem Display, stufenlos dimmbar |
 | Datenspeicher | microSD/TF-Karte im Steckplatz auf der Platine; Dateisystem FAT32 (FAT12/16 auch lesbar, exFAT wird nicht unterstützt), empfohlen 4–32 GB, ca. 11,7 MB Datenvolumen pro Jahr; SPI 4 MHz mit Selbsttest, Rückfall auf 400 kHz; Pufferspeicher im Panel für 24 h |
 | Stromversorgung | USB-C, 5 V DC |
@@ -786,7 +788,7 @@ Angabe auf dem Netzteil gilt ohne Last ohnehin nichts.
 | Datenabfrage | RCT-Wechselrichter über TCP (Port 8899), alle 10 s |
 | Datenaufzeichnung | alle 5 Minuten als CSV (ca. 32 KB pro Tag), 24-h-Puffer im RAM bei fehlender Karte |
 | Weboberfläche | HTTP-Server im lokalen Netz (Port 80): Status, CSV-/Bild-Download, Firmware-Update; änderende Funktionen mit 4-stelligem Code |
-| Schaltausgang | potentialfreier Relaiskontakt am Port „1Way“ (3-polig), 5 wählbare Funktionen, 20 s Einschaltverzögerung, 60 s Mindesthaltezeit, 20 % Hysterese; aus bei jedem Start |
+| Schaltausgang | potentialfreier Relaiskontakt, 3-polig (gemeinsam, Schließer, Öffner), 5 wählbare Funktionen, 20 s Einschaltverzögerung, 60 s Mindesthaltezeit, 20 % Hysterese; aus bei jedem Start |
 | Ausgang bei Datenausfall | schaltet aus, wenn der Wechselrichter länger als 2 min keine Daten liefert |
 
 Das Panel zeigt ausschließlich Messwerte an — es verändert keine Einstellungen

@@ -1,0 +1,131 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700" font-family="DejaVu Sans, sans-serif">
+  <!-- Vollstaendige Rueckansicht der Platine, nach der Vorlage des Herstellers
+       gezeichnet: gleiche Anordnung, gleiche Seiten der Beschriftung, alle
+       sichtbaren Anschluesse an ihrer echten Stelle. Massstab 1:1 zum Foto,
+       y um 230 nach oben verschoben (ohne Titelzeile und Rahmen).
+
+       Grau beschriftet: von der Firmware nicht benutzt. Keine Kapitelverweise
+       in der Grafik. -->
+  <defs>
+    <marker id="spitz" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6"
+            markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#3d4650"/>
+    </marker>
+  </defs>
+
+  
+  <!-- Gehaeuse -->
+  <rect x="263" y="16" width="673" height="672" rx="20" fill="#282f37"/>
+  <rect x="272" y="25" width="655" height="654" rx="14" fill="#1d2024"/>
+  <circle cx="283" cy="37" r="11" fill="#141619"/>
+  <circle cx="916" cy="37" r="11" fill="#141619"/>
+  <circle cx="283" cy="667" r="11" fill="#141619"/>
+  <circle cx="916" cy="667" r="11" fill="#141619"/>
+
+  <!-- Platine -->
+  <rect x="285" y="56" width="616" height="603" rx="3" fill="#dfbc22"/>
+  <rect x="285" y="56" width="616" height="603" rx="3" fill="none" stroke="#a98f28" stroke-width="1.2"/>
+
+  <!-- ESP32-S3-N16R8 in der Mitte -->
+  <rect x="533" y="180" width="147" height="143" rx="5" fill="#b6bcc2"/>
+  <rect x="556" y="198" width="101" height="66" rx="4" fill="#383d44"/>
+  <text x="606" y="238" fill="#c9ced3" font-size="13" text-anchor="middle">ESP32-S3</text>
+  <rect x="533" y="278" width="147" height="45" fill="#1a1d21"/>
+
+  <!-- Antennenmodul unten links, mit Kabel zum Modul -->
+  <rect x="347" y="520" width="113" height="135" rx="5" fill="#cf8b28"/>
+  <rect x="392" y="546" width="46" height="58" rx="3" fill="#191c20"/>
+  <path d="M545,300 C470,330 430,440 412,522" fill="none" stroke="#20242a" stroke-width="7" stroke-linecap="round"/>
+
+  <!-- LCD-Anschluss (FPC) unten -->
+  <rect x="490" y="470" width="212" height="42" rx="3" fill="#d9dee3"/>
+  <g fill="#9aa3ac">
+    <rect x="502" y="478" width="7" height="26"/>
+    <rect x="560" y="478" width="7" height="26"/>
+    <rect x="618" y="478" width="7" height="26"/>
+    <rect x="676" y="478" width="7" height="26"/>
+  </g>
+  <path d="M500,512 L700,512 L692,566 L508,566 Z" fill="#cfc9bd"/>
+  <text x="600" y="562" fill="#a89f90" font-size="12" text-anchor="middle">LCD1</text>
+
+  <!-- microSD-Slot, linke Kante oben -->
+  <rect x="290" y="140" width="112" height="117" rx="3" fill="#b3a189"/>
+  <rect x="290" y="196" width="34" height="28" rx="2" fill="#20242a"/>
+  <text x="346" y="132" fill="#8a7226" font-size="12" text-anchor="middle">TF1</text>
+
+  <!-- Lautsprecher-Anschluss, linke Kante -->
+  <rect x="290" y="267" width="34" height="56" rx="3" fill="#e7ebef"/>
+  <g fill="#9aa3ac">
+    <rect x="284" y="275" width="8" height="12"/>
+    <rect x="284" y="303" width="8" height="12"/>
+  </g>
+  <text x="332" y="299" fill="#8a7226" font-size="12">Speaker</text>
+
+  <!-- USB-C, linke Kante unten -->
+  <rect x="288" y="387" width="46" height="63" rx="7" fill="#98a0a7"/>
+  <rect x="288" y="393" width="16" height="51" rx="3" fill="#0f1216"/>
+  <text x="342" y="424" fill="#8a7226" font-size="12">USB1</text>
+
+  <!-- UART P1, rechte Kante oben -->
+  <rect x="866" y="200" width="35" height="77" rx="4" fill="#e7ebef"/>
+  <g fill="#9aa3ac">
+    <rect x="860" y="208" width="8" height="12"/>
+    <rect x="860" y="228" width="8" height="12"/>
+    <rect x="860" y="248" width="8" height="12"/>
+    <rect x="860" y="268" width="8" height="12"/>
+  </g>
+  <text x="858" y="194" fill="#8a7226" font-size="12" text-anchor="end">P1</text>
+  <text x="852" y="218" fill="#7d6a20" font-size="11" text-anchor="end">GND</text>
+  <text x="852" y="238" fill="#7d6a20" font-size="11" text-anchor="end">RXD</text>
+  <text x="852" y="258" fill="#7d6a20" font-size="11" text-anchor="end">TXD</text>
+  <text x="852" y="278" fill="#7d6a20" font-size="11" text-anchor="end">5V</text>
+
+  <!-- zweites UART-Feld H1 (2x4), darunter -->
+  <rect x="760" y="433" width="53" height="80" rx="2" fill="#191c20"/>
+  <g fill="#4a5058">
+    <rect x="768" y="443" width="10" height="10"/><rect x="792" y="443" width="10" height="10"/>
+    <rect x="768" y="463" width="10" height="10"/><rect x="792" y="463" width="10" height="10"/>
+    <rect x="768" y="483" width="10" height="10"/><rect x="792" y="483" width="10" height="10"/>
+    <rect x="768" y="503" width="10" height="10"/><rect x="792" y="503" width="10" height="10"/>
+  </g>
+  <text x="812" y="428" fill="#8a7226" font-size="12">H1</text>
+
+  <!-- Relais, rechte Kante (die Schaltung des Schaltkontakts sitzt hier) -->
+  <rect x="853" y="335" width="42" height="44" rx="3" fill="#17191c"/>
+  <text x="874" y="396" fill="#8a7226" font-size="11" text-anchor="middle">RLY</text>
+
+  <!-- Batterie-Port, rechte Kante unterhalb -->
+  <rect x="863" y="440" width="38" height="70" rx="4" fill="#e7ebef"/>
+  <g fill="#9aa3ac">
+    <rect x="857" y="452" width="8" height="14"/>
+    <rect x="857" y="484" width="8" height="14"/>
+  </g>
+  <text x="882" y="530" fill="#8a7226" font-size="11" text-anchor="middle">BAT</text>
+
+  <!-- Bestimmung -->
+  <text x="792" y="600" fill="#8a7226" font-size="15" font-weight="600">ESP32-4848S040</text>
+
+  <!-- ============ Beschriftung links (wie in der Vorlage) ============ -->
+  <g stroke="#3d4650" stroke-width="1.6" fill="none">
+    <path d="M258,193 L352,193" marker-end="url(#spitz)"/>
+    <path d="M258,293 L312,293" marker-end="url(#spitz)"/>
+    <path d="M258,422 L310,422" marker-end="url(#spitz)"/>
+  </g>
+  <text x="250" y="200" fill="#1d232b" font-size="20" font-weight="600" text-anchor="end">microSD-Slot</text>
+  <text x="250" y="290" fill="#8a939f" font-size="20" text-anchor="end">Lautsprecher</text>
+  <text x="250" y="428" fill="#1d232b" font-size="20" font-weight="600" text-anchor="end">USB-C</text>
+  <text x="250" y="450" fill="#7d8794" font-size="15" text-anchor="end">5 V, Firmware</text>
+
+  <!-- ============ Beschriftung rechts (wie in der Vorlage) ============ -->
+  <g stroke="#3d4650" stroke-width="1.6" fill="none">
+    <path d="M944,238 L901,238" marker-end="url(#spitz)"/>
+    <path d="M944,357 L895,357" marker-end="url(#spitz)"/>
+    <path d="M944,470 L901,470" marker-end="url(#spitz)"/>
+  </g>
+  <text x="952" y="228" fill="#1d232b" font-size="20" font-weight="600">UART</text>
+  <text x="952" y="248" fill="#7d8794" font-size="15">nur Service</text>
+  <text x="952" y="347" fill="#1d232b" font-size="20" font-weight="600">Schaltkontakt</text>
+  <text x="952" y="367" fill="#7d8794" font-size="15">drei Anschlüsse</text>
+  <text x="952" y="460" fill="#8a939f" font-size="20">Batterie-Port</text>
+  <text x="952" y="480" fill="#8a939f" font-size="15">unbenutzt</text>
+</svg>
