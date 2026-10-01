@@ -3,11 +3,11 @@
 > **Kein Zusammenhang mit der RCT Power GmbH.** Unabhängiges Projekt, ohne
 > Verbindung, Empfehlung oder Unterstützung durch die RCT Power GmbH.
 
-Das RCT Power Panel ist ein Wandpanel (4-Zoll-Farb-Touchdisplay) zur
-Anzeige der Live-Daten Ihres RCT-Power-Wechselrichters. Es liest die Werte
-direkt über das Netzwerk aus dem Wechselrichter (TCP, Standard-Port 8899),
-zeigt sie auf sieben übersichtlichen Seiten an und zeichnet die Messwerte
-zusätzlich automatisch auf einer microSD-Karte auf.
+Das RCT Power Panel ist ein Wandpanel, das die Live-Daten Ihres
+RCT-Power-Wechselrichters anzeigt. Es liest die Werte direkt aus dem
+Wechselrichter (TCP, Standard-Port 8899), zeigt sie auf sieben Seiten an und
+schreibt sie alle fünf Minuten auf eine microSD-Karte auf — so bleiben die
+Messwerte auch dann erhalten, wenn das Panel ausgeschaltet war.
 
 <figure class="ports-shot">
   <img src="img/anschluesse.png" alt="Schematische Grafik: Vorderseite des Panels mit Touch-Display, Rückseite mit den sechs nummerierten Anschlüssen microSD, USB-C, UART, Batterie-Port und Relais-Port, dazwischen eine Legende">
@@ -64,7 +64,7 @@ gehören zusammen; „links“ und „rechts“ meinen die Rückseitenansicht.
 | 1 | Touch-Display | Vorderseite | Anzeige und Bedienung |
 | 2 | microSD (TF) | linke Kante, oben | Aufzeichnung der Messwerte (Kapitel 4) |
 | 3 | USB-C | linke Kante, unten | Versorgung mit 5 V, Firmware-Aktualisierung per Kabel (Kapitel 10) |
-| 4 | Schaltkontakt | Pinheader H1, rechte Kante | zwei Anschlüsse: GND und Kontakt (Kapitel 6) |
+| 4 | Schaltkontakt | Pinheader H1, rechte Kante | GND und 3,3-V-Schaltausgang für ein externes Relais (Kapitel 6) |
 
 <figure class="board-shot">
   <img src="img/rueckseite.png" alt="Vollständige Rückansicht der Platine: microSD-Slot oben und Lautsprecher sowie USB-C an der linken Kante, ESP32-S3-Modul in der Mitte, UART-Steckverbindung, Schaltkontakt, zweites UART-Feld und Batterie-Port an der rechten Kante">
@@ -73,9 +73,10 @@ gehören zusammen; „links“ und „rechts“ meinen die Rückseitenansicht.
 
 Der Schaltkontakt sitzt am Pinheader H1 an der rechten Kante und hat zwei
 Anschlüsse: in der linken Reihe die beiden oberen Pins, oben der Aufdruck GND,
-darunter der Kontakt. Er ist potentialfrei und schaltet den Verbraucher selbst —
-dazu mehr in Kapitel 6. Am Panel selbst liegen nur die 5 V der USB-Versorgung an;
-an keinem Anschluss darf Netzspannung angeschlossen werden.
+darunter der 3,3-V-Schaltausgang, an den die Spule eines externen Relais kommt
+— dazu mehr in Kapitel 6. Am Panel selbst liegen nur die 5 V der
+USB-Versorgung und diese 3,3 V an; an keinem Anschluss darf Netzspannung
+angeschlossen werden.
 
 ### 1.2 Erstes Einschalten
 
@@ -293,7 +294,7 @@ Die einzige Seite mit Aktionen:
   den diese Seiten für Änderungen verlangen. Er ist nur belegt, solange das
   Panel im Netz ist. Tippen Sie auf den Code, zieht das Panel sofort einen
   neuen — nützlich, wenn jemand über Ihre Schulter mitgelesen hat.
-- Ausgang (unten): der Schaltkontakt am Relais-Port. `Ausgang` nennt die
+- Ausgang (unten): der Schaltkontakt. `Ausgang` nennt die
   eingestellte Funktion mit ihrer Schwelle in Watt; Tippen Sie darauf,
   wechselt die Funktion. Darunter steht, was gerade passiert (`AN · 512 W
   jetzt`). Der Knopf daneben prüft für 20 Sekunden, ob am Port überhaupt
@@ -515,60 +516,64 @@ Voraussetzung ist ein Build, wie in Kapitel 10 beschrieben
 
 ## 6. Der Schaltausgang <span class="h-sub">Verbraucher automatisch schalten</span>
 
-Am Schaltkontakt des Panels (Aufdruck „1Way“) sitzt ein potentialfreier
-Kontakt: kein eigener Transformator, sondern ein Relais, das Ihren Verbraucher
-direkt schaltet. Damit das Panel mehr kann als anzeigen, folgt der
-Ausgang einer Regel, die Sie wählen.
+Am Schaltkontakt des Panels (Aufdruck „1Way“) wird ein externes Relais
+angesteuert: Der Port gibt 3,3 V aus und schaltet damit die Relaisspule.
+Erst der Kontakt dieses Relais ist potentialfrei und schaltet Ihren Verbraucher
+— das Panel selbst schaltet den Kreis nicht. Damit das Panel mehr kann als
+anzeigen, folgt der Ausgang einer Regel, die Sie wählen.
 
 ### Anschluss
 
-Der Kontakt sitzt am Pinheader H1 an der rechten Kante (Bild 2) und hat zwei
+Der Port sitzt am Pinheader H1 an der rechten Kante (Bild 2) und hat zwei
 Anschlüsse: in der linken Reihe die beiden oberen Pins, oben der Aufdruck GND,
-darunter der Kontakt. Die übrigen Pins des Headers gehören zur seriellen
-Schnittstelle und werden von der Firmware nicht benutzt.
+darunter der 3,3-V-Schaltausgang. Die übrigen Pins des Headers gehören zur
+seriellen Schnittstelle und werden von der Firmware nicht benutzt.
 
-Zwischen diesen beiden Anschlüssen liegt der Kontakt des Relais. Solange der
-Ausgang aus ist, sind sie nicht verbunden; wenn er einschaltet, schließt er.
-Nachweisen lässt sich das mit dem Testknopf auf der Service-Seite und einem
-Durchgangsmesser: während der fünf Sekunden Test muss der Durchgang da sein.
+An GND und an den Schaltausgang kommt die Spule Ihres Relais. Solange der
+Ausgang aus ist, liegt am Schaltausgang 0 V an; wenn er einschaltet, liegen
+dort 3,3 V an. Nachweisen lässt sich das mit dem Testknopf auf der
+Service-Seite und einem Messgerät: während des Tests muss der Schaltausgang
+auf 3,3 V gehen.
 
-Welcher der beiden Anschlüsse in Ihrem Kreis die Phase übernimmt, ist
-gleichgültig — der Kontakt ist symmetrisch. Üblich ist Phase an den einen
-Anschluss, die Leitung zur Last an den anderen.
+> **Wichtig:** Die Spule braucht eine **Freilaufdiode** parallel zu ihr, Kathode
+> an 3,3 V, Anode am Schaltausgang. Ohne diese Diode schlägt beim Abschalten
+> der Spannungsstoß der Spule (bei kleinen Relais gut 30 bis 80 V) auf den
+> Ausgang des Panels und kann die Elektronik beschädigen.
 
-| Anschluss am Header | Angeschlossen an |
-|---|---|
-| oberer Pin der linken Reihe (Aufdruck GND) | eine Seite des zu schaltenden Kreises |
-| darunterliegender Pin | die andere Seite |
+Welcher Anschluss Ihres Relais die Phase übernimmt, ist gleichgültig — der
+Kontakt ist symmetrisch. Üblich ist Phase am einen Anschluss des Relais, die
+Leitung zur Last am anderen.
 
-### Spannungen am Relais-Port
+### Spannungen am Port
 
-Am Port liegen zwei ganz verschiedene Dinge an, und sie dürfen nicht
-verwechselt werden:
+Am Port liegt ausschließlich Kleinspannung an:
 
 | Seite | Was dort anliegt |
 |---|---|
-| Ansteuerung, intern | 3,3 V Logikpegel am GPIO 40; damit wird allein die Relaisspule geschaltet |
-| Kontakt (die beiden Pins) | potentialfrei: trägt die Spannung des angeschlossenen Kreises, bei 230 V also 230 V AC |
+| GND | 0 V, die gemeinsame Masse |
+| Schaltausgang | 0 V aus, 3,3 V ein (GPIO 40) |
 
-Am Panel selbst liegen nur die 5 V der USB-Versorgung an. An keinem Anschluss
-und an keinem GPIO des Panels darf Netzspannung angeschlossen werden.
+Am Panel selbst liegen nur die 5 V der USB-Versorgung und diese 3,3 V an. An
+keinem Anschluss und an keinem GPIO des Panels darf Netzspannung
+angeschlossen werden.
 
-Zwei Dinge sind außerdem wichtig:
+Der Schaltausgang treibt eine Relaisspule, keinen Verbraucher. Das ESP32-S3
+gibt laut Datenblatt an einem GPIO bis zu 40 mA ab — als Obergrenze, nicht als
+Zielwert; für eine Spule sind deutlich darunter zu bleiben, und die 3,3 V des
+Panels speisen die ganze Elektronik mit. Eine kleine 3,3-V-Signalspule mit
+etwa 5 bis 15 mA passt; alles darüber gehört über einen Transistor oder einen
+Optokoppler geschaltet.
 
-- Der Kontakt ist potentialfrei: aus dem Panel kommt keine Spannung in den
-  Kreis, sondern nur ein Kontakt, der ihn öffnet und schließt.
-- Arbeiten am Schaltkreis gehören in Fachhände. Er gehört in eine
-  Verteilung, in der er abgesichert und durch einen Fehlerstromschutzer
-  geschützt ist.
+Was Ihren Verbraucher schaltet, ist der Kontakt Ihres Relais. Drei Angaben
+dafür sind vor dem Anschluss zu prüfen: Kontaktstrom bei ohmscher Last,
+Anlaufstrom bei Motoren und Leuchtstoffmitteln, und Schalthäufigkeit. Eine
+Speicherheizung, eine Wärmepumpe oder ein Wasserkocher gehören nicht an einen
+Kontakt, dessen Nennstrom man nicht kennt.
 
-Zur Belastbarkeit nennt dieses Handbuch bewusst keine Zahl: sie hängt vom
-verbauten Relais ab und steht auf dem Bauteil und in dessen Datenblatt. Vor
-dem Anschluss einer Last sind drei Angaben zu prüfen: Kontaktstrom bei
-ohmscher Last, Anlaufstrom bei Motoren und Leuchtstoffmitteln, und die
-Schalthäufigkeit. Eine Speicherheizung, eine Wärmepumpe oder ein
-Wasserkocher gehören nicht an einen Kontakt, dessen Nennstrom man nicht
-kennt.
+Arbeiten am Schaltkreis gehören in Fachhände: Der Kreis mit der
+Verbraucherspannung liegt hinter dem Relais an, nicht am Panel. Er gehört in
+eine Verteilung, in der er abgesichert und durch einen Fehlerstromschutzer
+geschützt ist.
 
 ### Die fünf Funktionen
 
@@ -693,10 +698,12 @@ sich prüfen, ob am Port überhaupt etwas passiert.
   Wechselrichter-Konfiguration ein.
 - Arbeiten an elektrischen Anlagen (Wechselrichter, Zählerschrank) gehören in
   Fachhände — das Panel selbst wird nur mit Kleinspannung (5 V) versorgt.
-- Der Schaltausgang ist ein potentialfreier Relaiskontakt, kein elektronischer
-  Schalter. Die Grenzen (Kontaktbelastbarkeit, Anlaufstrom von Motoren und
-  Leuchtstoffmitteln) stehen in Kapitel 11; ein Relais ist nicht für alles
-  ausgelegt, was ein Verbrauch anfordert.
+- Der Schaltausgang gibt 3,3 V aus und schaltet damit die Spule eines externen
+  Relais. Er ist selbst kein potentialfreier Kontakt und kein elektronischer
+  Schalter für Ihren Verbraucher — potentialfrei wird es erst durch den
+  Kontakt Ihres Relais. Die Grenzen (Kontaktbelastbarkeit, Anlaufstrom von
+  Motoren und Leuchtstoffmitteln) stehen in Kapitel 11; ein Relais ist nicht
+  für alles ausgelegt, was ein Verbrauch anfordert.
 - Der Ausgang folgt Messwerten. Er ist kein Fehlerstromschutz, kein
   Überlastschutz und keine Garantie, dass eine angeschlossene Last
   ausschließlich mit Solarstrom läuft.
@@ -772,12 +779,12 @@ nicht möglich — die Binärdatei kommt aus dem Netz direkt auf das Gerät.
 | Bedienung | kapazitives Touchpanel (GT911) |
 | Prozessor | ESP32-S3, Dual-Core |
 | Speicher | 16 MB Flash, 8 MB PSRAM |
-| Anschlüsse | USB-C (Versorgung und Firmware per Kabel), microSD/TF, Schaltkontakt (zwei Pins am Header H1); Bild 1 |
+| Anschlüsse | USB-C (Versorgung und Firmware per Kabel), microSD/TF, Schaltkontakt (GND und 3,3-V-Schaltausgang am Header H1); Bild 1 |
 | Beleuchtung | LED-Hintergrundbeleuchtung hinter dem Display, stufenlos dimmbar |
 | Datenspeicher | microSD/TF-Karte im Steckplatz auf der Platine; Dateisystem FAT32 (FAT12/16 auch lesbar, exFAT wird nicht unterstützt), empfohlen 4–32 GB, ca. 18 MB Datenvolumen pro Jahr; SPI 4 MHz mit Selbsttest, Rückfall auf 400 kHz; Pufferspeicher im Panel für 24 h |
 | Stromversorgung | USB-C, 5 V DC |
-| Logikpegel | 3,3 V an den internen Ausgängen; ausschließlich zum Ansteuern des Relais, keine Anschlussstelle für Fremdspannung |
-| Spannung am Schaltkontakt | potentialfrei; zwischen den beiden Pins liegt die Spannung des angeschlossenen Kreises (bei 230 V also 230 V AC). Nennstrom und Kontaktart stehen auf dem Relais und in dessen Datenblatt — dieses Handbuch nennt dafür bewusst keine Zahl. Zu prüfen vor dem Anschluss einer Last: Kontaktstrom bei ohmscher Last, Anlaufstrom bei Motoren und Leuchtstoffmitteln, Schalthäufigkeit |
+| Logikpegel | 3,3 V am GPIO 40; der Schaltausgang gibt 0 V aus und 3,3 V ein, er schaltet damit die Spule eines externen Relais. Laut ESP32-S3-Datenblatt bis zu 40 mA pro GPIO, als Obergrenze — für eine Relaisspule deutlich weniger. Keine Anschlussstelle für Fremdspannung |
+| Spannung am Schaltkontakt | ausschließlich Kleinspannung: 0 V an GND, 0 V oder 3,3 V am Schaltausgang. Der Port ist **kein** potentialfreier Kontakt; potentialfrei wird der Schaltweg erst durch den Kontakt des externen Relais. Nennstrom und Kontaktart des Relais stehen auf dem Bauteil und in dessen Datenblatt — dieses Handbuch nennt dafür bewusst keine Zahl. Zu prüfen vor dem Anschluss einer Last: Kontaktstrom bei ohmscher Last, Anlaufstrom bei Motoren und Leuchtstoffmitteln, Schalthäufigkeit |
 
 ### Funk
 
@@ -835,7 +842,7 @@ dem Netzteil gilt ohne Last ohnehin nichts.
 | Datenabfrage | RCT-Wechselrichter über TCP (Port 8899), alle 10 s |
 | Datenaufzeichnung | alle 5 Minuten als CSV (ca. 48 KB pro Tag), 24-h-Puffer im RAM bei fehlender Karte |
 | Weboberfläche | HTTP-Server im lokalen Netz (Port 80): Status, CSV-/Bild-Download, Firmware-Update; änderende Funktionen mit 4-stelligem Code |
-| Schaltausgang | potentialfreier Kontakt zwischen zwei Pins des Headers H1, 5 wählbare Funktionen, 20 s Einschaltverzögerung, 60 s Mindesthaltezeit, 20 % Hysterese; aus bei jedem Start |
+| Schaltausgang | 3,3 V am Header H1 zum Ansteuern der Spule eines externen Relais (Kathode der Freilaufdiode an 3,3 V), 5 wählbare Funktionen, 20 s Einschaltverzögerung, 60 s Mindesthaltezeit, 20 % Hysterese; aus bei jedem Start |
 | Ausgang bei Datenausfall | schaltet aus, wenn der Wechselrichter länger als 10 min keine Daten liefert; bis dahin arbeitet er mit dem letzten empfangenen Wert, sichtbar als „letzte Messung“ |
 
 Das Panel zeigt ausschließlich Messwerte an — es verändert keine Einstellungen

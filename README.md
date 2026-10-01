@@ -21,9 +21,10 @@ network — in German or English, one per build.
   rows in plain text (23 columns, see `docs/sd-history.md`).
 - **Web interface** at the panel's address: the same values, the CSV and the
   screenshots as downloads, firmware update over the air.
-- **The switching output** (1-Way relay port) can follow grid draw, PV surplus,
-  a fault word or island mode; it never runs on data older than ten minutes and
-  says so (`docs/relay.md`).
+- **The switching output** (1-Way port) puts 3.3 V on one header pin and drives
+  the coil of an external relay from it; the relay's contact then switches the
+  consumer. It can follow grid draw, PV surplus, a fault word or island mode,
+  never runs on data older than ten minutes and says so (`docs/relay.md`).
 - **The backlight** dims after three minutes without a touch and switches off
   after five.
 

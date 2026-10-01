@@ -21,7 +21,7 @@ the openHASP discussion #603, the HomeDing board page and the Tasmota discussion
 | LCD init SPI CS / SCK / MOSI | 39 / 48 / 47 |
 | Backlight | 38 (LEDC PWM, 1 kHz, active high) |
 | Touch I²C SDA / SCL | 19 / 45 (GT911 @ 0x5D) |
-| Switching output (1-Way relay port) | 40 |
+| Switching output (1-Way port, drives an external relay coil) | 40 |
 | SD card | CS 42, SCK 48, MOSI 47, MISO 41 |
 
 ## What only the hardware can answer
@@ -43,8 +43,10 @@ panel on the wall, in this order:
    `RCT: grid ...` lines on the serial console. The frame checksum
    (`src/rct/RctCrc.h`) is the first thing that fails silently here — a wrong
    checksum makes a healthy inverter look unreachable.
-5. **Relay:** the polarity of the 1-Way port, and the test button (5 s on,
-   5 s off).
+5. **Switching output:** the 1-Way port puts 3.3 V on one header pin when the
+   output is on (GPIO 40) and 0 V when it is off, so an external relay coil plus
+   a flyback diode is what switches a consumer; the test button drives it for
+   20 s.
 
 A healthy boot on the serial console (115200 baud) looks like this — the GUI is
 up before the radio is:
