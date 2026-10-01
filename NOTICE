@@ -1,52 +1,94 @@
 NOTICE
 ======
 
-rct-panel combines code from several open source projects. This file lists the
-attributions required by their licenses.
+rct-panel is MIT-licensed project code (see LICENSE) that runs on, and links
+against, other open source software. This file lists every component, the
+license it carries and — where the license asks for something — what has to
+travel with a distribution.
 
-rct-panel core code
--------------------
-Licensed under the MIT License. See LICENSE.
+Project code
+------------
+src/, tools/, docs/, boards/, partitions/, README.md — MIT License, see
+LICENSE. Every source file carries an SPDX header.
 
-RCT Power protocol client (src/rct/RctClient.cpp, src/rct/RctClient.h)
------------------------------------------------------------------------
-Direct port of the RCT Power "Serial Communication Protocol" parser from the
-Energy2Shelly_ESP project, licensed under the Apache License 2.0:
+Ported code
+-----------
+RCT Power protocol client (src/rct/RctClient.cpp, src/rct/RctClient.h) and the
+non-blocking provisioning (src/config/Configuration.cpp, .h) are ported from
 
-    https://github.com/ (Energy2Shelly_ESP)
-    Copyright (c) Energy2Shelly_ESP contributors
+    Energy2Shelly_ESP
+    https://github.com/TheRealMoeder/Energy2Shelly_ESP
+    Copyright (c) Energy2Shelly_ESP contributors — Apache License 2.0
 
-A copy of the Apache License 2.0 is required to be provided with any
-distribution of the ported code. The relevant license text is available at
-https://www.apache.org/licenses/LICENSE-2.0 and is reproduced alongside the
-ported files' header below.
+The license text is in LICENSE-APACHE; the changes are noted in the file
+headers.
 
-ST7701 display init sequence (src/display/Display.cpp)
-------------------------------------------------------
-The ST7701 480x480 init sequence is the one shipped by the Arduino_GFX
-project (MIT license, https://github.com/moononournation/Arduino_GFX), as
-transcribed in Tasmota discussion #20527. The same register values also
-appear in the LVGL project's lv_lcd_st7701 driver (MIT license,
-https://github.com/lvgl/lvgl).
+The ST7701 480x480 init sequence in src/display/Display.cpp is the register
+sequence of Arduino_GFX (MIT, https://github.com/moononournation/Arduino_GFX),
+as also found in LVGL's lv_lcd_st7701 driver (MIT). The register values are
+transcribed, not the code.
 
-Third-party components used at build time
------------------------------------------
-- LVGL 9 (MIT)                    https://github.com/lvgl/lvgl
-- WiFiManager (MIT)               https://github.com/tzapu/WiFiManager
-- Arduino-ESP32 core (LGPL-2.1+ and parts of ESP-IDF)  https://github.com/espressif/arduino-esp32
-  - esp_lcd RGB panel driver component (Apache License 2.0), part of ESP-IDF
+Fonts (src/gui/fonts/)
+----------------------
+lv_font_montserrat_14_uml.c, _16_uml.c, _20_uml.c, _28_uml.c are generated with
+LVGL's font converter from Montserrat Medium, SIL Open Font License 1.1. The
+license text is next to them: src/gui/fonts/OFL-Montserrat.txt. The generator
+command is in the header of each file; it adds the Latin-1 range (0xA0-0xFF) to
+the ASCII set of the upstream font.
 
-License texts are available in the respective upstream repositories and in
-the installed PlatformIO package directories (.pio/libdeps, ~/.platformio).
+lv_font_portal_icons_20.c is generated the same way from `portal_icons.ttf`, a
+subset that holds only the symbols the flow diagram uses. The generator command
+is in the file's header. Where that symbol font came from is not recorded in
+this repository — if it was taken from Google's Material Design Icons, then
+Apache-2.0 applies to it. That should be settled before a binary is published
+rather than after.
+
+Build-time dependencies, linked into the firmware
+------------------------------------------------
+| Component                | Version            | License           |
+|--------------------------|--------------------|-------------------|
+| Arduino-ESP32 core       | 2.0.17 (esp32)     | LGPL-2.1-or-later |
+| ESP-IDF (incl. esp_lcd)  | 5.3                | Apache License 2.0|
+| LVGL                     | 9.3.0              | MIT               |
+| WiFiManager (tzapu)      | 2.0.17             | MIT               |
+
+    https://github.com/espressif/arduino-esp32
+    https://github.com/espressif/esp-idf
+    https://github.com/lvgl/lvgl
+    https://github.com/tzapu/WiFiManager
+
+What that means for a firmware image: the image contains LGPL-2.1-or-later and
+Apache-2.0 code, so it is distributed under those terms — the MIT license covers
+the project code only, not the image. The obligations that come with it are to
+state the changes, to keep this NOTICE with the distribution, and for the LGPL
+part to let anyone replace the LGPL-covered code. Building from this repository
+satisfies that most simply: no prebuilt binary is part of the repository. The
+license texts are in the upstream repositories and in the PlatformIO package
+directories (.pio/libdeps, ~/.platformio/packages).
+
+Development-only dependency, not part of the firmware
+----------------------------------------------------
+tools/rct_sim.py and tools/rct_sim_test.py import the Python package `rctclient`
+(GPL-3.0, https://github.com/svalouch/rctclient) for the frame codec, the
+object-ID registry and the value tables. It runs on the build machine as a
+separate process and is not redistributed with the firmware.
+
+Protocol reference
+------------------
+The object IDs (rctOids[] in src/rct/RctClient.cpp) and the meaning of the 128
+fault bits (src/i18n/Lang*.cpp) are facts about the device, taken from the
+public documentation of the RCT Power Serial Communication Protocol.
+
+The frame checksum in src/rct/RctCrc.h is an implementation of the published
+CRC-16/CCITT-FALSE (polynomial 0x1021, preset 0xFFFF, MSB first) together with
+the padding rule the device applies to odd-length frames. Its check values were
+computed independently of the implementation and are checked in
+tools/crc_test; a wrong checksum does not crash, it makes a healthy inverter
+look unreachable, so it is worth a test of its own.
 
 --------------------------------------------------------------------------
-Apache License 2.0 (for the ported Energy2Shelly_ESP code)
+Apache License 2.0
 --------------------------------------------------------------------------
-The full text of the Apache License 2.0 can be obtained from:
-
-    https://www.apache.org/licenses/LICENSE-2.0
-
-In accordance with its terms: modifications to the ported files are noted in
-the file headers; this NOTICE is retained; and the license text must
-accompany any redistribution of the ported code. A copy is kept in
-LICENSE-APACHE.
+For the code ported from Energy2Shelly_ESP and for the ESP-IDF parts inside the
+framework. The full text is in LICENSE-APACHE, the canonical text at
+https://www.apache.org/licenses/LICENSE-2.0.
