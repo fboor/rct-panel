@@ -1,24 +1,24 @@
 # RCT Power Panel <span class="h-sub">Benutzerhandbuch</span>
 
-Das **RCT Power Panel** ist ein Wandpanel (4-Zoll-Farb-Touchdisplay) zur
+Das RCT Power Panel ist ein Wandpanel (4-Zoll-Farb-Touchdisplay) zur
 Anzeige der Live-Daten Ihres RCT-Power-Wechselrichters. Es liest die Werte
 direkt über das Netzwerk aus dem Wechselrichter (TCP, Standard-Port 8899),
 zeigt sie auf sieben übersichtlichen Seiten an und zeichnet die Messwerte
 zusätzlich automatisch auf einer microSD-Karte auf.
 
 <figure class="ports-shot">
-  <img src="img/anschluesse.png" alt="Schnittstellen im Überblick: Touch-Display, microSD-Steckplatz, USB-C-Anschluss">
-  <figcaption>Bild 1: Vorder- und Rückseite des Panels mit Touch-Display, microSD und USB-C</figcaption>
+  <img src="img/anschluesse.png" alt="Schematische Grafik: Vorderseite des Panels mit Touch-Display, Rückseite mit den sechs nummerierten Anschlüssen microSD, USB-C, UART, Batterie-Port und Relais-Port, dazwischen eine Legende">
+  <figcaption>Bild 1: Vorder- und Rückseite mit den sechs Anschlüssen; die Nummern stehen auf den Ansichten</figcaption>
 </figure>
 
 ---
 
 ## Kurzanleitung <span class="h-sub">Inbetriebnahme in 5 Schritten</span>
 
-Sie brauchen nur **zwei Angaben**, sonst nichts weiter zu wissen:
+Sie brauchen nur zwei Angaben, sonst nichts weiter zu wissen:
 
-1. den **Namen und das Passwort Ihres WLAN**,
-2. die **IP-Adresse Ihres RCT-Wechselrichters** — das Gerät zeigt sie
+1. den Namen und das Passwort Ihres WLAN,
+2. die IP-Adresse Ihres RCT-Wechselrichters — das Gerät zeigt sie
    gelegentlich direkt auf seinem Display an.
 
 Der Port ist einheitlich `8899` und bereits voreingestellt — dort ist
@@ -28,14 +28,14 @@ So geht's:
 
 1. Panel anschließen — USB-C-Kabel an ein Netzteil, das Display zeigt
    sofort die Übersicht.
-2. WLAN „RCT-Panel" wählen — den Zugangspunkt erzeugt das Panel beim
+2. WLAN „RCT-Panel“ wählen — den Zugangspunkt erzeugt das Panel beim
    ersten Start (oder wenn kein gespeichertes Netzwerk erreichbar ist).
 3. Portal öffnen — im Browser `http://192.168.4.1` aufrufen (die
    Konfigurationsseite öffnet sich meist von selbst).
 4. Zwei Felder ausfüllen und speichern — WLAN-Name/-Passwort sowie die
    RCT-IP-Adresse (der Port ist bereits voreingestellt).
 5. Fertig. Das Panel verbindet sich mit Ihrem WLAN und zeigt die
-   Live-Daten. Der Zugangspunkt „RCT-Panel" verschwindet dabei von selbst.
+   Live-Daten. Der Zugangspunkt „RCT-Panel“ verschwindet dabei von selbst.
 
 So sieht es danach aus: Oben die Statusleiste mit dem Verbindungsstatus
 (`aktiv`, grün = alles gut), in der Mitte die aktuelle Seite; unten blättern
@@ -50,7 +50,31 @@ Browser abrufen: IP-Adresse und Code dafür stehen auf der **Service-Seite**
 
 ## 1. Inbetriebnahme
 
-### 1.1 Erstes Einschalten
+### 1.1 Anschlüsse
+
+Alle Anschlüsse liegen an den Seitenkanten und sind von der Seite zugänglich —
+das Panel muss dafür nicht aus der Wand. Die Nummern in Bild 1 und die
+Beschriftung in Bild 2 gehören zusammen:
+
+| Nr. | Anschluss (Aufdruck im Foto) | Lage in der Rückseitenansicht | Verwendung |
+|---|---|---|---|
+| 1 | Touch-Display | Vorderseite | Anzeige und Bedienung |
+| 2 | microSD (TF) — „TF Card Socket“ | linke Kante, oben | Aufzeichnung der Messwerte (Kapitel 4) |
+| 3 | USB-C — „USB Type-C“ | linke Kante, unten | Versorgung mit 5 V, Firmware-Aktualisierung per Kabel (Kapitel 10) |
+| 4 | UART (P1) — „Uart Interface“ | rechte Kante, oben | nur Service und Entwicklung: GND, RXD, TXD, 5 V |
+| 5 | Batterie-Port — „Battery Port“ | rechte Kante, Mitte | unbenutzt; die Firmware nutzt ihn nicht |
+| 6 | Relais-Port „1Way“ — „1 Way/3 Way Relay Port“ | rechte Kante, unten | Schaltkontakt (Kapitel 6) |
+| 7 | Lautsprecher — „Speaker“ | linke Kante, zwischen 2 und 3 | unbenutzt; die Firmware gibt keinen Ton aus |
+
+<figure class="board-shot">
+  <img src="img/rueckseite.jpg" alt="Rückseite des Panels: TF-Karten-Slot und USB-C an der linken Kante, UART-, Batterie- und Relais-Port an der rechten Kante, ESP32-S3-Modul in der Mitte">
+  <figcaption>Bild 2: Rückseite mit den Anschlüssen. Die Pfeile im Bild sind englisch beschriftet; die Zuordnung steht in der Tabelle oben.</figcaption>
+</figure>
+
+Der Anschluss 6 ist potentialfrei und schaltet die Netzlast selbst — dazu mehr in
+Kapitel 6. An Anschluss 4 liegen 3,3 V an; dort gehört keine Netzspannung hinein.
+
+### 1.2 Erstes Einschalten
 
 1. Panel mit 5 V versorgen. Das Display startet sofort.
 2. Ohne gespeichertes WLAN startet das Panel selbst einen eigenen
@@ -60,7 +84,7 @@ Browser abrufen: IP-Adresse und Code dafür stehen auf der **Service-Seite**
    die Konfigurationsseite unter `http://192.168.4.1` (ein Captive-Portal
    öffnet sich meist automatisch).
 
-### 1.2 Konfiguration im Setup-Portal
+### 1.3 Konfiguration im Setup-Portal
 
 Tragen Sie im Portal ein:
 
@@ -81,12 +105,12 @@ Bestätigen Sie das Formular. Das Panel speichert die Angaben dauerhaft
 
 <figure class="portal-shot">
   <img src="img/setup-portal.png" alt="Konfigurationsportal unter http://192.168.4.1: Felder für WLAN-Name/Passwort, rct_host und rct_port, plus Hinweis zum Wechsel ins Heimnetz">
-  <figcaption>Bild 2: Konfigurationsportal unter http://192.168.4.1 mit den Feldern für WLAN und RCT-Adresse</figcaption>
+  <figcaption>Bild 3: Konfigurationsportal unter http://192.168.4.1 mit den Feldern für WLAN und RCT-Adresse</figcaption>
 </figure>
 
-### 1.3 Später erneut konfigurieren
+### 1.4 Später erneut konfigurieren
 
-- Öffnen Sie auf der Seite Service den Button „Setup starten" — das
+- Öffnen Sie auf der Seite Service den Button „Setup starten“ — das
   Panel startet daraufhin wieder den Konfigurations-Zugangspunkt.
 - Oder starten Sie das Panel, während kein gespeichertes Netzwerk erreichbar
   ist (nach ca. 15 s erscheint der AP von selbst).
@@ -104,7 +128,7 @@ Die Bedienung erfolgt per Touch:
 - Die Reihenfolge der Seiten ist fest: Übersicht → Energie → Heute →
   24 h Verlauf → Info → Akku → Service (und wieder zurück).
 
-Statusleiste (oben): links steht „RCT Power Panel", rechts der
+Statusleiste (oben): links steht „RCT Power Panel“, rechts der
 Verbindungsstatus:
 
 | Badge | Bedeutung |
@@ -114,7 +138,7 @@ Verbindungsstatus:
 | `keine Daten` (rot) | WLAN steht, aber es kommen keine RCT-Daten an |
 | `verbinde neu` (gelb) | Daten kamen, der Datenstrom ist abgerissen — Neustart der Verbindung |
 
-Zeigt eine Seite „–" statt eines Wertes, ist dieser Wert noch nicht
+Zeigt eine Seite „–“ statt eines Wertes, ist dieser Wert noch nicht
 eingetroffen (z. B. weil der Wechselrichter keine Batterie meldet oder die
 Verbindung fehlt). Es sind keine Werte ausgefallen — das Panel zeigt keinen
 erfundenen Nullwert an.
@@ -144,7 +168,7 @@ Licht aus Sicherheitsgründen immer an.
 
 ### 3.1 Übersicht (Energiefluss)
 
-Das Flussdiagramm bildet die „Energiefluss"-Ansicht des RCT-Portals ab:
+Das Flussdiagramm bildet die „Energiefluss“-Ansicht des RCT-Portals ab:
 
 - PV (links): Erzeugung aus Solar-Generator A und B plus optionalem
   externen S0-Zähler.
@@ -227,7 +251,7 @@ Alles zur Batterie:
 
 - Batterie-SOC: Ladezustand in %.
 - Batterie: Leistung / Strom / Spannung. Batteriezentrisches
-  Vorzeichen: Laden = „+", Entladen = „−" — also umgekehrt zum
+  Vorzeichen: Laden = „+“, Entladen = „−“ — also umgekehrt zum
   Flussdiagramm auf der Übersicht, wo das Entladen (Versorgung des Hauses)
   positiv ist.
 - Batterie-Temp · Kalibrierung (nächster Kalibriertermin als Datum +
@@ -238,9 +262,9 @@ Alles zur Batterie:
 
 Die einzige Seite mit Aktionen:
 
-- „Setup starten" (rechts oben): öffnet das Konfigurationsportal (siehe
+- „Setup starten“ (rechts oben): öffnet das Konfigurationsportal (siehe
   Abschnitt 1.3).
-- Batterie-Status: decodierter Zustand, darunter die **IP-Adresse des Panels** —
+- Batterie-Status: decodierter Zustand, darunter die IP-Adresse des Panels —
   die brauchen Sie, um die Web-Oberfläche im Browser zu öffnen (Kapitel 5).
   Steht kein Netz, finden Sie dort `kein Netz`. Rechts daneben, in grauer
   Schrift, der Rohwert des Statusregisters als Hexzahl (nur für die
@@ -250,7 +274,7 @@ Die einzige Seite mit Aktionen:
 - SD-Log: Status der SD-Aufzeichnung, z. B. `SD: OK | 16,0 GB frei` —
   bei gezogener Karte `SD: -- | n gepuffert (11 h)` (Werte werden
   zwischengepuffert; siehe Abschnitt 4).
-- „Screenshot" (rechts, unter „Setup starten"): speichert nach 5
+- „Screenshot“ (rechts, unter „Setup starten“): speichert nach 5
   Sekunden ein Bild des aktuellen Displays als BMP auf die Karte
   (`/shot/shot001.bmp`). Die 5 Sekunden erlauben, vorher zu einer anderen
   Seite zu wechseln. Praktisch, wenn Sie dem Support zeigen möchten, was das
@@ -259,10 +283,10 @@ Die einzige Seite mit Aktionen:
   unvollständige Datei auf der Karte ist schlimmer als gar keine.
 - Web-Oberfläche (rechts, unter den beiden Knöpfen): der vierstellige Code,
   den diese Seiten für Änderungen verlangen. Er ist nur belegt, solange das
-  Panel im Netz ist. **Tippen Sie auf den Code**, zieht das Panel sofort einen
+  Panel im Netz ist. Tippen Sie auf den Code, zieht das Panel sofort einen
   neuen — nützlich, wenn jemand über Ihre Schulter mitgelesen hat.
-- Ausgang (unten): die Steckdose am Relais-Port. `Ausgang` nennt die
-  eingestellte Funktion mit ihrer Schwelle in Watt; **Tippen Sie darauf**,
+- Ausgang (unten): der Schaltkontakt am Relais-Port. `Ausgang` nennt die
+  eingestellte Funktion mit ihrer Schwelle in Watt; Tippen Sie darauf,
   wechselt die Funktion. Darunter steht, was gerade passiert (`AN · 512 W
   jetzt`). Der Knopf daneben prüft für 20 Sekunden, ob am Port überhaupt
   etwas schaltet. Siehe Kapitel 6.
@@ -282,7 +306,7 @@ CSV-Datei (nur bei verbundenem Wechselrichter, keine Nullzeilen):
   reicht jahrzehntelang.
 - Karte gezogen: Solange keine Karte steckt, werden die Zeilen im Speicher
   des Panels zwischengelagert und nach dem Einstecken in der richtigen
-  Reihenfolge nachgeschrieben. Der Puffer fasst **24 Stunden** (288 Zeilen,
+  Reihenfolge nachgeschrieben. Der Puffer fasst 24 Stunden (288 Zeilen,
   das ist der Arbeitsspeicher, nicht die Karte). Die Service-Seite zeigt den
   Pufferstand mit Zeitangabe, z. B. `SD: -- | 137 gepuffert (11 h)`.
 - Die Dateien müssen Sie nicht aus der Karte auslesen: Das Panel liefert sie
@@ -311,12 +335,12 @@ Praktisch ist jede gebräuchliche 8-GB- oder 16-GB-Karte die richtige Wahl.
 Wenn Sie eine sehr große Karte einsetzen wollen, achten Sie darauf, dass sie
 als **FAT32** formatiert ist: Windows formatiert Karten ab 32 GB nur noch als
 exFAT, dort hilft dann ein FAT32-Werkzeug (z. B. `mkfs.fat -F32` unter Linux/macOS,
-oder ein Formatierer wie „guiformat" mit der Option „FAT32"). exFAT kann das
+oder ein Formatierer wie „guiformat“ mit der Option „FAT32“). exFAT kann das
 Panel weder lesen noch beschreiben — es findet dort kein Dateisystem und meldet
 `SD: --`, wiederholt den Versuch alle 10 Sekunden und puffert die Messwerte
 weiter im RAM.
 
-Das Panel formatiert die Karte **nicht** selbst: Es legt nur die beiden
+Das Panel formatiert die Karte nicht selbst: Es legt nur die beiden
 Ordner `/hist` (Messwerte) und `/shot` (Screenshots) an, wenn sie fehlen. Alles
 andere auf der Karte bleibt unangetastet, Sie können also eigene Ordner
 daneben anlegen.
@@ -376,25 +400,25 @@ nehmen Sie die IP-Adresse).
 
 <figure class="web-shot">
   <img src="img/web-uebersicht.png" alt="Weboberfläche des Panels: vier Wertekarten für Netz, PV, Batterie und Verbrauch, darunter eine Tabelle mit Wechselrichter, Firmware, Speicher, SD-Karte, Takt und der Adresse">
-  <figcaption>Bild 3: Die Übersichtseite — oben die aktuellen Werte, unten die Geräteangaben und die Adresse, unter der das Panel erreichbar ist</figcaption>
+  <figcaption>Bild 4: Die Übersichtseite — oben die aktuellen Werte, unten die Geräteangaben und die Adresse, unter der das Panel erreichbar ist</figcaption>
 </figure>
 
 ### Daten abrufen
 
 Auf `/daten` und `/bilder` steht je Eintrag ein Knopf:
 
-- Bei den Daten holt **„laden"** die **letzten 64 kB** der Datei — das sind
+- Bei den Daten holt **„laden“** die letzten 64 kB der Datei — das sind
   bei der Fünf-Minuten-Taktung etwa zwei Tage. Der Browser zeigt den
   Fortschritt als Balken; die Übertragung ist inzwischen schnell, die letzten
   64 kB dauern Bruchteilsecunden. Für mehr hängen Sie `?tail=0` an den Link
   an, dann kommt die gesamte Monatsdatei (etwa 1,2 MB, gut zwei Sekunden).
-- Bei den Bildern öffnet **„anzeigen"** den Screenshot im Browser. Auch hier
+- Bei den Bildern öffnet **„anzeigen“** den Screenshot im Browser. Auch hier
   läuft der Download mit Fortschrittsanzeige.
 
-Unter der Bildliste steht ein Knopf **„Screenshot auslösen"**: er nimmt ein Bild
+Unter der Bildliste steht der Knopf „Screenshot auslösen“: er nimmt ein Bild
 der aktuellen Seite auf und legt es wie die Panel-Taste als BMP auf die Karte. Der
 Knopf verlangt den Code (unten). Das Schreiben dauert etwa 3 bis 5 Sekunden;
-danach lädt sich die Seite **einmal** neu und die neue Datei steht in der Liste.
+danach lädt sich die Seite einmal neu und die neue Datei steht in der Liste.
 Ohne die Wartezeit des Panels, denn im Browser sind Sie bereits auf der Seite,
 die aufgenommen werden soll.
 
@@ -405,7 +429,7 @@ Datei nicht dazwischen auf der Karte verändern.
 
 ### Der Code
 
-Ansehen und Herunterladen dürfen alle im Netz. Was das Panel **verändert**,
+Ansehen und Herunterladen dürfen alle im Netz. Was das Panel verändert,
 verlangt den vierstelligen Code:
 
 - Firmware aktualisieren (`/update`),
@@ -422,7 +446,7 @@ Adresse kennt — nicht vor jemandem, der das Display ablesen kann.
 
 ### Der Schaltausgang
 
-Oben auf der Übersichtsseite steht der Schaltausgang (Steckdose) mit
+Oben auf der Übersichtsseite steht der Schaltausgang (Kontakt) mit
 aktuellem Zustand und Funktion. Darunter wählen Sie die Funktion und die
 Schwelle und übernehmen sie — hinter dem Code, denn es ändert das Panel.
 Ausführlich beschrieben ist der Ausgang in Kapitel 6.
@@ -434,7 +458,7 @@ Voraussetzung ist ein Build, wie in Kapitel 10 beschrieben
 
 1. Panel und Rechner im selben Netz; Adresse von der Service-Seite holen.
 2. `http://<Adresse des Panels>/update` öffnen.
-3. Code eintragen, `firmware.bin` auswählen, „Firmware schreiben".
+3. Code eintragen, `firmware.bin` auswählen, „Firmware schreiben“.
 4. Das Panel schreibt die Datei in den zweiten Speicherbereich und startet
    neu — gespeichertes WLAN und die Wechselrichter-Konfiguration bleiben
    erhalten. Das Display bleibt währenddessen an.
@@ -452,12 +476,59 @@ Voraussetzung ist ein Build, wie in Kapitel 10 beschrieben
 
 ---
 
-## 6. Der Schaltausgang <span class="h-sub">Steckdose automatisch schalten</span>
+## 6. Der Schaltausgang <span class="h-sub">Verbraucher automatisch schalten</span>
 
-Am Relais-Port des Panels (Aufdruck „1Way") sitzt ein potentialfreier
+Am Relais-Port des Panels (Aufdruck „1Way“) sitzt ein potentialfreier
 Schaltkontakt: kein eigener Transformator, sondern ein Relais, das Ihren
 Verbrauch direkt schaltet. Damit das Panel mehr kann als anzeigen, folgt der
 Ausgang einer Regel, die Sie wählen.
+
+### Anschluss
+
+Der Port ist dreipolig. Am Relais selbst steht, welcher Anschluss welcher ist;
+auf der Platine steht es nicht. Der Testknopf auf der Service-Seite entscheidet
+es: Bei ausge schaltetem Ausgang (Funktion `Aus`) hat ein Paar der drei
+Anschlüsse immer Durchgang — das ist gemeinsamer Anschluss und Öffner. Der
+dritte Anschluss hat nur dann Durchgang, wenn der Ausgang einschaltet; das ist
+der gemeinsame Anschluss und der Schließer. Der Rest ist normale
+Verdrahtung: gemeinsamer Anschluss an die Phase des zu schaltenden Kreises,
+Schließer an die Leitung zur Last, Öffner an den Rückleiter, wenn der
+Kontakt im geschlossenen Zustand öffnen soll.
+
+| Anschluss am Port | Angeschlossen an |
+|---|---|
+| gemeinsamer Anschluss (COM) | Phase des zu schaltenden Kreises |
+| Schließer (NO) | Leitung zur Last |
+| Öffner (NC) | Rückleiter, wenn der Kontakt im eingeschalteten Zustand öffnen soll |
+
+### Spannungen am Relais-Port
+
+Am Port liegen zwei ganz verschiedene Dinge an, und sie dürfen nicht
+verwechselt werden:
+
+| Seite | Was dort anliegt |
+|---|---|
+| Ansteuerung, intern | 3,3 V Logikpegel am GPIO 40; damit wird allein die Relaisspule geschaltet |
+| Kontakt (COM, NO, NC) | potentialfrei: trägt die Spannung des angeschlossenen Kreises, bei 230 V also 230 V AC |
+
+Am Panel selbst liegen nur die 5 V der USB-Versorgung an. An keinem Anschluss
+und an keinem GPIO des Panels darf Netzspannung angeschlossen werden.
+
+Zwei Dinge sind außerdem wichtig:
+
+- Der Kontakt ist potentialfrei: aus dem Panel kommt keine Spannung in den
+  Kreis, sondern nur ein Kontakt, der ihn öffnet und schließt.
+- Arbeiten am Schaltkreis gehören in Fachhände. Er gehört in eine
+  Verteilung, in der er abgesichert und durch einen Fehlerstromschutzer
+  geschützt ist.
+
+Zur Belastbarkeit nennt dieses Handbuch bewusst keine Zahl: sie hängt vom
+verbauten Relais ab und steht auf dem Bauteil und in dessen Datenblatt. Vor
+dem Anschluss einer Last sind drei Angaben zu prüfen: Kontaktstrom bei
+ohmscher Last, Anlaufstrom bei Motoren und Leuchtstoffmitteln, und die
+Schalthäufigkeit. Eine Speicherheizung, eine Wärmepumpe oder ein
+Wasserkocher gehören nicht an einen Kontakt, dessen Nennstrom man nicht
+kennt.
 
 ### Die fünf Funktionen
 
@@ -478,15 +549,15 @@ Ausgang einer Regel, die Sie wählen.
 
 Drei Wege, alle drei gleichwertig:
 
-1. **Auf dem Panel:** Service-Seite, Feld `Ausgang` antippen — jedes Antippen
+1. Auf dem Panel: Service-Seite, Feld `Ausgang` antippen — jedes Antippen
    springt zur nächsten Funktion (`Aus` → `Netzbezug` → `Überschuss` →
    `Störung` → `Inselbetrieb` → `Aus`). Die gewählte Funktion bleibt auch nach
    einem Neustart erhalten.
-2. **In der Weboberfläche** (Kapitel 5): Auswahlfeld für die Funktion und ein
+2. In der Weboberfläche (Kapitel 5): Auswahlfeld für die Funktion und ein
    Zahlenfeld für die Schwelle in Watt. Das ist der einzige Weg, eine Schwelle
    in Watt bequem einzugeben — für das Tippen auf Zahlen braucht es eine
    Tastatur.
-3. **Im Setup-Portal:** die Felder `relay_mode` (0 bis 4, siehe Tabelle) und
+3. Im Setup-Portal: die Felder `relay_mode` (0 bis 4, siehe Tabelle) und
    `relay_w` (Watt). Für den Fall, dass das Panel gar nicht im Heimnetz ist.
 
 ### Das Zeitverhalten
@@ -494,16 +565,22 @@ Drei Wege, alle drei gleichwertig:
 Damit der Ausgang nicht flattert, arbeitet er mit zwei Zeitfenstern und einer
 Hysterese:
 
-- **20 Sekunden** muss die Bedingung über der Schwelle liegen, dann schaltet
+- 20 Sekunden muss die Bedingung über der Schwelle liegen, dann schaltet
   der Ausgang ein.
-- **Mindestens 60 Sekunden** bleibt er nach dem Einschalten an — auch wenn die
+- Mindestens 60 Sekunden bleibt er nach dem Einschalten an — auch wenn die
   Bedingung in der Zwischenzeit unterschritten wird.
 - Die **Hysterese** beträgt 20 % der Schwelle: bei 500 W schaltet der Ausgang
   bei 500 W ein und bei 400 W wieder aus. Ohne das würde ein Wert, der genau auf
   der Schwelle steht, alle zehn Sekunden umschalten.
-- Keine Daten vom Wechselrichter (länger als zwei Minuten) heißt: **aus**. Ein
+- Keine Daten vom Wechselrichter (länger als zwei Minuten) heißt: aus. Ein
   Ausgang, der wegen eines verschwundenen Wechselrichters eingeschaltet
   bliebe, wäre die schlechtere Variante.
+
+Die Zwei-Minuten-Frist steht fest in der Firmware und ist eine Annahme, keine
+Messung. Manche Wechselrichter liefern mehrere Minuten keine Werte, obwohl die
+Verbindung offen ist — dann schaltet der Ausgang in dieser Zeit einmal ab und
+sobald wieder Werte kommen wieder ein. Wenn das an Ihrem Gerät auftaucht, gehört
+die Frist verlängert; das ist eine Zeile in der Firmware, kein Umbau.
 
 ### Anzeige und Test
 
@@ -512,11 +589,11 @@ Auf der Service-Seite zeigt das Panel darunter, was gerade passiert:
 verglichen wird — ohne sie wäre die Schwelle in Watt eine Zahl, die niemand
 sinnvoll einstellen kann.
 
-Der Knopf **„Test: 5 s an, 5 s aus"** schaltet den Ausgang zweimal ein und
+Der Knopf „Test: 5 s an, 5 s aus“ schaltet den Ausgang zweimal ein und
 aus, unabhängig von der Regel und ohne Daten vom Wechselrichter. Damit lässt
 sich prüfen, ob am Port überhaupt etwas passiert.
 
-> **Tipp:** Der Ausgang ist beim Start **immer aus**, und die Voreinstellung ist
+> **Tipp:** Der Ausgang ist beim Start immer aus, und die Voreinstellung ist
 > die Funktion `Aus`. Sie müssen also nichts tun, damit beim Einschalten
 > nichts passiert — erst eine Auswahl macht ihn zu einem Automaten.
 
@@ -524,7 +601,7 @@ sich prüfen, ob am Port überhaupt etwas passiert.
 > Messwerten und ist weder Fehlerstromschutz noch Überlastschutz. Wenn Sie
 > eine Speicherheizung oder eine Wärmepumpe damit betreiben, prüfen Sie die
 > Grenzen des Kontakts (siehe Kapitel 11) und die Absicherung des
-> Anschlusses — Anschlussarbeiten an der Steckdose gehören in Fachhände.
+> Anschlusses — die Arbeiten am Schaltkreis gehören in Fachhände.
 
 ---
 
@@ -549,17 +626,17 @@ sich prüfen, ob am Port überhaupt etwas passiert.
 | Badge `keine Daten` (rot) | WLAN steht, der Wechselrichter antwortet nicht. Prüfen Sie `rct_host`/`rct_port` im Setup-Portal und ob der Wechselrichter erreichbar ist. |
 | Badge `verbinde` bleibt | WLAN-Verbindung wird aufgebaut; wenn es nicht weitergeht, prüfen Sie das WLAN-Passwort (Portal öffnet sich nach ~15 s erneut). |
 | Badge `verbinde neu` | Datenstrom abgerissen; das Panel versucht automatisch neu zu verbinden. |
-| Kein Konfigurationsportal auffindbar | Panel ist bereits in einem Netzwerk — nutzen Sie „Setup starten" auf der Service-Seite. |
+| Kein Konfigurationsportal auffindbar | Panel ist bereits in einem Netzwerk — nutzen Sie „Setup starten“ auf der Service-Seite. |
 | `SD: --` auf Service-Seite | Keine Karte erkannt oder Karte gezogen; prüfen Sie die microSD im Steckplatz (**FAT32**, kein exFAT — Abschnitt 4). Ohne Karte werden die Daten bis zu 24 h im Panel gepuffert und danach nachgeschrieben. |
 | `SD: OK \| n Zeilen verloren` | Der Puffer war länger voll als 24 h (Karte mehrere Tage weg) oder die Karte war voll. Die Anzahl ist die Zahl der endgültig verlorenen Zeilen. |
-| Werte auf „–" | Wechselrichter liefert diesen Wert nicht (z. B. keine Batterie) — normal. |
+| Werte auf „–“ | Wechselrichter liefert diesen Wert nicht (z. B. keine Batterie) — normal. |
 | Webseite lässt sich nicht öffnen | IP-Adresse von der Service-Seite (unter `Batterie-Status`) im Browser eintragen; steht dort `kein Netz`, ist das Panel nicht im Heimnetz. |
-| „Der Code stimmt nicht" | Code von der Service-Seite; er ändert sich bei jedem Start des Panels. Antippen zieht einen neuen. |
+| „Der Code stimmt nicht“ | Code von der Service-Seite; er ändert sich bei jedem Start des Panels. Antippen zieht einen neuen. |
 | Download bricht ab | Der Browser hat die Verbindung geschlossen (Ruhezustand, Netzwechsel). Der Vorgang lässt sich einfach wiederholen. |
 | `/daten` bleibt leer | Auf der Karte steht noch keine Datei — es wird erst ab dem ersten Fünf-Minuten-Wert geschrieben. |
 | Ausgang schaltet nicht | Erst die Funktion prüfen (Service-Seite, Feld `Ausgang`): `Aus` schaltet nie. Bei `Netzbezug`/`Überschuss` muss der Wert die Schwelle 20 s lang übersteigen — die angezeigte Zahl ist der Wert, der gerade verglichen wird. |
 | Ausgang schaltet ständig | Schwelle zu niedrig angesetzt. Der Wert pendelt um die Schwelle, weil 20 % Hysterese zu wenig sind, wenn die Last grob springt. Schwelle erhöhen. |
-| Ausgang war 2 Minuten lang aus | Der Wechselrichter war nicht erreichbar. Ohne Daten schaltet der Ausgang aus — das ist Absicht, siehe Kapitel 6. |
+| Ausgang war 2 Minuten lang aus | Zwei Minuten lang keine Werte vom Wechselrichter — das kann auch bei offener TCP-Verbindung passieren. Ohne Daten schaltet der Ausgang aus, siehe Kapitel 6. |
 | Ausgang schaltet nach dem Neustart nicht | Er schaltet 20 Sekunden nach dem Start frühestens ein. Das Display zeigt aber sofort, welche Funktion eingestellt ist. |
 | Display ist schwarz | Nach 5 Minuten ohne Bedienung ist das Licht aus (Abschnitt 2) — einmal das Display berühren. Bleibt es dunkel, ist der Touch-Regler nicht erkannt; dann hilft nur ein Neustart, und das Licht bleibt anschließend dauerhaft an. |
 
@@ -575,8 +652,8 @@ sich prüfen, ob am Port überhaupt etwas passiert.
   Schalter. Die Grenzen (Kontaktbelastbarkeit, Anlaufstrom von Motoren und
   Leuchtstoffmitteln) stehen in Kapitel 11; ein Relais ist nicht für alles
   ausgelegt, was ein Verbrauch anfordert.
-- Der Ausgang folgt Messwerten. Er ist **kein** Fehlerstromschutz, **kein**
-  Überlastschutz und **keine** Garantie, dass eine angeschlossene Last
+- Der Ausgang folgt Messwerten. Er ist kein Fehlerstromschutz, kein
+  Überlastschutz und keine Garantie, dass eine angeschlossene Last
   ausschließlich mit Solarstrom läuft.
 - Der Code der Weboberfläche schützt vor einem Nachbarn im selben Netz. Er ist
   kein Passwort und kein Schutz gegen jemanden mit physischem Zugang zum
@@ -603,8 +680,7 @@ gespeichertes WLAN und RCT-Konfiguration).
 
 ### Update ohne USB (OTA)
 
-Neben dem Flashen per USB lässt sich die Firmware **über die Weboberfläche des
-Panels** aktualisieren — ohne Kabel am Gerät. Dafür muss das Panel nicht einmal
+Neben dem Flashen per USB lässt sich die Firmware über die Weboberfläche des Panels aktualisieren — ohne Kabel am Gerät. Dafür muss das Panel nicht einmal
 im Setup-Modus sein: Es bringt die Update-Seite im Normalbetrieb selbst mit.
 
 1. Rechner und Panel im selben Heimnetz. Die Adresse steht auf der
@@ -620,15 +696,15 @@ im Setup-Modus sein: Es bringt die Update-Seite im Normalbetrieb selbst mit.
 Warum der Code, und warum er vorher geprüft wird: Ein Update verändert das
 Gerät, alles andere auf diesen Seiten liest nur. Weil der WebServer die
 Formularfelder der Reihe nach auswertet, steht das Code-Feld im HTML vor dem
-Dateifeld — bei falschem Code wird **kein einziges Byte** in den Flash
+Dateifeld — bei falschem Code wird kein einziges Byte in den Flash
 geschrieben. Der Updater löscht seinen Zielbereich ohnehin erst schreibend
 Block für Block, deshalb bleibt das Display währenddessen in Betrieb; ein
 fehlgeschlagenes Update bootet anschließend die alte Firmware (Prüfsumme/Image-
 Kennung, zweiter Slot unangetastet).
 
-**Rückfallweg, wenn das Panel nicht im Heimnetz ist** (WLAN umgestellt,
+Als Rückfallweg, wenn das Panel nicht im Heimnetz ist (WLAN umgestellt,
 falsche Adresse, Gerät gerade in einem anderen Netz): Service-Seite antippen →
-„Setup starten" → mit dem WLAN `RCT-Panel` verbinden → `http://192.168.4.1/update`.
+„Setup starten“ → mit dem WLAN `RCT-Panel` verbinden → `http://192.168.4.1/update`.
 In diesem Zustand wird kein Code verlangt, weil das Gerät dort ohnehin nichts
 anderes erreichbar ist; es gibt nur das Konfigurationsportal.
 
@@ -643,25 +719,81 @@ nicht möglich — die Binärdatei kommt aus dem Netz direkt auf das Gerät.
 
 ## 11. Technische Daten
 
+### Hardware
+
 | Bezeichnung | Technische Daten |
 |---|---|
 | Anzeige | 4" IPS-Farbdisplay, 480 × 480 Pixel (ST7701 RGB) |
 | Bedienung | kapazitives Touchpanel (GT911) |
 | Prozessor | ESP32-S3, Dual-Core |
 | Speicher | 16 MB Flash, 8 MB PSRAM |
-| Datenspeicher | microSD/TF-Karte im Steckplatz auf der Platine; **Dateisystem FAT32** (FAT12/16 auch lesbar, **exFAT wird nicht unterstützt**), empfohlen 4–32 GB, ca. 11,7 MB Datenvolumen pro Jahr; SPI 4 MHz mit Selbsttest, Rückfall auf 400 kHz; Pufferspeicher im Panel für 24 h |
+| Anschlüsse | USB-C (Versorgung und Firmware per Kabel), microSD/TF, Relais-Kontakt (3-polig), UART (nur Service); Bild 1 |
+| Beleuchtung | LED-Hintergrundbeleuchtung hinter dem Display, stufenlos dimmbar |
+| Datenspeicher | microSD/TF-Karte im Steckplatz auf der Platine; Dateisystem FAT32 (FAT12/16 auch lesbar, exFAT wird nicht unterstützt), empfohlen 4–32 GB, ca. 11,7 MB Datenvolumen pro Jahr; SPI 4 MHz mit Selbsttest, Rückfall auf 400 kHz; Pufferspeicher im Panel für 24 h |
 | Stromversorgung | USB-C, 5 V DC |
-| WLAN | IEEE 802.11 b/g/n (2,4 GHz) |
-| Datenabfrage | RCT-Wechselrichter über TCP (Port 8899) |
+| Logikpegel | 3,3 V an den internen Ausgängen; ausschließlich zum Ansteuern des Relais, keine Anschlussstelle für Fremdspannung |
+| Spannung am Schaltkontakt | potentialfrei; der Kontakt trägt die Spannung des angeschlossenen Kreises (bei 230 V also 230 V AC). Nennstrom und Kontaktart stehen auf dem Relais und in dessen Datenblatt — dieses Handbuch nennt dafür bewusst keine Zahl. Zu prüfen vor dem Anschluss einer Last: Kontaktstrom bei ohmscher Last, Anlaufstrom bei Motoren und Leuchtstoffmitteln, Schalthäufigkeit |
+
+### Funk
+
+| Bezeichnung | Technische Daten |
+|---|---|
+| Standard | IEEE 802.11 b/g/n, 2,4 GHz |
+| Verschlüsselung | WPA und WPA2 (Personal) |
+| Fünf-Gigahertz | nein — der Funk des Panels arbeitet ausschließlich auf 2,4 GHz |
+| Empfehlung | 2,4 GHz im Router aktiviert, Kanal 1, 6 oder 11, nicht völlig überlastetes WLAN |
+
+Ein Router, der nur auf 5 GHz sendet, ist für das Panel unsichtbar. Bleibt die
+Verbindung aus, obwohl der Name und das Passwort stimmen, ist das der erste
+Grund zum Nachsehen — und nicht das Passwort.
+
+### Unterstützte Wechselrichter
+
+Jedes Gerät, das das RCT-Protokoll auf TCP-Port 8899 spricht — typischerweise
+RCT-Power-Hybrid-Wechselrichter (6/8/10 kVA) und daraus abgeleitete Modelle.
+Das Panel liest nur; es konfiguriert nichts.
+
+Nicht geeignet sind Geräte ohne diese Schnittstelle, etwa Modelle, die nur über
+RS485/Modbus an einem Akku hängen. Bietet ein Gerät zwar den Port an, meldet
+aber einzelne Werte nicht (kein Akku, kein S0-Zähler), bleibt der betreffende
+Wert auf „–“ — das ist kein Fehler (Abschnitt 8).
+
+### Leistungsaufnahme
+
+Richtwerte aus den Datenblättern der Bauteile, nicht am Gerät gemessen:
+
+| Zustand | Richtwert |
+|---|---|
+| Betrieb, Licht voll | ca. 1,5–2,5 W |
+| Betrieb, Licht 30 % (nach 3 min ohne Bedienung) | ca. 0,8–1,6 W |
+| Betrieb, Licht aus (nach 5 min ohne Bedienung) | ca. 0,4–0,9 W |
+| Relais eingeschaltet | zusätzlich ca. 0,2 W |
+
+| Verursacher | Anteil |
+|---|---|
+| Hintergrundbeleuchtung | der größte Posten; bei 30 % sinkt er auf unter ein Drittel |
+| ESP32-S3 mit WLAN und PSRAM | ca. 0,3–0,6 W |
+| LCD und Panelansteuerung | ca. 0,2–0,4 W |
+| SD-Karte | ca. 0,1 W, beim Schreiben mehr |
+
+Das Panel dimmt und schaltet das Licht selbst aus (Abschnitt 2) — im Ruhezustand
+bleibt damit nur der Verbrauch von Elektronik, Funk und Karte. Nachmessen lässt
+es sich mit einem USB-Leistungsmessgerät zwischen Netzteil und Kabel; die
+Angabe auf dem Netzteil gilt ohne Last ohnehin nichts.
+
+### Funktionen
+
+| Bezeichnung | Technische Daten |
+|---|---|
+| Datenabfrage | RCT-Wechselrichter über TCP (Port 8899), alle 10 s |
 | Datenaufzeichnung | alle 5 Minuten als CSV (ca. 32 KB pro Tag), 24-h-Puffer im RAM bei fehlender Karte |
 | Weboberfläche | HTTP-Server im lokalen Netz (Port 80): Status, CSV-/Bild-Download, Firmware-Update; änderende Funktionen mit 4-stelligem Code |
-| Schaltausgang | potentialfreier Relaiskontakt am Port „1Way" (GPIO 40), 5 wählbare Funktionen, 20 s Einschaltverzögerung, 60 s Mindesthaltezeit, 20 % Hysterese; aus bei jedem Start |
-| Kontaktbelastbarkeit | siehe Aufdruck am Relais-Port bzw. Datenblatt des verbauten Relais (Ohm/VA, Anlaufstrom bei Motoren und Leuchtstoffmitteln beachten) |
-| Ausgang-verhalten bei Datenausfall | schaltet aus, wenn der Wechselrichter länger als 2 min keine Daten liefert |
+| Schaltausgang | potentialfreier Relaiskontakt am Port „1Way“ (3-polig), 5 wählbare Funktionen, 20 s Einschaltverzögerung, 60 s Mindesthaltezeit, 20 % Hysterese; aus bei jedem Start |
+| Ausgang bei Datenausfall | schaltet aus, wenn der Wechselrichter länger als 2 min keine Daten liefert |
 
-Das Panel zeigt ausschließlich Messwerte an — es **verändert keine
-Einstellungen am Wechselrichter** (eine Ausnahme: der Setup-Modus legt nur
-die eigenen Netzwerk- und Verbindungsdaten des Panels fest).
+Das Panel zeigt ausschließlich Messwerte an — es verändert keine Einstellungen
+am Wechselrichter (eine Ausnahme: der Setup-Modus legt nur die eigenen
+Netzwerk- und Verbindungsdaten des Panels fest).
 
 ### Datenfluss
 
@@ -675,9 +807,11 @@ die eigenen Netzwerk- und Verbindungsdaten des Panels fest).
 - Der Schaltausgang prüft seine Regel einmal pro Sekunde gegen die zuletzt
   gelesenen Werte und schaltet bei 20 Sekunden Überschreiten der Schwelle ein
   bzw. nach frühestens 60 Sekunden wieder aus.
+- Ohne Bedienung geht die Hintergrundbeleuchtung nach 3 Minuten auf 30 % und
+  nach 5 Minuten aus; die erste Berührung holt sie zurück (Abschnitt 2).
 
 ---
 
-*Stand: September 2026. Das Handbuch beschreibt die Firmware ab Commit
-`a3775b0` (inclusive) — Weboberfläche im Normalbetrieb, SD-Karte mit 4 MHz
-und der Schaltausgang.*
+*Stand: Oktober 2026. Beschrieben ist die Firmware dieses Repositorys:
+Weboberfläche im Normalbetrieb, SD-Karte mit 4 MHz, Schaltausgang, dimmende
+Hintergrundbeleuchtung.*

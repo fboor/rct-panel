@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="425" viewBox="0 0 1200 425" font-family="DejaVu Sans, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="495" viewBox="0 0 1200 495" font-family="DejaVu Sans, sans-serif">
   <defs>
     <clipPath id="scr"><rect x="43" y="83" width="284" height="284" rx="14"/></clipPath>
   </defs>
@@ -26,32 +26,56 @@
     <rect x="235" y="340" width="92" height="26" rx="9" fill="#233040"/>
     <path d="M291,353 L281,344 L281,362 Z" fill="#dbe4ec"/>
   </g>
-  <text x="185" y="410" fill="#56616e" font-size="16" text-anchor="middle">Vorderseite</text>
+  <circle cx="300" cy="110" r="12" fill="#0b6bcb"/>
+  <text x="300" y="116" fill="#ffffff" font-size="15" font-weight="700" text-anchor="middle">1</text>
+  <text x="185" y="479" fill="#56616e" font-size="16" text-anchor="middle">Vorderseite</text>
 
-  <!-- ================= LEGEND (Mitte, gleiche Hoehe wie Ansichten) ================= -->
-  <rect x="390" y="65" width="380" height="320" rx="14" fill="#eef5fb" stroke="#b9d3ec" stroke-width="1.5"/>
-  <text x="416" y="101" fill="#0b3d6b" font-size="26" font-weight="700">Schnittstellen</text>
-  <line x1="416" y1="113" x2="744" y2="113" stroke="#b9d3ec" stroke-width="1.5"/>
+  <!-- ================= LEGENDE (Mitte) ================= -->
+  <!-- Die Nummern sitzen auf den Ansichten, nicht am Rand der Legende: nur so
+       bleiben beide Kanten der Rueckseite (TF/USB links, UART/Batterie/Relais
+       rechts) ueber die Nummern erreichbar, ohne dass eine Fuehrungslinie um
+       die ganze Grafik herumlaufen muss. Grau = von der Firmware nicht
+       benutzt. -->
+  <rect x="390" y="65" width="380" height="390" rx="14" fill="#eef5fb" stroke="#b9d3ec" stroke-width="1.5"/>
+  <text x="412" y="101" fill="#0b3d6b" font-size="26" font-weight="700">Anschlüsse</text>
+  <line x1="412" y1="113" x2="748" y2="113" stroke="#b9d3ec" stroke-width="1.5"/>
 
-  <!-- row 1: touch  (Zahl LINKS, Vorderseite ist links) -->
-  <circle cx="422" cy="175" r="18" fill="#0b6bcb"/>
-  <text x="422" y="182" fill="#ffffff" font-size="21" font-weight="700" text-anchor="middle">1</text>
-  <text x="450" y="170" fill="#0b3d6b" font-size="24" font-weight="600">Touch-Display</text>
-  <text x="450" y="195" fill="#44525f" font-size="16.5">kapazitiv · 480 × 480 px</text>
+  <circle cx="403" cy="148" r="11.5" fill="#0b6bcb"/>
+  <text x="403" y="154" fill="#ffffff" font-size="14.5" font-weight="700" text-anchor="middle">1</text>
+  <text x="422" y="154" fill="#0b3d6b" font-size="19" font-weight="600">Touch-Display</text>
+  <text x="422" y="172" fill="#44525f" font-size="13">kapazitiv · 480 × 480 px</text>
 
-  <!-- row 2: microSD  (Zahl RECHTS, rueckseite rechts; lt. Foto: linke Kante, oben) -->
-  <text x="408" y="260" fill="#0b3d6b" font-size="24" font-weight="600">microSD (TF)</text>
-  <text x="408" y="285" fill="#44525f" font-size="16.5">Steckplatz an der Kante</text>
-  <circle cx="740" cy="265" r="18" fill="#0b6bcb"/>
-  <text x="740" y="272" fill="#ffffff" font-size="21" font-weight="700" text-anchor="middle">2</text>
+  <circle cx="403" cy="194" r="11.5" fill="#0b6bcb"/>
+  <text x="403" y="200" fill="#ffffff" font-size="14.5" font-weight="700" text-anchor="middle">2</text>
+  <text x="422" y="200" fill="#0b3d6b" font-size="19" font-weight="600">microSD (TF)</text>
+  <text x="422" y="218" fill="#44525f" font-size="13">Aufzeichnung der Messwerte, Kapitel 4</text>
 
-  <!-- row 3: usb-c  (Zahl RECHTS; lt. Foto: linke Kante, unten) -->
-  <text x="408" y="350" fill="#0b3d6b" font-size="24" font-weight="600">USB-C</text>
-  <text x="408" y="375" fill="#44525f" font-size="16.5">Stromversorgung (5 V)</text>
-  <circle cx="740" cy="355" r="18" fill="#0b6bcb"/>
-  <text x="740" y="362" fill="#ffffff" font-size="21" font-weight="700" text-anchor="middle">3</text>
+  <circle cx="403" cy="240" r="11.5" fill="#0b6bcb"/>
+  <text x="403" y="246" fill="#ffffff" font-size="14.5" font-weight="700" text-anchor="middle">3</text>
+  <text x="422" y="246" fill="#0b3d6b" font-size="19" font-weight="600">USB-C</text>
+  <text x="422" y="264" fill="#44525f" font-size="13">Versorgung 5 V · Firmware per Kabel, Kapitel 10</text>
 
-  <!-- ================= BACK VIEW (rechts; Schnittstellen nach Foto: USB-C + microSD an der linken Kante) ================= -->
+  <circle cx="403" cy="286" r="11.5" fill="#0b6bcb"/>
+  <text x="403" y="292" fill="#ffffff" font-size="14.5" font-weight="700" text-anchor="middle">4</text>
+  <text x="422" y="292" fill="#0b3d6b" font-size="19" font-weight="600">UART (P1)</text>
+  <text x="422" y="310" fill="#44525f" font-size="13">nur Service: GND, RXD, TXD, 5 V</text>
+
+  <circle cx="403" cy="332" r="11.5" fill="#9aa7b4"/>
+  <text x="403" y="338" fill="#ffffff" font-size="14.5" font-weight="700" text-anchor="middle">5</text>
+  <text x="422" y="338" fill="#0b3d6b" font-size="19" font-weight="600">Batterie-Port</text>
+  <text x="422" y="356" fill="#44525f" font-size="13">B+ / B− · von der Firmware nicht benutzt</text>
+
+  <circle cx="403" cy="378" r="11.5" fill="#0b6bcb"/>
+  <text x="403" y="384" fill="#ffffff" font-size="14.5" font-weight="700" text-anchor="middle">6</text>
+  <text x="422" y="384" fill="#0b3d6b" font-size="19" font-weight="600">Relais-Port „1Way“</text>
+  <text x="422" y="402" fill="#44525f" font-size="13">Schaltkontakt, Kapitel 6</text>
+
+  <circle cx="403" cy="424" r="11.5" fill="#9aa7b4"/>
+  <text x="403" y="430" fill="#ffffff" font-size="14.5" font-weight="700" text-anchor="middle">7</text>
+  <text x="422" y="430" fill="#0b3d6b" font-size="19" font-weight="600">Lautsprecher</text>
+  <text x="422" y="448" fill="#44525f" font-size="13">von der Firmware nicht benutzt: kein Ton</text>
+
+  <!-- ================= BACK VIEW (rechts) ================= -->
   <rect x="820" y="65" width="320" height="320" rx="16" fill="#191f2a" stroke="#ffffff0d" stroke-width="1.5"/>
   <line x1="821" y1="66" x2="1139" y2="66" stroke="#ffffff22" stroke-width="2" stroke-linecap="round"/>
   <circle cx="836" cy="81" r="4.5" fill="#2c3440" stroke="#00000040"/>
@@ -59,40 +83,72 @@
   <circle cx="836" cy="369" r="4.5" fill="#2c3440" stroke="#00000040"/>
   <circle cx="1124" cy="369" r="4.5" fill="#2c3440" stroke="#00000040"/>
 
-  <!-- microSD / TF slot, linke Kante oben (lt. Foto "TF Card Socket") -->
-  <rect x="814" y="150" width="26" height="24" rx="3" fill="#05070b"/>
-  <rect x="772" y="152" width="68" height="20" rx="2" fill="#0b6bcb" stroke="#084a8f" stroke-width="1"/>
-  <rect x="818" y="154" width="14" height="16" fill="#d9a520"/>
+  <!-- Antennenbereich (oben links auf der Platine) -->
+  <rect x="856" y="86" width="46" height="30" rx="6" fill="#202835"/>
+  <path d="M864,110 L876,92 L888,108 L900,92" fill="none" stroke="#39434f" stroke-width="1.6"/>
+  <path d="M864,118 L876,100 L888,116 L900,100" fill="none" stroke="#39434f" stroke-width="1.6"/>
 
-  <!-- ESP32-S3 module (Mitte, lt. Foto "ESP32-S3-N16R8") -->
-  <rect x="860" y="170" width="100" height="54" rx="6" fill="#bcc3ca"/>
-  <rect x="882" y="188" width="56" height="20" rx="3" fill="#6e7782"/>
-  <text x="910" y="250" fill="#8f9aa8" font-size="14" text-anchor="middle">ESP32-S3</text>
-  <text x="910" y="272" fill="#56616e" font-size="12" text-anchor="middle">ESP32-S3 4848S040</text>
+  <!-- 2: microSD / TF, linke Kante oben -->
+  <rect x="812" y="150" width="28" height="26" rx="3" fill="#05070b"/>
+  <rect x="814" y="152" width="22" height="22" fill="#0f1620"/>
+  <rect x="834" y="157" width="8" height="12" rx="1" fill="#d9a520"/>
+  <circle cx="874" cy="163" r="12" fill="#0b6bcb"/>
+  <text x="874" y="169" fill="#ffffff" font-size="15" font-weight="700" text-anchor="middle">2</text>
 
-  <!-- USB-C, linke Kante unten (lt. Foto "USB Type-C") -->
-  <rect x="806" y="300" width="28" height="34" rx="6" fill="#3a4350"/>
-  <rect x="810" y="304" width="20" height="26" rx="4" fill="#06080c"/>
-  <line x1="817" y1="310" x2="817" y2="322" stroke="#9fb4c7" stroke-width="1.5"/>
-  <line x1="823" y1="310" x2="823" y2="322" stroke="#9fb4c7" stroke-width="1.5"/>
-
-  <!-- antenna zone (top right) -->
-  <rect x="1086" y="88" width="50" height="42" rx="6" fill="#202835"/>
-  <path d="M1094,118 L1106,94 L1118,112 L1130,94" fill="none" stroke="#39434f" stroke-width="1.6"/>
-  <path d="M1094,128 L1106,104 L1118,122 L1130,104" fill="none" stroke="#39434f" stroke-width="1.6"/>
-
-  <text x="975" y="410" fill="#56616e" font-size="16" text-anchor="middle">Rückseite</text>
-
-  <!-- ================= LEADERS (ansetzen am Kreisrand) ================= -->
-  <g stroke-linecap="round" fill="none">
-    <!-- 1: Vorderseite (links) -> linkes Badge, ansetzen am linken Rand -->
-    <path d="M345,225 L407,185" stroke="#ffffff" stroke-width="4.5" opacity="0.9"/>
-    <path d="M345,225 L407,185" stroke="#0b6bcb" stroke-width="1.8"/>
-    <!-- 2: microSD -> rechtes Badge, ansetzen am rechten Rand -->
-    <path d="M780,162 L780,265 L758,265" stroke="#ffffff" stroke-width="4.5" opacity="0.9"/>
-    <path d="M780,162 L780,265 L758,265" stroke="#0b6bcb" stroke-width="1.8"/>
-    <!-- 3: usb-c -> rechtes Badge, ansetzen am rechten Rand -->
-    <path d="M812,330 L812,355 L758,355" stroke="#ffffff" stroke-width="4.5" opacity="0.9"/>
-    <path d="M812,330 L812,355 L758,355" stroke="#0b6bcb" stroke-width="1.8"/>
+  <!-- 7: Lautsprecher, linke Kante zwischen TF-Slot und USB-C -->
+  <rect x="812" y="222" width="28" height="22" rx="3" fill="#cfd6dd"/>
+  <g fill="#8f9aa8">
+    <rect x="806" y="227" width="8" height="5" rx="1"/>
+    <rect x="806" y="236" width="8" height="5" rx="1"/>
   </g>
+  <circle cx="874" cy="233" r="12" fill="#9aa7b4"/>
+  <text x="874" y="239" fill="#ffffff" font-size="15" font-weight="700" text-anchor="middle">7</text>
+
+  <!-- 3: USB-C, linke Kante unten -->
+  <rect x="804" y="296" width="30" height="36" rx="7" fill="#3a4350"/>
+  <rect x="808" y="300" width="22" height="28" rx="4" fill="#06080c"/>
+  <line x1="815" y1="306" x2="815" y2="320" stroke="#9fb4c7" stroke-width="1.5"/>
+  <line x1="823" y1="306" x2="823" y2="320" stroke="#9fb4c7" stroke-width="1.5"/>
+  <circle cx="874" cy="314" r="12" fill="#0b6bcb"/>
+  <text x="874" y="320" fill="#ffffff" font-size="15" font-weight="700" text-anchor="middle">3</text>
+
+  <!-- 4: UART P1, rechte Kante oben (GND, RXD, TXD, 5V) -->
+  <rect x="1110" y="118" width="30" height="42" rx="4" fill="#cfd6dd"/>
+  <g fill="#8f9aa8">
+    <rect x="1104" y="124" width="8" height="5" rx="1"/>
+    <rect x="1104" y="135" width="8" height="5" rx="1"/>
+    <rect x="1104" y="146" width="8" height="5" rx="1"/>
+  </g>
+  <text x="1100" y="112" fill="#8f9aa8" font-size="12" text-anchor="end">P1</text>
+  <circle cx="1062" cy="139" r="12" fill="#0b6bcb"/>
+  <text x="1062" y="145" fill="#ffffff" font-size="15" font-weight="700" text-anchor="middle">4</text>
+
+  <!-- 5: Batterie-Port (B+ / B-), rechte Kante Mitte - von der Firmware nicht benutzt -->
+  <rect x="1114" y="206" width="26" height="30" rx="4" fill="#cfd6dd"/>
+  <g fill="#8f9aa8">
+    <rect x="1108" y="212" width="8" height="5" rx="1"/>
+    <rect x="1108" y="225" width="8" height="5" rx="1"/>
+  </g>
+  <text x="1108" y="256" fill="#7b8794" font-size="12" text-anchor="end">BAT</text>
+  <circle cx="1062" cy="221" r="12" fill="#9aa7b4"/>
+  <text x="1062" y="227" fill="#ffffff" font-size="15" font-weight="700" text-anchor="middle">5</text>
+
+  <!-- 6: Relais-Port, rechte Kante unten -->
+  <rect x="1110" y="292" width="30" height="46" rx="4" fill="#e8edf2"/>
+  <g fill="#98a4b1">
+    <rect x="1104" y="298" width="8" height="7" rx="1"/>
+    <rect x="1104" y="312" width="8" height="7" rx="1"/>
+    <rect x="1104" y="326" width="8" height="7" rx="1"/>
+  </g>
+  <text x="1102" y="356" fill="#8f9aa8" font-size="12" text-anchor="end">1Way</text>
+  <circle cx="1062" cy="315" r="12" fill="#0b6bcb"/>
+  <text x="1062" y="321" fill="#ffffff" font-size="15" font-weight="700" text-anchor="middle">6</text>
+
+  <!-- ESP32-S3 module (Mitte) -->
+  <rect x="886" y="196" width="100" height="54" rx="6" fill="#bcc3ca"/>
+  <rect x="908" y="214" width="56" height="20" rx="3" fill="#6e7782"/>
+  <text x="936" y="276" fill="#8f9aa8" font-size="14" text-anchor="middle">ESP32-S3</text>
+  <text x="936" y="296" fill="#56616e" font-size="12" text-anchor="middle">ESP32-S3 4848S040</text>
+
+  <text x="975" y="479" fill="#56616e" font-size="16" text-anchor="middle">Rückseite</text>
 </svg>

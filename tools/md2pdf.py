@@ -71,6 +71,14 @@ figure.ports-shot { margin: 10pt 0 12pt 0; page-break-inside: avoid;
 figure.ports-shot img { width: 90%; }
 figure.ports-shot figcaption { font-size: 9pt; color: #5a6672;
   margin-top: 4pt; }
+/* Foto der Plattenrueckseite: schmaler als die Grafik, damit es die Seite
+   zusammen mit der Anschlusstabelle nicht sprengt. */
+figure.board-shot { margin: 8pt 0 10pt 0; page-break-inside: avoid;
+  text-align: center; }
+figure.board-shot img { width: 58%; border: 0.7pt solid #c5cdd5;
+  border-radius: 3pt; }
+figure.board-shot figcaption { font-size: 9pt; color: #5a6672;
+  margin-top: 3pt; }
 /* Screenshot eines Browserfensters: schmaler, damit die Hoehe auf der Seite
    bleibt, und mit einem feinen Rahmen, damit das Bild als Fenster lesbar ist. */
 figure.web-shot { margin: 8pt 0 10pt 0; page-break-inside: avoid;

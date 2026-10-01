@@ -79,6 +79,28 @@ Wechselrichters hängen bleibt, wäre die schlechtere Variante — er würde
 weiterlaufen, egal was das Gerät zuletzt getan hat. Deshalb ist
 `!haveData || Alter > 2 min` ein „aus", und zwar bei *jeder* Funktion.
 
+### Die Zwei-Minuten-Frist ist eine Annahme (Stand Oktober 2026)
+
+Beobachtet an der Anlage des Anwenders: der Wechselrichter liefert mitunter
+mehrere Minuten **keine** Werte, obwohl die TCP-Verbindung die ganze Zeit steht.
+Die Frist ist damit zu kurz: bei einer Funktion wie `Netzbezug` schaltet der
+Ausgang in dieser Pause einmal ab und beim nächsten Wert wieder ein.
+
+Zwei Wege, beide noch nicht entschieden:
+
+- `DATA_MAX_AGE_MS` auf ein Vielfaches von `RCT_POLL_MS` heben (der Poll
+  läuft alle 10 s; 10 min wären z. B. der 60-fache Wert). Dann übersteht eine
+  zehnminütige Sendepause den Betrieb, ohne dass ein echter Ausfall zu lange
+  unbemerkt bleibt.
+- Die Altersgrenze abschalten und stattdessen auf `haveData` setzen, also nur
+  auf einen tatsächlich geschlossenen Strom. Das ist die strengere und für eine
+  Heizlast die gefährlichere Variante — der Ausgang bliebe dann auch dann an,
+  wenn das Gerät seit Stunden tot ist.
+
+Wichtig für jede der beiden Varianten: der Wert steht in `Relay.cpp` und wird
+nicht in NVS gespeichert. Er ist damit eine Eigenschaft des Builds und nicht
+der Anlage — wer eine andere Frist braucht, braucht eine andere Firmware.
+
 ## 3. Pin und Polarität
 
 `RELAY_PIN 40` — der 1-Wege-Relais-Port der Platine (Aufdruck
@@ -86,12 +108,15 @@ weiterlaufen, egal was das Gerät zuletzt getan hat. Deshalb ist
 nehmen 3..21/38/39, die SD-Karte 41/42/47/48, 1 und 2 sind die beiden anderen
 Relais-Ports der Platine und bleiben für einen zweiten Ausgang frei.
 
-`RELAY_ACTIVE_LOW 1` in `RelayPins.h`, weil ESPHome für diese Platine
-`switch: GPIO 40, inverted` fährt. Das ist die einzige Angabe im ganzen
-Aufbau, die nicht aus dem Code folgt, sondern vom Modul. Der Testknopf auf der
-Service-Seite (5 s an, 5 s aus, zweimal) ist die Prüfung: bleibt das Relais
-dabei stumm, wird die Konstante umgedreht und neu geflasht. Sonst ändert sich
-nichts, weil jeder Schaltvorgang über `relayWrite()` läuft.
+`RELAY_ACTIVE_LOW 0` in `RelayPins.h` — also Schließen bei HIGH. Diese
+Angabe folgt nicht aus dem Code, sondern vom Modul; sie ist an der Wand
+gemessen worden (2026-09-30, siehe `RelayPins.h`): der Pin liegt im Ruhezustand
+auf HIGH, und der Ausgang folgt einem HIGH. ESPHome fährt für diese Platine
+`switch: GPIO 40, inverted`, was das Gegenteil behauptet — falls dort etwas
+schaltet, ist es diese Konstante. Der Testknopf auf der Service-Seite (5 s an,
+5 s aus, zweimal) ist die Prüfung; bleibt das Relais dabei stumm, wird die
+Konstante umgedreht und neu geflasht. Sonst ändert sich nichts, weil jeder
+Schaltvorgang über `relayWrite()` läuft.
 
 Hardware-Vorbehalt: ein Modul mit aktiver lowscher Triggerung ist *eingeschaltet*,
 solange der Pin schwebt — und zwischen Reset und `relayInit()` ist er ein Eingang.
