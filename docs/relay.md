@@ -115,6 +115,33 @@ Der Wert steht in `Relay.cpp` und wird nicht in NVS gespeichert. Er ist damit
 eine Eigenschaft des Builds und nicht der Anlage — wer eine andere Frist
 braucht, braucht eine andere Firmware.
 
+### `wartet` gegen den Simulator prüfen
+
+`wartet` entsteht nur bei einer Verbindung, die steht und schweigt: in
+`rctParse()` wird der Socket bei `RCT_RX_TIMEOUT` nur dann aufgegeben, wenn
+`rctClient.connected()` false ist. Wird der Simulator einfach beendet, zeigt das
+Panel `verbinde neu` — ein anderer Zustand.
+
+Der Simulator kann deshalb beides: `--quiet-after SEKUNDEN` beantwortet ab dem
+Zeitpunkt nichts mehr und lässt die Verbindung offen, `SIGUSR1` schaltet
+um:
+
+```
+tools/rct_sim.py --port 8899 --quiet-after 60   # ab 60 s schweigt er
+kill -USR1 <pid>                               # einmal: um, zweimal: an
+```
+
+Das Panel muss dafür auf den Simulator zeigen. Dafür gibt es das Build-Flag
+`RCT_SIM_HOST` (siehe `Configuration.cpp`); der Aufruf im Kommentar dort ist der
+geprüfte. Für den Test besser `Netzbezug` mit hoher Schwelle: dann schaltet
+nichts, die Zeile mit `(letzte Messung)` ist aber da.
+
+Nachgewiesen am 1.10.2026 an der Anlage des Anwenders: der Simulator auf einem
+Rechner im selben Netz, der Ausgang auf Netzbezug/5000 W, nach 70 s `wartet` in
+der Statusleiste des Panels und in der Zeile „Wechselrichter“ der
+Weboberfläche. Die Zeile mit `(letzte Messung)` blieb in diesem Lauf offen, weil
+der Screenshot die Seite zeigte, auf der das Panel gerade stand.
+
 ## 3. Pin und Polarität
 
 `RELAY_PIN 40` — der 1-Wege-Relais-Port der Platine (Aufdruck
