@@ -230,8 +230,12 @@ void networkSetup() {
   // real host comes from NVS / the provisioning portal.
   //
   // This is a build flag and not a source edit, because forgetting to remove it
-  // would ship a panel that talks to an address that does not exist:
-  //   pio run -e esp32-s3 -t upload --project-option "build_flags=-DRCT_SIM_HOST=192.168.1.83"
+  // would ship a panel that talks to an address that does not exist. The value
+  // has to arrive as a string, and the inner quotes have to survive the shell
+  // inside PlatformIO:
+  //   PLATFORMIO_BUILD_FLAGS='-DDLV_CONF_INCLUDE_SIMPLE -I include \
+  //     -DRCT_SIM_HOST=\"192.168.1.83\"' pio run -e esp32-s3 -t upload \
+  //     --upload-port /dev/ttyACM0
 #ifdef RCT_SIM_HOST
   strncpy(rct_host, RCT_SIM_HOST, sizeof(rct_host) - 1);
   rct_host[sizeof(rct_host) - 1] = '\0';
