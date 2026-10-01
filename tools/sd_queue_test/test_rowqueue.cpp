@@ -548,9 +548,54 @@ static void testFlush() {
   checkEq((int)card4.files["/hist/A.csv"].size(), 2, "flush: no duplicates");
 }
 
+// The column count of a month file's first line. This is the number the log
+// prints when a file was created before the row format grew, and it was read
+// wrong: the caller reads a fixed 255 bytes, which reaches past a 130-byte
+// header into the rows behind it, and every one of their commas was counted
+// too - a 16-column file came out as 50 in the log.
+static void testFirstLineColumns() {
+  // A row as the firmware before format 2 wrote it, with the line end that
+  // follows it in the file.
+  static const char kLegacyRowLn[] =
+      "1789142400,1234,567,89,41.2,-3.5,38.0,111,222,333,-450,62,-10,20,30,4A\r\n";
+
+  // What the reader really gets: 255 bytes out of a file that is in use. The
+  // header is shorter than that, so the block runs into the rows behind it.
+  static char block[csvrow::kLineCap];
+  const size_t n = snprintf(block, sizeof(block) - 1, "%s\r\n%s\r\n%s",
+                            kLegacyHeader, kLegacyRowLn, kLegacyRowLn);
+  check(n > csvrow::kLineCap - 1, "first line: the block really is overfilled");
+  checkEq(csvrow::firstLineColumns(block, csvrow::kLineCap - 1),
+          csvrow::kLegacyColumns,
+          "first line: only the header counts, not the rows behind it");
+  checkEq(csvrow::firstLineColumns(block, n), csvrow::kLegacyColumns,
+          "first line: the same holds for a read that got everything");
+
+  // Our own header has to stay inside the block, or the log would fall silent
+  // on exactly the files it is meant to explain.
+  snprintf(block, sizeof(block) - 1, "%s\r\n%s", csvrow::kHeader, kLegacyRowLn);
+  check(csvrow::firstLineColumns(block, csvrow::kLineCap - 1) == csvrow::kColumns,
+        "first line: our own header still counts 23 in a 255-byte block");
+
+  // A month file from before the header existed: its first line is a row.
+  checkEq(csvrow::firstLineColumns(kLegacyRowLn, strlen(kLegacyRowLn)),
+          csvrow::kLegacyColumns,
+          "first line: a file without a header counts its first row");
+
+  // The honest answer when the line does not fit: no number, no log line.
+  static const char kBare[] = "ts,pv_a";
+  checkEq(csvrow::firstLineColumns(kBare, strlen(kBare)), -1,
+          "first line: a line without its end is not counted");
+  checkEq(csvrow::firstLineColumns("\r\nrest", 6), 0,
+          "first line: an empty first line counts 0");
+  checkEq(csvrow::firstLineColumns(nullptr, 0), -1,
+          "first line: no buffer is not counted");
+}
+
 int main() {
   testRoundTrip();
   testHeader();
+  testFirstLineColumns();
   testLegacyRow();
   testWorstCaseLength();
   testFileSyntax();

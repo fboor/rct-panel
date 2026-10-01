@@ -92,6 +92,37 @@ static const size_t kLineCap = 256;
 // Path buffer, used for the queued rows' file name.
 static const size_t kPathCap = 40;
 
+// Columns in the first line of a month file, or -1 if the buffer holds no line
+// end. `len` is how many bytes the caller actually read.
+//
+// Only up to the first \r or \n is counted. A fixed-size read of a file in use
+// reaches past the header into the rows behind it - and their commas were
+// counted with it, which is how a 16-column file was reported as 50 columns in
+// the log. A month file keeps whatever header it was created with, so this one
+// number is what tells "old format, new rows" apart from "our own file".
+inline int firstLineColumns(const char *buf, size_t len) {
+  if (buf == nullptr) {
+    return -1;
+  }
+  size_t i = 0;
+  while (i < len && buf[i] != '\n' && buf[i] != '\r') {
+    i++;
+  }
+  if (i == len) {
+    return -1; // no line end: the first line may be cut off
+  }
+  if (i == 0) {
+    return 0; // empty first line
+  }
+  int commas = 0;
+  for (size_t k = 0; k < i; k++) {
+    if (buf[k] == ',') {
+      commas++;
+    }
+  }
+  return commas + 1;
+}
+
 // Format one row into out (always NUL-terminated, truncated rather than
 // overflowing). Returns the number of characters written, or 0 if out was too
 // small for even a truncated row - which would mean kLineCap is too small.

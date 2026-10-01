@@ -350,20 +350,16 @@ static void reportForeignHeader(const char *path) {
     return; // ours: the header goes out with the first row
   }
   static char line[csvrow::kLineCap];
-  f.read((uint8_t *)line, sizeof(line) - 1);
+  const size_t got = f.read((uint8_t *)line, sizeof(line) - 1);
   f.close();
-  line[sizeof(line) - 1] = '\0';
-  size_t len = strlen(line);
-  while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r')) {
-    line[--len] = '\0';
+  // Only the first line, and only if it is complete in what was read: the rows
+  // behind the header have their own columns and must not be counted with it.
+  // A count of -1 means the line did not fit, and a wrong number in the log is
+  // worse than none - say nothing rather than guess.
+  const int columns = csvrow::firstLineColumns(line, got);
+  if (columns < 0) {
+    return;
   }
-  int commas = 0;
-  for (const char *p = line; *p != '\0'; p++) {
-    if (*p == ',') {
-      commas++;
-    }
-  }
-  const int columns = (len > 0) ? commas + 1 : 0;
   if (columns != csvrow::kColumns) {
     Serial.printf("SD: %s hat %d Spalten, neue Zeilen haben %d\n", path,
                   columns, csvrow::kColumns);
