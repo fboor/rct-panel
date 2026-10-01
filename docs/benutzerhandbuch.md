@@ -802,26 +802,28 @@ Wert auf „–“ — das ist kein Fehler (Abschnitt 8).
 
 ### Leistungsaufnahme
 
-Richtwerte aus den Datenblättern der Bauteile, nicht am Gerät gemessen:
+Am Gerät gemessen am 1.10.2026 mit einem USB-Leistungsmessgerät zwischen
+Netzteil und Kabel, bei angeschlossener SD-Karte und laufender WLAN-Verbindung:
 
-| Zustand | Richtwert |
+| Zustand | gemessen |
 |---|---|
-| Betrieb, Licht voll | ca. 1,5–2,5 W |
-| Betrieb, Licht 30 % (nach 3 min ohne Bedienung) | ca. 0,8–1,6 W |
-| Betrieb, Licht aus (nach 5 min ohne Bedienung) | ca. 0,4–0,9 W |
-| Relais eingeschaltet | zusätzlich ca. 0,2 W |
+| Betrieb, SD-Karte, Licht voll | 1,3 W |
+| Betrieb, SD-Karte, Licht 30 % (nach 3 min ohne Bedienung) | 0,5 W |
+| Betrieb, SD-Karte, Licht aus (nach 5 min ohne Bedienung) | 0,41 W |
 
-| Verursacher | Anteil |
-|---|---|
-| Hintergrundbeleuchtung | der größte Posten; bei 30 % sinkt er auf unter ein Drittel |
-| ESP32-S3 mit WLAN und PSRAM | ca. 0,3–0,6 W |
-| LCD und Panelansteuerung | ca. 0,2–0,4 W |
-| SD-Karte | ca. 0,1 W, beim Schreiben mehr |
+Daraus folgt für das Licht: volle Helligkeit kostet rund 0,9 W
+(1,3 W − 0,41 W), bei 30 % sind es rund 0,1 W. Alles andere — ESP32-S3 mit WLAN
+und PSRAM, die Panelansteuerung, die Karte — teilt sich die verbleibenden
+0,41 W. Diese Aufteilung wurde nicht einzeln gemessen; der Wert sagt nur, dass
+sie zusammen nicht der größte Posten sind. Das Relais wurde nicht gemessen —
+seine Spule liegt nur bei eingeschaltetem Kontakt unter Spannung.
+
+Mit ausgeschaltetem Licht bleibt ein Dauerbedarf von 0,41 W, das sind rund
+3,6 kWh im Jahr.
 
 Das Panel dimmt und schaltet das Licht selbst aus (Abschnitt 2) — im Ruhezustand
-bleibt damit nur der Verbrauch von Elektronik, Funk und Karte. Nachmessen lässt
-es sich mit einem USB-Leistungsmessgerät zwischen Netzteil und Kabel; die
-Angabe auf dem Netzteil gilt ohne Last ohnehin nichts.
+bleibt damit nur der Verbrauch von Elektronik, Funk und Karte. Die Angabe auf
+dem Netzteil gilt ohne Last ohnehin nichts.
 
 ### Funktionen
 
