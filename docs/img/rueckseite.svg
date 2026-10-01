@@ -75,10 +75,6 @@
     <rect x="860" y="268" width="8" height="12"/>
   </g>
   <text x="858" y="194" fill="#8a7226" font-size="12" text-anchor="end">P1</text>
-  <text x="852" y="218" fill="#7d6a20" font-size="11" text-anchor="end">GND</text>
-  <text x="852" y="238" fill="#7d6a20" font-size="11" text-anchor="end">RXD</text>
-  <text x="852" y="258" fill="#7d6a20" font-size="11" text-anchor="end">TXD</text>
-  <text x="852" y="278" fill="#7d6a20" font-size="11" text-anchor="end">5V</text>
 
   <!-- zweites UART-Feld H1 (2x4), darunter -->
   <rect x="760" y="433" width="53" height="80" rx="2" fill="#191c20"/>
@@ -103,8 +99,7 @@
   <path d="M760,408 L772,434" stroke="#3d4650" stroke-width="1.6" fill="none" marker-end="url(#spitz)"/>
   <text x="756" y="452" fill="#0b3d6b" font-size="12" text-anchor="end">GND</text>
   <text x="756" y="472" fill="#0b3d6b" font-size="12" text-anchor="end">Kontakt</text>
-  <text x="756" y="386" fill="#1d232b" font-size="20" font-weight="600" text-anchor="end">Schaltkontakt</text>
-  <text x="756" y="406" fill="#7d8794" font-size="15" text-anchor="end">zwei Anschlüsse</text>
+  <text x="756" y="392" fill="#1d232b" font-size="20" font-weight="600" text-anchor="end">Schaltkontakt</text>
 
   <!-- Batterie-Port, rechte Kante unterhalb -->
   <rect x="863" y="440" width="38" height="70" rx="4" fill="#e7ebef"/>
@@ -115,7 +110,7 @@
   <text x="882" y="530" fill="#8a7226" font-size="11" text-anchor="middle">BAT</text>
 
   <!-- Bestimmung -->
-  <text x="792" y="600" fill="#8a7226" font-size="15" font-weight="600">ESP32-4848S040</text>
+  <text x="690" y="622" fill="#8a7226" font-size="15" font-weight="600" text-anchor="middle">guition · ESP32-4848S040</text>
 
   <!-- ============ Beschriftung links (wie in der Vorlage) ============ -->
   <g stroke="#3d4650" stroke-width="1.6" fill="none">
@@ -130,11 +125,8 @@
 
   <!-- ============ Beschriftung rechts (wie in der Vorlage) ============ -->
   <g stroke="#3d4650" stroke-width="1.6" fill="none">
-    <path d="M944,238 L901,238" marker-end="url(#spitz)"/>
     <path d="M944,470 L901,470" marker-end="url(#spitz)"/>
   </g>
-  <text x="952" y="228" fill="#1d232b" font-size="20" font-weight="600">UART</text>
-  <text x="952" y="248" fill="#7d8794" font-size="15">nur Service</text>
   <text x="952" y="460" fill="#8a939f" font-size="20">Batterie-Port</text>
   <text x="952" y="480" fill="#8a939f" font-size="15">unbenutzt</text>
 </svg>

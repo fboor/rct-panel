@@ -60,7 +60,6 @@
   <circle cx="403" cy="324" r="11.5" fill="#0b6bcb"/>
   <text x="403" y="330" fill="#ffffff" font-size="14.5" font-weight="700" text-anchor="middle">4</text>
   <text x="422" y="330" fill="#0b3d6b" font-size="19" font-weight="600">Schaltkontakt</text>
-  <text x="422" y="348" fill="#44525f" font-size="13">zwei Anschlüsse: GND, Kontakt</text>
 
   <!-- ================= BACK VIEW (rechts) ================= -->
   <rect x="820" y="65" width="320" height="320" rx="16" fill="#191f2a" stroke="#ffffff0d" stroke-width="1.5"/>
