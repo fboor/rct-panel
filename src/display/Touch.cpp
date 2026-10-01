@@ -11,6 +11,7 @@
 #include <Wire.h>
 #include <lvgl.h>
 
+#include "Backlight.h"
 #include "DisplayPins.h"
 
 static uint8_t s_addr = 0;
@@ -98,6 +99,10 @@ void touchReadCb(lv_indev_t *indev, lv_indev_data_t *data) {
         }
         if (s_x < 480 && s_y < 480) {
           s_pressed = true;
+          // A touch is the one thing that wakes the panel, and the only thing
+          // that should: it arrives repeatedly while the finger stays down, so
+          // a long press holds the light at full brightness. See Backlight.h.
+          backlightActivity();
         }
       }
     } else {

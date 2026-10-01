@@ -35,7 +35,8 @@
 #define PIN_LCD_SCK 48
 #define PIN_LCD_MOSI 47
 
-// Backlight (active high, on/off line).
+// Backlight (active high). Driven as LEDC PWM, 1 kHz / 10 bits, since the panel
+// dims itself after a few minutes without a touch - see Backlight.h.
 #define PIN_LCD_BL 38
 
 // GT911 touch controller.

@@ -22,6 +22,7 @@
 
 #include <math.h>
 
+#include "Backlight.h"
 #include "DisplayPins.h"
 
 #define LCD_H_RES 480
@@ -265,9 +266,8 @@ bool displayInit() {
 
   corrIdentity(); // correction LUTs are pass-through until/unless tuned
 
-  // Backlight on (active high).
-  pinMode(PIN_LCD_BL, OUTPUT);
-  digitalWrite(PIN_LCD_BL, HIGH);
+  // Backlight on, dimmable from here on (LEDC PWM, see Backlight.h).
+  backlightInit();
 
   // 1) 3-wire 9-bit configuration link: plain GPIOs, driven by software bit
   // banging (see lcdBitBangFrame above). The parallel RGB panel needs no
@@ -366,6 +366,12 @@ void displayLooper() {
   diagPhase("lv.handler");
   lv_timer_handler();
   diagPhase("lv.done");
+  // The backlight is driven from here, and after the handler on purpose: the
+  // press that counts as activity is the one lv_timer_handler() has just read,
+  // so the light starts brightening in the same cycle. Being here also keeps it
+  // running while something else holds the main task - the timers are
+  // millis()-based and need no other pumping.
+  backlightUpdate();
 }
 
 lv_display_t *dispGetHandle() { return s_lv_disp; }

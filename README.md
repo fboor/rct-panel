@@ -96,7 +96,9 @@ src/
   config/               settings, NVS, non-blocking WiFiManager provisioning
                         AP (saved Wi-Fi + rct_host/rct_port)
   rct/                  RCT Power TCP client (ported from Energy2Shelly_ESP)
-  display/              ST7701 + esp_lcd RGB driver, GT911 touch, pin map
+  display/              ST7701 + esp_lcd RGB driver, GT911 touch, pin map,
+                        backlight (LEDC PWM, dims after 3 min without touch,
+                        off after 5)
   gui/                  LVGL pages + left/home/right navigation
 include/lv_conf.h       LVGL 9 configuration
 boards/                 Guition board definition (16 MB flash, PSRAM)
@@ -116,13 +118,15 @@ and Tasmota discussion #20527 (see `NOTICE`):
 | LCD G0..G5 | 8, 20, 3, 46, 9, 10 |
 | LCD B0..B4 | 4, 5, 6, 7, 15 |
 | LCD init SPI CS / SCK / MOSI | 39 / 48 / 47 |
-| Backlight | 38 (on/off, active high) |
+| Backlight | 38 (LEDC PWM, 1 kHz, active high) |
 | Touch I²C SDA / SCL | 19 / 45 (GT911 @ 0x5D) |
 | SD card (unused) | CS 42, SCK 48, MOSI 47, MISO 41 |
 
 Bring-up checklist (in priority order) once you have hardware:
 
-1. **Backlight:** GPIO38 high → panel should light up (even with garbage).
+1. **Backlight:** GPIO38 high → panel should light up (even with garbage). The
+   pin is driven as PWM (`src/display/Backlight.h`), so `analogWrite`-style
+   dimming is available and the panel dims itself when it is left alone.
 2. **ST7701 init:** a non-garbage image (stripes/pattern from LVGL boot
    splash) means the init + RGB timings are right. If the image is shifted or
    color-swapped, adjust the porch values or the R/B pin order in
@@ -139,6 +143,7 @@ looks like
 
 ```
 RCT Power Panel boot
+Backlight: GPIO 38 at 1000 Hz/10 bit, full 1024/1024
 LCD: display ready
 WiFi: trying saved profile ...        # or "trying saved network '<ssid>' ..."
 Touch: GT911 found at 0x5D

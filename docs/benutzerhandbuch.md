@@ -119,6 +119,25 @@ eingetroffen (z. B. weil der Wechselrichter keine Batterie meldet oder die
 Verbindung fehlt). Es sind keine Werte ausgefallen — das Panel zeigt keinen
 erfundenen Nullwert an.
 
+### Licht und Ruhe
+
+Lässt man das Panel in Ruhe, geht das Licht von selbst aus:
+
+| Zeit ohne Bedienung | Anzeige |
+|---|---|
+| bis 3 Minuten | volle Helligkeit |
+| ab 3 Minuten | auf 30 % gedimmt, Werte sind weiterhin lesbar |
+| ab 5 Minuten | Licht aus, das Display ist schwarz |
+| erste Berührung | sofort wieder hell, die Zeiten beginnen von vorn |
+
+Es ist ausschließlich eine Berührung nötig — das Panel hellt nicht von selbst
+wieder auf. Ein Druck auf einen Knopf oder einfach eine Berührung des Bildes
+genügt; längeres Auflegen des Fingers hält es dauerhaft hell.
+
+Die Zeiten sind fest eingestellt und lassen sich nicht ändern. Läuft das Panel
+ohne erkannten Touch-Regler (dann ist auch keine Bedienung möglich), bleibt das
+Licht aus Sicherheitsgründen immer an.
+
 ---
 
 ## 3. Die sieben Seiten im Einzelnen
@@ -542,6 +561,7 @@ sich prüfen, ob am Port überhaupt etwas passiert.
 | Ausgang schaltet ständig | Schwelle zu niedrig angesetzt. Der Wert pendelt um die Schwelle, weil 20 % Hysterese zu wenig sind, wenn die Last grob springt. Schwelle erhöhen. |
 | Ausgang war 2 Minuten lang aus | Der Wechselrichter war nicht erreichbar. Ohne Daten schaltet der Ausgang aus — das ist Absicht, siehe Kapitel 6. |
 | Ausgang schaltet nach dem Neustart nicht | Er schaltet 20 Sekunden nach dem Start frühestens ein. Das Display zeigt aber sofort, welche Funktion eingestellt ist. |
+| Display ist schwarz | Nach 5 Minuten ohne Bedienung ist das Licht aus (Abschnitt 2) — einmal das Display berühren. Bleibt es dunkel, ist der Touch-Regler nicht erkannt; dann hilft nur ein Neustart, und das Licht bleibt anschließend dauerhaft an. |
 
 ---
 
