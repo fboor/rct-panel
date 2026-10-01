@@ -60,7 +60,7 @@
   <circle cx="403" cy="324" r="11.5" fill="#0b6bcb"/>
   <text x="403" y="330" fill="#ffffff" font-size="14.5" font-weight="700" text-anchor="middle">4</text>
   <text x="422" y="330" fill="#0b3d6b" font-size="19" font-weight="600">Schaltkontakt</text>
-  <text x="422" y="348" fill="#44525f" font-size="13">drei Anschlüsse</text>
+  <text x="422" y="348" fill="#44525f" font-size="13">zwei Anschlüsse: GND, Kontakt</text>
 
   <!-- ================= BACK VIEW (rechts) ================= -->
   <rect x="820" y="65" width="320" height="320" rx="16" fill="#191f2a" stroke="#ffffff0d" stroke-width="1.5"/>
@@ -90,16 +90,17 @@
   <circle cx="874" cy="314" r="12" fill="#0b6bcb"/>
   <text x="874" y="320" fill="#ffffff" font-size="15" font-weight="700" text-anchor="middle">3</text>
 
-  <!-- 4: Relais-Port, rechte Kante unten -->
-  <rect x="1110" y="150" width="30" height="46" rx="4" fill="#e8edf2"/>
-  <g fill="#98a4b1">
-    <rect x="1104" y="156" width="8" height="7" rx="1"/>
-    <rect x="1104" y="170" width="8" height="7" rx="1"/>
-    <rect x="1104" y="184" width="8" height="7" rx="1"/>
+  <!-- 4: Schaltkontakt am Pinheader H1, im unteren rechten Bereich der Platine -->
+  <rect x="1066" y="263" width="27" height="45" rx="2" fill="#101317"/>
+  <g fill="#4a5058">
+    <rect x="1070" y="268" width="6" height="6"/><rect x="1083" y="268" width="6" height="6"/>
+    <rect x="1070" y="280" width="6" height="6"/><rect x="1083" y="280" width="6" height="6"/>
+    <rect x="1070" y="292" width="6" height="6"/><rect x="1083" y="292" width="6" height="6"/>
   </g>
-  <text x="1102" y="214" fill="#8f9aa8" font-size="12" text-anchor="end">1Way</text>
-  <circle cx="1062" cy="173" r="12" fill="#0b6bcb"/>
-  <text x="1062" y="179" fill="#ffffff" font-size="15" font-weight="700" text-anchor="middle">4</text>
+  <rect x="1067" y="264" width="13" height="26" rx="2" fill="#0b6bcb" fill-opacity="0.25"
+        stroke="#0b6bcb" stroke-width="1.6"/>
+  <circle cx="1040" cy="285" r="12" fill="#0b6bcb"/>
+  <text x="1040" y="291" fill="#ffffff" font-size="15" font-weight="700" text-anchor="middle">4</text>
 
   <!-- ESP32-S3 module (Mitte) -->
   <rect x="886" y="196" width="100" height="54" rx="6" fill="#bcc3ca"/>

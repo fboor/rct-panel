@@ -90,9 +90,21 @@
   </g>
   <text x="812" y="428" fill="#8a7226" font-size="12">H1</text>
 
-  <!-- Relais, rechte Kante (die Schaltung des Schaltkontakts sitzt hier) -->
+  <!-- Relais, rechte Kante -->
   <rect x="853" y="335" width="42" height="44" rx="3" fill="#17191c"/>
   <text x="874" y="396" fill="#8a7226" font-size="11" text-anchor="middle">RLY</text>
+
+  <!-- Schaltkontakt: die beiden oberen Pins der linken Reihe am Header H1.
+       Oben der Aufdruck GND, darunter der Kontakt (vom Anwender an der
+       Hardware festgestellt; die Vorlage des Herstellers zeigt an dieser
+       Stelle nur auf den ganzen Header). -->
+  <rect x="762" y="437" width="24" height="44" rx="4" fill="#0b6bcb" fill-opacity="0.12"
+        stroke="#0b6bcb" stroke-width="3"/>
+  <path d="M760,408 L772,434" stroke="#3d4650" stroke-width="1.6" fill="none" marker-end="url(#spitz)"/>
+  <text x="756" y="452" fill="#0b3d6b" font-size="12" text-anchor="end">GND</text>
+  <text x="756" y="472" fill="#0b3d6b" font-size="12" text-anchor="end">Kontakt</text>
+  <text x="756" y="386" fill="#1d232b" font-size="20" font-weight="600" text-anchor="end">Schaltkontakt</text>
+  <text x="756" y="406" fill="#7d8794" font-size="15" text-anchor="end">zwei Anschlüsse</text>
 
   <!-- Batterie-Port, rechte Kante unterhalb -->
   <rect x="863" y="440" width="38" height="70" rx="4" fill="#e7ebef"/>
@@ -119,13 +131,10 @@
   <!-- ============ Beschriftung rechts (wie in der Vorlage) ============ -->
   <g stroke="#3d4650" stroke-width="1.6" fill="none">
     <path d="M944,238 L901,238" marker-end="url(#spitz)"/>
-    <path d="M944,357 L895,357" marker-end="url(#spitz)"/>
     <path d="M944,470 L901,470" marker-end="url(#spitz)"/>
   </g>
   <text x="952" y="228" fill="#1d232b" font-size="20" font-weight="600">UART</text>
   <text x="952" y="248" fill="#7d8794" font-size="15">nur Service</text>
-  <text x="952" y="347" fill="#1d232b" font-size="20" font-weight="600">Schaltkontakt</text>
-  <text x="952" y="367" fill="#7d8794" font-size="15">drei Anschlüsse</text>
   <text x="952" y="460" fill="#8a939f" font-size="20">Batterie-Port</text>
   <text x="952" y="480" fill="#8a939f" font-size="15">unbenutzt</text>
 </svg>

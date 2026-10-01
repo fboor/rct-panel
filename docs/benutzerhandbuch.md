@@ -8,7 +8,7 @@ zusätzlich automatisch auf einer microSD-Karte auf.
 
 <figure class="ports-shot">
   <img src="img/anschluesse.png" alt="Schematische Grafik: Vorderseite des Panels mit Touch-Display, Rückseite mit den sechs nummerierten Anschlüssen microSD, USB-C, UART, Batterie-Port und Relais-Port, dazwischen eine Legende">
-  <figcaption>Bild 1: Vorder- und Rückseite mit den sechs Anschlüssen; die Nummern stehen auf den Ansichten</figcaption>
+  <figcaption>Bild 1: Vorder- und Rückseite mit den vier Anschlüssen; die Nummern stehen auf den Ansichten</figcaption>
 </figure>
 
 ---
@@ -61,18 +61,18 @@ gehören zusammen; „links“ und „rechts“ meinen die Rückseitenansicht.
 | 1 | Touch-Display | Vorderseite | Anzeige und Bedienung |
 | 2 | microSD (TF) | linke Kante, oben | Aufzeichnung der Messwerte (Kapitel 4) |
 | 3 | USB-C | linke Kante, unten | Versorgung mit 5 V, Firmware-Aktualisierung per Kabel (Kapitel 10) |
-| 4 | Schaltkontakt | rechte Kante | potentialfreier Kontakt, drei Anschlüsse (Kapitel 6) |
+| 4 | Schaltkontakt | Pinheader H1, rechte Kante | zwei Anschlüsse: GND und Kontakt (Kapitel 6) |
 
 <figure class="board-shot">
   <img src="img/rueckseite.png" alt="Vollständige Rückansicht der Platine: microSD-Slot oben und Lautsprecher sowie USB-C an der linken Kante, ESP32-S3-Modul in der Mitte, UART-Steckverbindung, Schaltkontakt, zweites UART-Feld und Batterie-Port an der rechten Kante">
   <figcaption>Bild 2: Rückseite der Platine mit allen Anschlüssen an ihrer Stelle. Grau: von der Firmware nicht benutzt.</figcaption>
 </figure>
 
-Der Schaltkontakt ist potentialfrei und schaltet die Last selbst — dazu mehr in
-Kapitel 6. Am Panel selbst liegen nur die 5 V der USB-Versorgung an; an keinem
-Anschluss darf Netzspannung angeschlossen werden. Auf der Platine ist nicht
-beschriftet, welcher der drei Anschlüsse welcher ist; Bild 2 zeigt die Kante,
-an der sie liegen.
+Der Schaltkontakt sitzt am Pinheader H1 an der rechten Kante und hat zwei
+Anschlüsse: in der linken Reihe die beiden oberen Pins, oben der Aufdruck GND,
+darunter der Kontakt. Er ist potentialfrei und schaltet den Verbraucher selbst —
+dazu mehr in Kapitel 6. Am Panel selbst liegen nur die 5 V der USB-Versorgung an;
+an keinem Anschluss darf Netzspannung angeschlossen werden.
 
 ### 1.2 Erstes Einschalten
 
@@ -485,21 +485,24 @@ Ausgang einer Regel, die Sie wählen.
 
 ### Anschluss
 
-Der Port ist dreipolig. Auf der Platine steht nicht, welcher Anschluss welcher ist;
-auf der Platine steht es nicht. Der Testknopf auf der Service-Seite entscheidet
-es: Bei ausge schaltetem Ausgang (Funktion `Aus`) hat ein Paar der drei
-Anschlüsse immer Durchgang — das ist gemeinsamer Anschluss und Öffner. Der
-dritte Anschluss hat nur dann Durchgang, wenn der Ausgang einschaltet; das ist
-der gemeinsame Anschluss und der Schließer. Der Rest ist normale
-Verdrahtung: gemeinsamer Anschluss an die Phase des zu schaltenden Kreises,
-Schließer an die Leitung zur Last, Öffner an den Rückleiter, wenn der
-Kontakt im geschlossenen Zustand öffnen soll.
+Der Kontakt sitzt am Pinheader H1 an der rechten Kante (Bild 2) und hat zwei
+Anschlüsse: in der linken Reihe die beiden oberen Pins, oben der Aufdruck GND,
+darunter der Kontakt. Die übrigen Pins des Headers gehören zur seriellen
+Schnittstelle und werden von der Firmware nicht benutzt.
 
-| Anschluss am Port | Angeschlossen an |
+Zwischen diesen beiden Anschlüssen liegt der Kontakt des Relais. Solange der
+Ausgang aus ist, sind sie nicht verbunden; wenn er einschaltet, schließt er.
+Nachweisen lässt sich das mit dem Testknopf auf der Service-Seite und einem
+Durchgangsmesser: während der fünf Sekunden Test muss der Durchgang da sein.
+
+Welcher der beiden Anschlüsse in Ihrem Kreis die Phase übernimmt, ist
+gleichgültig — der Kontakt ist symmetrisch. Üblich ist Phase an den einen
+Anschluss, die Leitung zur Last an den anderen.
+
+| Anschluss am Header | Angeschlossen an |
 |---|---|
-| gemeinsamer Anschluss (COM) | Phase des zu schaltenden Kreises |
-| Schließer (NO) | Leitung zur Last |
-| Öffner (NC) | Rückleiter, wenn der Kontakt im eingeschalteten Zustand öffnen soll |
+| oberer Pin der linken Reihe (Aufdruck GND) | eine Seite des zu schaltenden Kreises |
+| darunterliegender Pin | die andere Seite |
 
 ### Spannungen am Relais-Port
 
@@ -509,7 +512,7 @@ verwechselt werden:
 | Seite | Was dort anliegt |
 |---|---|
 | Ansteuerung, intern | 3,3 V Logikpegel am GPIO 40; damit wird allein die Relaisspule geschaltet |
-| Kontakt (COM, NO, NC) | potentialfrei: trägt die Spannung des angeschlossenen Kreises, bei 230 V also 230 V AC |
+| Kontakt (die beiden Pins) | potentialfrei: trägt die Spannung des angeschlossenen Kreises, bei 230 V also 230 V AC |
 
 Am Panel selbst liegen nur die 5 V der USB-Versorgung an. An keinem Anschluss
 und an keinem GPIO des Panels darf Netzspannung angeschlossen werden.
@@ -727,12 +730,12 @@ nicht möglich — die Binärdatei kommt aus dem Netz direkt auf das Gerät.
 | Bedienung | kapazitives Touchpanel (GT911) |
 | Prozessor | ESP32-S3, Dual-Core |
 | Speicher | 16 MB Flash, 8 MB PSRAM |
-| Anschlüsse | USB-C (Versorgung und Firmware per Kabel), microSD/TF, Schaltkontakt (3-polig); Bild 1 |
+| Anschlüsse | USB-C (Versorgung und Firmware per Kabel), microSD/TF, Schaltkontakt (zwei Pins am Header H1); Bild 1 |
 | Beleuchtung | LED-Hintergrundbeleuchtung hinter dem Display, stufenlos dimmbar |
 | Datenspeicher | microSD/TF-Karte im Steckplatz auf der Platine; Dateisystem FAT32 (FAT12/16 auch lesbar, exFAT wird nicht unterstützt), empfohlen 4–32 GB, ca. 11,7 MB Datenvolumen pro Jahr; SPI 4 MHz mit Selbsttest, Rückfall auf 400 kHz; Pufferspeicher im Panel für 24 h |
 | Stromversorgung | USB-C, 5 V DC |
 | Logikpegel | 3,3 V an den internen Ausgängen; ausschließlich zum Ansteuern des Relais, keine Anschlussstelle für Fremdspannung |
-| Spannung am Schaltkontakt | potentialfrei; der Kontakt trägt die Spannung des angeschlossenen Kreises (bei 230 V also 230 V AC). Nennstrom und Kontaktart stehen auf dem Relais und in dessen Datenblatt — dieses Handbuch nennt dafür bewusst keine Zahl. Zu prüfen vor dem Anschluss einer Last: Kontaktstrom bei ohmscher Last, Anlaufstrom bei Motoren und Leuchtstoffmitteln, Schalthäufigkeit |
+| Spannung am Schaltkontakt | potentialfrei; zwischen den beiden Pins liegt die Spannung des angeschlossenen Kreises (bei 230 V also 230 V AC). Nennstrom und Kontaktart stehen auf dem Relais und in dessen Datenblatt — dieses Handbuch nennt dafür bewusst keine Zahl. Zu prüfen vor dem Anschluss einer Last: Kontaktstrom bei ohmscher Last, Anlaufstrom bei Motoren und Leuchtstoffmitteln, Schalthäufigkeit |
 
 ### Funk
 
@@ -788,7 +791,7 @@ Angabe auf dem Netzteil gilt ohne Last ohnehin nichts.
 | Datenabfrage | RCT-Wechselrichter über TCP (Port 8899), alle 10 s |
 | Datenaufzeichnung | alle 5 Minuten als CSV (ca. 32 KB pro Tag), 24-h-Puffer im RAM bei fehlender Karte |
 | Weboberfläche | HTTP-Server im lokalen Netz (Port 80): Status, CSV-/Bild-Download, Firmware-Update; änderende Funktionen mit 4-stelligem Code |
-| Schaltausgang | potentialfreier Relaiskontakt, 3-polig (gemeinsam, Schließer, Öffner), 5 wählbare Funktionen, 20 s Einschaltverzögerung, 60 s Mindesthaltezeit, 20 % Hysterese; aus bei jedem Start |
+| Schaltausgang | potentialfreier Kontakt zwischen zwei Pins des Headers H1, 5 wählbare Funktionen, 20 s Einschaltverzögerung, 60 s Mindesthaltezeit, 20 % Hysterese; aus bei jedem Start |
 | Ausgang bei Datenausfall | schaltet aus, wenn der Wechselrichter länger als 2 min keine Daten liefert |
 
 Das Panel zeigt ausschließlich Messwerte an — es verändert keine Einstellungen
