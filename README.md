@@ -1,5 +1,8 @@
 # rct-panel
 
+> **Not affiliated with RCT Power GmbH.** Independent project, no connection to,
+> endorsement by or support from RCT Power GmbH.
+
 Energy panel for an **RCT Power** inverter, on a **Guition ESP32-S3 4848S040**
 wall display (480 × 480, capacitive touch). Live values read over TCP, the
 energy flow, 24 hours of history on an SD card, and a web interface in the local

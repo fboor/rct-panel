@@ -1,5 +1,8 @@
 # RCT Power Panel <span class="h-sub">Benutzerhandbuch</span>
 
+> **Kein Zusammenhang mit der RCT Power GmbH.** Unabhängiges Projekt, ohne
+> Verbindung, Empfehlung oder Unterstützung durch die RCT Power GmbH.
+
 Das RCT Power Panel ist ein Wandpanel (4-Zoll-Farb-Touchdisplay) zur
 Anzeige der Live-Daten Ihres RCT-Power-Wechselrichters. Es liest die Werte
 direkt über das Netzwerk aus dem Wechselrichter (TCP, Standard-Port 8899),
@@ -853,6 +856,18 @@ Netzwerk- und Verbindungsdaten des Panels fest).
   bzw. nach frühestens 60 Sekunden wieder aus.
 - Ohne Bedienung geht die Hintergrundbeleuchtung nach 3 Minuten auf 30 % und
   nach 5 Minuten aus; die erste Berührung holt sie zurück (Abschnitt 2).
+
+---
+
+## Herkunft und Abgrenzung
+
+Unabhängiges Projekt: keine Verbindung zur RCT Power GmbH, weder dahinter noch
+davon empfohlen oder unterstützt. „RCT Power“ ist deren Produktbezeichnung und
+erscheint hier nur, um das Gerät zu bezeichnen, mit dem die Software über das
+dokumentierte TCP-Protokoll (Port 8899) spricht. Die Software wurde aus der
+öffentlichen Protokoldokumentation entwickelt und ändert nichts am
+Wechselrichter. Portal und App der RCT Power GmbH bleiben deren eigenes Produkt;
+das Panel ist eine zusätzliche Anzeige, keine Erweiterung davon.
 
 ---
 
