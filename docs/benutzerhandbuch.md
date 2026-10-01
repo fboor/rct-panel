@@ -53,26 +53,24 @@ Browser abrufen: IP-Adresse und Code dafür stehen auf der **Service-Seite**
 ### 1.1 Anschlüsse
 
 Alle Anschlüsse liegen an den Seitenkanten und sind von der Seite zugänglich —
-das Panel muss dafür nicht aus der Wand. Die Nummern in Bild 1 und die
-Beschriftung in Bild 2 gehören zusammen:
+das Panel muss dafür nicht aus der Wand. Die Nummern in Bild 1 und Bild 2
+gehören zusammen; „links“ und „rechts“ meinen die Rückseitenansicht.
 
-| Nr. | Anschluss (Aufdruck im Foto) | Lage in der Rückseitenansicht | Verwendung |
+| Nr. | Anschluss | Lage | Verwendung |
 |---|---|---|---|
 | 1 | Touch-Display | Vorderseite | Anzeige und Bedienung |
-| 2 | microSD (TF) — „TF Card Socket“ | linke Kante, oben | Aufzeichnung der Messwerte (Kapitel 4) |
-| 3 | USB-C — „USB Type-C“ | linke Kante, unten | Versorgung mit 5 V, Firmware-Aktualisierung per Kabel (Kapitel 10) |
-| 4 | UART (P1) — „Uart Interface“ | rechte Kante, oben | nur Service und Entwicklung: GND, RXD, TXD, 5 V |
-| 5 | Batterie-Port — „Battery Port“ | rechte Kante, Mitte | unbenutzt; die Firmware nutzt ihn nicht |
-| 6 | Relais-Port „1Way“ — „1 Way/3 Way Relay Port“ | rechte Kante, unten | Schaltkontakt (Kapitel 6) |
-| 7 | Lautsprecher — „Speaker“ | linke Kante, zwischen 2 und 3 | unbenutzt; die Firmware gibt keinen Ton aus |
+| 2 | microSD (TF) | linke Kante, oben | Aufzeichnung der Messwerte (Kapitel 4) |
+| 3 | USB-C | linke Kante, unten | Versorgung mit 5 V, Firmware-Aktualisierung per Kabel (Kapitel 10) |
+| 4 | Relais-Port „1Way“ | rechte Kante, unten | Schaltkontakt (Kapitel 6) |
 
 <figure class="board-shot">
-  <img src="img/rueckseite.jpg" alt="Rückseite des Panels: TF-Karten-Slot und USB-C an der linken Kante, UART-, Batterie- und Relais-Port an der rechten Kante, ESP32-S3-Modul in der Mitte">
-  <figcaption>Bild 2: Rückseite mit den Anschlüssen. Die Pfeile im Bild sind englisch beschriftet; die Zuordnung steht in der Tabelle oben.</figcaption>
+  <img src="img/kanten.png" alt="Kantenansicht: links die Plattenkante mit microSD-Slot und USB-C-Buchse, an der die Karte und der Stecker von der Seite einstecken; rechts die Kante mit dem dreipoligen Relais-Port, an der ein Stecker mit drei Adern von der Seite einsteckt">
+  <figcaption>Bild 2: Die beiden Seitenkanten. Stecker und Karte stecken seitlich ein — neben dem Panel muss dafür etwas Platz bleiben.</figcaption>
 </figure>
 
-Der Anschluss 6 ist potentialfrei und schaltet die Netzlast selbst — dazu mehr in
-Kapitel 6. An Anschluss 4 liegen 3,3 V an; dort gehört keine Netzspannung hinein.
+Der Relais-Port ist potentialfrei und schaltet die Last selbst — dazu mehr in
+Kapitel 6. Am Panel selbst liegen nur die 5 V der USB-Versorgung an; an keinem
+Anschluss darf Netzspannung angeschlossen werden.
 
 ### 1.2 Erstes Einschalten
 
