@@ -57,6 +57,13 @@ except optional extras):
 | battery             | `batteryPower`       | g_sync.p_acc_lp (signed)     | W |
 | soc                 | `batterySoc`         | battery.soc                  | % |
 | grid                | `gridPower[0..2]`    | g_sync.p_ac_sc (signed)      | W (per phase) |
+| island              | `islandMode`         | prim_sm.island_flag, bit 0   | 0/1 |
+| pv_a_total_wh       | `totalPvAWh`         | energy.e_dc_total[0]         | Wh |
+| pv_b_total_wh       | `totalPvBWh`         | energy.e_dc_total[1]         | Wh |
+| ext_total_wh        | `totalExtWh`         | energy.e_ext_total_sum       | Wh |
+| load_total_wh       | `totalLoadWh`        | energy.e_load_total          | Wh |
+| feed_total_wh       | `feedInEnergyWh`     | energy.e_grid_feed_total     | Wh |
+| grid_total_wh       | `gridDrawTotalWh`    | energy.e_grid_load_total     | Wh |
 
 Optional extras already in the snapshot: `batteryStatus` bitfield,
 `faultBits[4]`, `deviceName`. A `status` column (0 = ok, bits for active
@@ -72,11 +79,52 @@ point. Both ends of the format are in one header-only file without Arduino, so
 the round trip is host-tested — a format change that would quietly break the
 24 h chart or a downloaded file fails `tools/sd_queue_test` instead.
 
+### Format 2: the sums, appended (2026-10)
+
+Seven columns were **appended**: `island` and the six lifetime counters. Two
+reasons for putting them at the end and not in the middle:
+
+- The old 16 names stay an unchanged **prefix** of today's header, so every row
+  an older firmware wrote is a prefix of a row written now. `parse()` accepts
+  such a row and sets the seven appended fields to **0** — the honest value for
+  a counter that was never logged. That is the whole backward compatibility,
+  and it is pinned by the host test (`testLegacyRow`, plus the prefix check in
+  `testHeader`).
+- Everything else keeps refusing. 17 to 22 columns, a trailing character, the
+  header line, a line without `
+`: all skipped. A half-written row of the
+  *current* format would land between 16 and 22 columns, so leniency there would
+  have been exactly the wrong leniency.
+
+**Why the sums at all, when the panel already reads month/year/total from the
+device?** Because they are the *same* counters: logging them costs nothing (no
+new OID, no new poll) and gives the history two things the live values cannot
+give — a visible jump if a counter is ever reset (device swapped, counter
+cleared), and day differences that survive a month file being cut.
+
+**Why `island` is 0/1 and not minutes.** The device has no island time counter
+(`prim_sm.island_flag` is a flag, `prim_sm.island_retrials` a trial count), so a
+duration would have to be integrated by the panel from the 10 s poll. The
+decision was the plain state. Two consequences belong in the column
+description: an island event that starts and ends between two rows does not
+appear in any row, and `0` also covers "the flag has not answered yet"
+(`island=1` requires an answered flag).
+
+**A month file keeps the header it was created with.** A file made before the
+change therefore has 16 names above rows of 23 values. Our reader handles it;
+a spreadsheet does not. `appendRow()`/`CardSink::open()` log this once per file:
+
+```
+SD: /hist/RCT-202609.csv hat 16 Spalten, neue Zeilen haben 23
+```
+
 ## 3. Volume, endurance, power
 
-- CSV line ≈ 110 B (16 columns; the longest row the formatter can produce is
-  107 characters, checked by the host test). 288 lines/day ≈ **~32 kB/day**,
-  ≈ 1 MB/month, ≈ **12 MB/year**.
+- CSV line ≈ 165 B (23 columns; the longest row the formatter can produce is
+  163 characters, checked by the host test). 288 lines/day ≈ **~48 kB/day**,
+  ≈ 1,4 MB/month, ≈ **18 MB/year**. (`kLineCap` is 256 for that worst case, with
+  ~90 B to spare; the estimate and the cap are two different numbers and both
+  are pinned by the test.)
 - Binary (uint32 ts + 14×float32) ≈ 60 B/line ≈ 17 kB/day ≈ 6 MB/year.
 - Either format fits a 1 GB card for decades; SD wear is negligible at this
   rate. Flush after each line: worst case on power loss is the current sample.
@@ -124,8 +172,9 @@ the 24 h chart, so:
   nothing, and the rows land in the month file in order when it comes back.
   On overflow the oldest row goes (recent data is what the chart needs) and
   the loss is counted.
-- The slots live in **PSRAM** (288 × 216 B = 62 kB of the 8 MB), allocated in
-  `sdInit()`. In internal RAM they would be a third of the free heap for
+- The slots live in **PSRAM** (288 × 296 B = 85 kB of the 8 MB), allocated in
+  `sdInit()`. The slot is `kLineCap + kPathCap`, so it grew with the row
+  format. In internal RAM they would be a third of the free heap for
   something that is touched once per 5 minutes, and nothing in the ring is a
   DMA buffer. Without PSRAM the queue falls back to the 12 slots (1 h) that a
   static array in internal RAM provides.

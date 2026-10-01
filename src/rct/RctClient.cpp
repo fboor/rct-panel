@@ -671,7 +671,7 @@ void rctParse() {
   memcpy(rctState.loadPower, loads, sizeof(rctState.loadPower));
   rctState.gridPowerSum = rctCur[RCT_SLOT_PGRIDSUM];
   rctState.feedInEnergyWh = rctCur[RCT_SLOT_EFEED];
-  rctState.loadEnergyWh = rctCur[RCT_SLOT_ELOAD];
+  rctState.gridDrawTotalWh = rctCur[RCT_SLOT_ELOAD];
 
   rctState.pvPower[0] = rctCur[RCT_SLOT_PV0];
   rctState.pvPower[1] = rctCur[RCT_SLOT_PV1];
@@ -757,6 +757,8 @@ void rctParse() {
       rctCur[RCT_SLOT_DCYEAR0] + rctCur[RCT_SLOT_DCYEAR1];
   rctState.totalPvWh =
       rctCur[RCT_SLOT_DCTOTAL0] + rctCur[RCT_SLOT_DCTOTAL1];
+  rctState.totalPvAWh = rctCur[RCT_SLOT_DCTOTAL0];
+  rctState.totalPvBWh = rctCur[RCT_SLOT_DCTOTAL1];
   rctState.monthLoadWh = rctCur[RCT_SLOT_LOADMONTH];
   rctState.yearLoadWh = rctCur[RCT_SLOT_LOADYEAR];
   rctState.totalLoadWh = rctCur[RCT_SLOT_LOADTOTAL];
@@ -829,7 +831,7 @@ void rctParse() {
                   rctState.dayGridLoadWh / 1000.0f,
                   rctState.monthGridLoadWh / 1000.0f,
                   rctState.yearGridLoadWh / 1000.0f,
-                  rctState.loadEnergyWh / 1000.0f,
+                  rctState.gridDrawTotalWh / 1000.0f,
                   rctState.dayExtWh / 1000.0f, rctState.monthExtWh / 1000.0f,
                   rctState.yearExtWh / 1000.0f, rctState.totalExtWh / 1000.0f);
   }

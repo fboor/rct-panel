@@ -17,7 +17,10 @@ struct RctSnapshot {
   float gridVoltage[3];   // rb485.u_l_grid[0..2]      grid voltage per phase [V]
   float gridFrequency[3]; // rb485.f_grid[0..2]        grid frequency per phase [Hz]
   float feedInEnergyWh;   // energy.e_grid_feed_total  lifetime feed-in [Wh] (already Wh)
-  float loadEnergyWh;     // energy.e_grid_load_total  lifetime grid draw [Wh] (already Wh)
+  // Renamed from loadEnergyWh: the name read as "household draw", and it is
+  // the *grid* meter. Three lifetime counters sit close together here and are
+  // easy to swap - totalLoadWh is the household, this one is the grid.
+  float gridDrawTotalWh;  // energy.e_grid_load_total  lifetime grid draw [Wh] (already Wh)
 
   // Current-day totals (portal "Übersicht"/"Energiestatistiken", Heute).
   float dayPvWh;        // energy.e_dc_day[0]+[1]      generated today [Wh]
@@ -27,10 +30,15 @@ struct RctSnapshot {
 
   // Month / year totals for the "Energie" page. The lifetime ("Gesamt")
   // counterparts already live above: feedInEnergyWh = e_grid_feed_total and
-  // loadEnergyWh = e_grid_load_total (both grid meters, despite the name).
+  // gridDrawTotalWh = e_grid_load_total (both grid meters).
   float monthPvWh;      // energy.e_dc_month[0]+[1]    generated this month [Wh]
   float yearPvWh;       // energy.e_dc_year[0]+[1]     generated this year [Wh]
   float totalPvWh;      // energy.e_dc_total[0]+[1]    generated lifetime [Wh]
+  // The two lifetime PV counters on their own, for the CSV row: a plant with
+  // one string in shadow should be visible as such in the history, and the
+  // summed total hides which of the two strings it was.
+  float totalPvAWh;     // energy.e_dc_total[0]        generator A lifetime [Wh]
+  float totalPvBWh;     // energy.e_dc_total[1]        generator B lifetime [Wh]
   float monthLoadWh;    // energy.e_load_month         household this month [Wh]
   float yearLoadWh;     // energy.e_load_year          household this year [Wh]
   float totalLoadWh;    // energy.e_load_total         household lifetime [Wh]

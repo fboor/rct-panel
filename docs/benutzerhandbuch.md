@@ -302,7 +302,7 @@ CSV-Datei (nur bei verbundenem Wechselrichter, keine Nullzeilen):
   eine Datei pro Kalendermonat. Läuft die Uhr (SNTP) beim Start noch nicht,
   schreibt das Panel zunächst in eine Uptime-Datei und wechselt nach der
   Zeitsynchronisation automatisch auf die Monatsdatei.
-- Umfang: ca. 32 KB pro Tag ≈ 1 MB pro Monat — eine übliche Karte
+- Umfang: ca. 48 KB pro Tag ≈ 1,4 MB pro Monat — eine übliche Karte
   reicht jahrzehntelang.
 - Karte gezogen: Solange keine Karte steckt, werden die Zeilen im Speicher
   des Panels zwischengelagert und nach dem Einstecken in der richtigen
@@ -328,7 +328,7 @@ CSV-Datei (nur bei verbundenem Wechselrichter, keine Nullzeilen):
 | Nicht unterstützt | **exFAT** — besonders wichtig: Karten ab 64 GB werden ab Werk exFAT geliefert |
 | Kapazität | 4 GB bis 32 GB ist der unkomplizierte Bereich; jede FAT32-partitionierte Karte ist lesbar und beschreibbar |
 | Formatierung | eine einzige Partition, vor dem ersten Einsatz mit einem FAT32-Dateisystem versehen |
-| Geschwindigkeit | belanglos: 32 kB pro Tag, auch die langsamste Klasse reicht |
+| Geschwindigkeit | belanglos: 48 kB pro Tag, auch die langsamste Klasse reicht |
 | Schreibschutz | im Steckplatz nicht vorhanden — die Karte muss also nicht auf Schreibschutz stehen |
 
 Praktisch ist jede gebräuchliche 8-GB- oder 16-GB-Karte die richtige Wahl.
@@ -345,15 +345,17 @@ Ordner `/hist` (Messwerte) und `/shot` (Screenshots) an, wenn sie fehlen. Alles
 andere auf der Karte bleibt unangetastet, Sie können also eigene Ordner
 daneben anlegen.
 
-Der Platzbedarf ist vernachlässigbar: rund 11,7 MB pro Jahr, eine 1-GB-Karte
-wäre damit rund 85 Jahre lang ausreichend. Auch die Verschleißreserve spielt
+Der Platzbedarf ist vernachlässigbar: rund 18 MB pro Jahr, eine 1-GB-Karte
+wäre damit rund 55 Jahre lang ausreichend. Auch die Verschleißreserve spielt
 keine Rolle, es wird nur alle fünf Minuten ein Block angehängt.
 
-### CSV-Format (16 Spalten)
+### CSV-Format (23 Spalten)
 
 ```
 ts,pv_a,pv_b,s0,temp_core,temp_bat,temp_hsink,
-load_l1,load_l2,load_l3,bat,soc,grid_l1,grid_l2,grid_l3,status
+load_l1,load_l2,load_l3,bat,soc,grid_l1,grid_l2,grid_l3,status,
+island,pv_a_total_wh,pv_b_total_wh,ext_total_wh,load_total_wh,
+feed_total_wh,grid_total_wh
 ```
 
 | Spalte | Bedeutung | Einheit |
@@ -367,11 +369,38 @@ load_l1,load_l2,load_l3,bat,soc,grid_l1,grid_l2,grid_l3,status
 | `soc` | Ladezustand | % |
 | `grid_l1..l3` | Netz-Leistung pro Phase (positiv = Bezug) | W |
 | `status` | Status-/Fehlerbitmaske | — |
+| `island` | Inselbetrieb zum Zeitpunkt der Messung | 0/1 |
+| `pv_a_total_wh`, `pv_b_total_wh` | erzeugte Energie Generator A / B, seit Inbetriebnahme | Wh |
+| `ext_total_wh` | externe Erzeugung (S0), seit Inbetriebnahme | Wh |
+| `load_total_wh` | Hausverbrauch, seit Inbetriebnahme | Wh |
+| `feed_total_wh` | Einspeisung, seit Inbetriebnahme | Wh |
+| `grid_total_wh` | Bezug aus dem Netz, seit Inbetriebnahme | Wh |
+
+Die Summen sind dieselben Zähler, die auch die Seite „Energie“ anzeigt — das
+Panel fragt dafür nichts zusätzlich ab. In der Datei stehen sie, damit der
+Verlauf sie behält, wenn eine Monatsdatei einmal abgeschnitten wird, und damit
+ein Zähler auffällt, der zurückspringt (Gerät getauscht oder Zähler
+geleert). Für Tag/Monat/Jahr fragen Sie weiterhin das Gerät — das ist schneller
+und genauer als jede Rechnung aus dem Panel.
+
+Bei `island` ist `1` der Zustand im Moment der Messung, keine Dauer: ein
+Inselereignis, das zwischen zwei Zeilen beginnt und endet, steht in keiner
+Zeile. Eine `0` heißt deshalb „nicht im Inselbetrieb“ **oder** „die Meldung
+kam noch nicht an“.
 
 Die Datei ist direkt mit Tabellenkalkulationen, pandas oder Grafana
 auswertbar. Leistungen und Temperaturen stehen in Watt bzw. Grad Celsius,
 der Zeitstempel in Unix-Sekunden (UTC); das Panel selbst rechnet für die
 Monatsdatei über die SNTP-Zeit.
+
+> **Hinweis:** Eine Monatsdatei behält die Kopfzeile, mit der sie angelegt
+> wurde. Wurde sie vor dem Ersatz durch 23 Spalten angelegt, stehen über den
+> Zeilen 16 Namen — die Zeilen ab dem Update haben trotzdem alle 23 Werte. Das
+> Panel selbst liest beides (fehlende Summen als 0) und schreibt dazu einmal
+> ins Protokoll: `SD: /hist/RCT-202609.csv hat 16 Spalten, neue Zeilen haben
+> 23`. Tabellenkalkulationen kommen mit der gemischten Datei nicht klar:
+> Kopfzeile überspringen und die 23 Namen aus der Tabelle oben setzen, dann
+> fehlen die Summen der älteren Zeilen als leerer Feld — nicht als 0.
 
 ---
 
@@ -732,7 +761,7 @@ nicht möglich — die Binärdatei kommt aus dem Netz direkt auf das Gerät.
 | Speicher | 16 MB Flash, 8 MB PSRAM |
 | Anschlüsse | USB-C (Versorgung und Firmware per Kabel), microSD/TF, Schaltkontakt (zwei Pins am Header H1); Bild 1 |
 | Beleuchtung | LED-Hintergrundbeleuchtung hinter dem Display, stufenlos dimmbar |
-| Datenspeicher | microSD/TF-Karte im Steckplatz auf der Platine; Dateisystem FAT32 (FAT12/16 auch lesbar, exFAT wird nicht unterstützt), empfohlen 4–32 GB, ca. 11,7 MB Datenvolumen pro Jahr; SPI 4 MHz mit Selbsttest, Rückfall auf 400 kHz; Pufferspeicher im Panel für 24 h |
+| Datenspeicher | microSD/TF-Karte im Steckplatz auf der Platine; Dateisystem FAT32 (FAT12/16 auch lesbar, exFAT wird nicht unterstützt), empfohlen 4–32 GB, ca. 18 MB Datenvolumen pro Jahr; SPI 4 MHz mit Selbsttest, Rückfall auf 400 kHz; Pufferspeicher im Panel für 24 h |
 | Stromversorgung | USB-C, 5 V DC |
 | Logikpegel | 3,3 V an den internen Ausgängen; ausschließlich zum Ansteuern des Relais, keine Anschlussstelle für Fremdspannung |
 | Spannung am Schaltkontakt | potentialfrei; zwischen den beiden Pins liegt die Spannung des angeschlossenen Kreises (bei 230 V also 230 V AC). Nennstrom und Kontaktart stehen auf dem Relais und in dessen Datenblatt — dieses Handbuch nennt dafür bewusst keine Zahl. Zu prüfen vor dem Anschluss einer Last: Kontaktstrom bei ohmscher Last, Anlaufstrom bei Motoren und Leuchtstoffmitteln, Schalthäufigkeit |
@@ -789,7 +818,7 @@ Angabe auf dem Netzteil gilt ohne Last ohnehin nichts.
 | Bezeichnung | Technische Daten |
 |---|---|
 | Datenabfrage | RCT-Wechselrichter über TCP (Port 8899), alle 10 s |
-| Datenaufzeichnung | alle 5 Minuten als CSV (ca. 32 KB pro Tag), 24-h-Puffer im RAM bei fehlender Karte |
+| Datenaufzeichnung | alle 5 Minuten als CSV (ca. 48 KB pro Tag), 24-h-Puffer im RAM bei fehlender Karte |
 | Weboberfläche | HTTP-Server im lokalen Netz (Port 80): Status, CSV-/Bild-Download, Firmware-Update; änderende Funktionen mit 4-stelligem Code |
 | Schaltausgang | potentialfreier Kontakt zwischen zwei Pins des Headers H1, 5 wählbare Funktionen, 20 s Einschaltverzögerung, 60 s Mindesthaltezeit, 20 % Hysterese; aus bei jedem Start |
 | Ausgang bei Datenausfall | schaltet aus, wenn der Wechselrichter länger als 2 min keine Daten liefert |

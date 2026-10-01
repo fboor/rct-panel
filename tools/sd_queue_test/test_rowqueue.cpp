@@ -59,6 +59,13 @@ static csvrow::Row makeRow() {
   r.g2 = 20.0f;
   r.g3 = 30.0f;
   r.faults = 0x0000004Au;
+  r.island = 1.0f;
+  r.pvATotal = 21001345.0f;
+  r.pvBTotal = 9876543.0f;
+  r.extTotal = 12345.0f;
+  r.loadTotal = 55123456.0f;
+  r.feedTotal = 44556677.0f;
+  r.gridTotal = 22334455.0f;
   return r;
 }
 
@@ -68,7 +75,7 @@ static bool near(float a, float b) {
 }
 
 static void testRoundTrip() {
-  char line[256];
+  char line[csvrow::kLineCap];
   const csvrow::Row in = makeRow();
   const size_t n = csvrow::format(line, sizeof(line), in);
   check(n > 0, "format: a normal row is not truncated");
@@ -88,7 +95,22 @@ static void testRoundTrip() {
   check(near(out.g1, in.g1) && near(out.g2, in.g2) && near(out.g3, in.g3),
         "round trip: grid");
   checkEq((long)out.faults, (long)in.faults, "round trip: fault mask");
+  check(near(out.island, 1.0f), "round trip: island flag");
+  check(near(out.pvATotal, in.pvATotal) && near(out.pvBTotal, in.pvBTotal),
+        "round trip: PV totals");
+  check(near(out.extTotal, in.extTotal), "round trip: external total");
+  check(near(out.loadTotal, in.loadTotal), "round trip: household total");
+  check(near(out.feedTotal, in.feedTotal), "round trip: feed-in total");
+  check(near(out.gridTotal, in.gridTotal), "round trip: grid total");
 }
+
+// The header of the format before the sums were logged. Pinned here because
+// the whole backward compatibility rests on it: the old names have to be an
+// unchanged prefix of today's header, otherwise every old row would have to be
+// read by position and a new column could never be appended.
+static const char kLegacyHeader[] =
+    "ts,pv_a,pv_b,s0,temp_core,temp_bat,temp_hsink,"
+    "load_l1,load_l2,load_l3,bat,soc,grid_l1,grid_l2,grid_l3,status";
 
 // The column count is the thing a reordering breaks, and the exact text of the
 // header is what a spreadsheet and the web download rely on. Pin both.
@@ -101,13 +123,58 @@ static void testHeader() {
     }
   }
   checkEq(commas + 1, csvrow::kColumns, "header: column count matches kColumns");
-  check(strncmp(h, "ts,pv_a,pv_b,s0,temp_core", 25) == 0,
-        "header: first columns unchanged");
-  check(strcmp(h + strlen(h) - 6, "status") == 0,
-        "header: last column is status");
+  checkEq(csvrow::kColumns - csvrow::kLegacyColumns, 7,
+          "header: seven columns were appended");
+  check(strncmp(h, kLegacyHeader, strlen(kLegacyHeader)) == 0,
+        "header: the old names are an unchanged prefix");
+  static const char kAppended[] = ",island,pv_a_total_wh";
+  check(strncmp(h + strlen(kLegacyHeader), kAppended, strlen(kAppended)) == 0,
+        "header: the appended names follow directly");
+  check(strstr(h, "status") != nullptr, "header: status is still named");
+  // The island flag is the state, not a duration: 0 must be a number, because
+  // the manual says that 0 also covers "not answered yet".
+  check(strstr(h, "island,") != nullptr, "header: island is a plain column");
 
   csvrow::Row r = {};
   check(!csvrow::parse(h, r), "parse: the header line is not a data row");
+}
+
+// A row as the firmware before format 2 wrote it: sixteen columns, no sums.
+// It has to be read as a full row with the appended values at zero - that is the
+// promise the whole change rests on, and the only place it can be broken
+// silently.
+static void testLegacyRow() {
+  static const char kLegacyRow[] =
+      "1789142400,1234,567,89,41.2,-3.5,38.0,111,222,333,-450,62,-10,20,30,4A";
+
+  csvrow::Row r = {};
+  check(csvrow::parse(kLegacyRow, r), "legacy: an old row parses");
+  checkEq((long)r.ts, 1789142400L, "legacy: timestamp");
+  check(near(r.pvA, 1234.0f) && near(r.th, 38.0f), "legacy: old values intact");
+  checkEq((long)r.faults, 0x4AL, "legacy: fault mask");
+  check(near(r.island, 0.0f), "legacy: island reads as 0");
+  check(near(r.pvATotal, 0.0f) && near(r.pvBTotal, 0.0f),
+        "legacy: PV totals are 0");
+  check(near(r.extTotal, 0.0f) && near(r.loadTotal, 0.0f),
+        "legacy: external and household total are 0");
+  check(near(r.feedTotal, 0.0f) && near(r.gridTotal, 0.0f),
+        "legacy: feed-in and grid total are 0");
+
+  // And the appended fields are written, not merely left alone: a row struct
+  // that comes in full of values must come back cleared in the old fields.
+  r.pvATotal = 4711.0f;
+  r.gridTotal = 815.0f;
+  r.island = 1.0f;
+  check(csvrow::parse(kLegacyRow, r), "legacy: parses again over stale values");
+  check(near(r.pvATotal, 0.0f) && near(r.gridTotal, 0.0f) &&
+            near(r.island, 0.0f),
+        "legacy: the appended fields are overwritten with 0");
+
+  // The chart reads an old row as far as it can, and that has to work.
+  csvrow::Sample s = {};
+  csvrow::toSample(r, s);
+  checkEq((long)s.ts, 1789142400L, "legacy: the chart takes an old row");
+  check(near(s.v[2], 1801.0f), "legacy: chart values are right");
 }
 
 static void testWorstCaseLength() {
@@ -132,6 +199,15 @@ static void testWorstCaseLength() {
   r.g2 = 99999.0f;
   r.g3 = -12345.0f;
   r.faults = 0xFFFFFFFFu;
+  // Lifetime counters of a long-lived plant: an 8 kW inverter that has run for
+  // years sits around 1e8 Wh, which is what the file really has to carry.
+  r.island = 1.0f;
+  r.pvATotal = 87654321.0f;
+  r.pvBTotal = 87654321.0f;
+  r.extTotal = 87654321.0f;
+  r.loadTotal = 87654321.0f;
+  r.feedTotal = 87654321.0f;
+  r.gridTotal = 87654321.0f;
 
   char line[512];
   const size_t n = csvrow::format(line, sizeof(line), r);
@@ -146,13 +222,15 @@ static void testWorstCaseLength() {
   checkEq((long)out.ts, 4102444800L, "worst case: 10-digit timestamp");
   check(near(out.tc, -99.9f) && near(out.g3, -12345.0f),
         "worst case: values");
+  check(near(out.pvATotal, 87654321.0f) && near(out.gridTotal, 87654321.0f),
+        "worst case: lifetime counters survive");
 
   // The precision contract: whole watts and tenths of a degree. A value with
   // more decimals comes back rounded, which is what the file says too.
   csvrow::Row p = makeRow();
   p.pvA = 1234.6f;  // -> 1235
   p.tc = 41.25f;    // -> 41.2
-  char pline[256];
+  char pline[csvrow::kLineCap];
   csvrow::format(pline, sizeof(pline), p);
   csvrow::Row pout = {};
   check(csvrow::parse(pline, pout), "precision: parses");
@@ -184,7 +262,7 @@ static void testFileSyntax() {
   csvrow::Row r = makeRow();
   r.pvA = 1234.6f; // rounds to 1235, no comma
   r.soc = 62.4f;
-  char line[256];
+  char line[csvrow::kLineCap];
   csvrow::format(line, sizeof(line), r);
   check(strstr(line, ",") != nullptr, "syntax: commas separate columns");
   check(strchr(line, ';') == nullptr, "syntax: no semicolon separators");
@@ -228,6 +306,12 @@ static void testParseRejects() {
         "parse: 15 columns");
   check(!csvrow::parse("1789142400,1,2,3,4,5,6,7,8,9,11,12,13,14,15,4A,99", r),
         "parse: 17 columns are refused, not half-read");
+  // One column short of the current format: a row that was cut off after the
+  // header grew is refused as well, instead of being read as an old row.
+  check(!csvrow::parse("1789142400,1,2,3,4,5,6,7,8,9,11,12,13,14,15,4A,"
+                       "0,1,2,3,4,5",
+                       r),
+        "parse: 22 columns are refused");
   check(!csvrow::parse("1789142400,1,2,3,4,5,6,7,8,9,11,12,13,14,15,4A\r", r),
         "parse: a line that still has its CR is refused");
   check(!csvrow::parse("1789142400,1,2,3,4,5,6,7,8,9,11,12,13,14,15,4A ", r),
@@ -236,7 +320,7 @@ static void testParseRejects() {
   check(!csvrow::parse(",,,,,,,,,,,,,,,", r), "parse: separators only");
   // Truncated tail of a file that was cut off mid-write: the last row is lost,
   // but it must not be misread as a valid one.
-  char line[256];
+  char line[csvrow::kLineCap];
   csvrow::format(line, sizeof(line), makeRow());
   char *cut = strchr(line, ',');
   *cut = '\0';
@@ -467,6 +551,7 @@ static void testFlush() {
 int main() {
   testRoundTrip();
   testHeader();
+  testLegacyRow();
   testWorstCaseLength();
   testFileSyntax();
   testSampleMapping();

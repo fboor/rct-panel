@@ -486,9 +486,9 @@ static void energyPeriodValues(const RctSnapshot &s, int period,
       break;
     case 3: // Gesamt
       // The two lifetime grid meters are the ones already tracked as
-      // feedInEnergyWh / loadEnergyWh.
+      // feedInEnergyWh / gridDrawTotalWh.
       pv = s.totalPvWh;   feed = s.feedInEnergyWh;
-      load = s.totalLoadWh; grid = s.loadEnergyWh;
+      load = s.totalLoadWh; grid = s.gridDrawTotalWh;
       ext = s.totalExtWh;
       break;
     default: // Tag

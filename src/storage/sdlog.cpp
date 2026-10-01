@@ -323,6 +323,53 @@ static bool tryMount(uint32_t hz, float *kbsOut, bool *probeOkOut) {
   return true;
 }
 
+// A month file keeps the header it was created with. A file made before the
+// row format grew therefore still carries the old 16 names while the rows
+// appended from now on have all columns - which our own reader handles (see
+// csvrow::parse), but which a spreadsheet does not.
+//
+// That is worth one line in the log: the state is otherwise only visible by
+// opening the file and counting columns. The check happens at most once per
+// file (the path is remembered), and an empty file - one we are about to create
+// - costs nothing. Called before the file is opened for appending, so the read
+// never competes with a write handle on the same file.
+static void reportForeignHeader(const char *path) {
+  static char lastPath[kPathCap];
+  if (strcmp(lastPath, path) == 0) {
+    return; // already looked at this file
+  }
+  strlcpy(lastPath, path, sizeof(lastPath));
+
+  File f = SD.open(path, FILE_READ);
+  if (!f) {
+    return;
+  }
+  const size_t size = f.size();
+  if (size == 0) {
+    f.close();
+    return; // ours: the header goes out with the first row
+  }
+  static char line[csvrow::kLineCap];
+  f.read((uint8_t *)line, sizeof(line) - 1);
+  f.close();
+  line[sizeof(line) - 1] = '\0';
+  size_t len = strlen(line);
+  while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r')) {
+    line[--len] = '\0';
+  }
+  int commas = 0;
+  for (const char *p = line; *p != '\0'; p++) {
+    if (*p == ',') {
+      commas++;
+    }
+  }
+  const int columns = (len > 0) ? commas + 1 : 0;
+  if (columns != csvrow::kColumns) {
+    Serial.printf("SD: %s hat %d Spalten, neue Zeilen haben %d\n", path,
+                  columns, csvrow::kColumns);
+  }
+}
+
 // Append one formatted row. Returns 1 when it was written as the first row of
 // a fresh file, 0 when it was appended, and -1 on any failure (card gone, card
 // full, short write).
@@ -333,6 +380,7 @@ static bool tryMount(uint32_t hz, float *kbsOut, bool *probeOkOut) {
 // re-queued and possibly logged twice, but a short write on a 512-byte-sector
 // card means the card is failing anyway.
 int appendRow(const char *path, const char *line) {
+  reportForeignHeader(path);
   File f = SD.open(path, FILE_APPEND);
   if (!f) {
     return -1;
@@ -358,6 +406,7 @@ int appendRow(const char *path, const char *line) {
 struct CardSink {
   File f;
   bool open(const char *path) {
+    reportForeignHeader(path);
     f = SD.open(path, FILE_APPEND);
     if (!f) {
       return false;
@@ -453,10 +502,20 @@ static bool parseLine(const char *line, SdHistSample *s) {
   return true;
 }
 
-// Rows are ~102 bytes (16 columns, see kLineCap), so this is how many bytes of
+// Rows are ~160 bytes (23 columns, see kLineCap), so this is how many bytes of
 // history are needed to cover ringCap rows with room to spare. Used to skip
 // forward to the interesting part of the file instead of parsing all of it.
-constexpr size_t kRowBytesEst = 128;
+//
+// It has to stay above the row length the format can produce: too small and the
+// scan silently shows less than the 24 h the chart claims, with nothing on
+// screen that would say so.
+constexpr size_t kRowBytesEst = 224;
+
+// Read buffer for the scan, independent of the estimate above: it only decides
+// where the scan starts, not how much is read per card access. Keeping it at
+// 8 kB means the estimate can grow with the row length without the RAM growing
+// with it.
+constexpr size_t kScanBlock = 8192;
 
 // Scan rows of `path` into `ring` (raw ring layout, one slot per parsed row
 // modulo ringCap). Return the number of parsed rows; the newest
@@ -491,8 +550,8 @@ static int scanFile(const char *path, SdHistSample *ring, int ringCap) {
   f.seek(from);
 
   // One static block, no allocation. The old loop built a String for every row
-  // of the whole file; this reuses 8 kB and parses in place.
-  static char block[kRowBytesEst * 64];
+  // of the whole file; this reuses one block and parses in place.
+  static char block[kScanBlock];
   int total = 0;
   size_t carry = 0;   // bytes of a line split across the block boundary
   bool atBoundary = from == 0; // only line-skip when we started mid-file
@@ -753,6 +812,18 @@ void sdLogSample(const RctSnapshot &s) {
   row.g1 = s.gridPower[0];
   row.g2 = s.gridPower[1];
   row.g3 = s.gridPower[2];
+  // The island flag is the state at the moment of sampling, not a duration, so
+  // a 0 also covers "the flag has not answered yet" - one number for both, and
+  // the column description in the manual says so. The totals are the device's
+  // own lifetime counters, i.e. the same values the energy page shows: logged
+  // here so the history keeps them even when a month file is cut.
+  row.island = s.islandMode ? 1.0f : 0.0f;
+  row.pvATotal = s.totalPvAWh;
+  row.pvBTotal = s.totalPvBWh;
+  row.extTotal = s.totalExtWh;
+  row.loadTotal = s.totalLoadWh;
+  row.feedTotal = s.feedInEnergyWh;
+  row.gridTotal = s.gridDrawTotalWh;
   if (csvrow::format(req.line, sizeof(req.line), row) == 0) {
     // Not reachable with kLineCap as sized - the host test formats the worst
     // case it can build and checks the margin - but a truncated line would be
