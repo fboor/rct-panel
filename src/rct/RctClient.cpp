@@ -23,6 +23,7 @@
 
 #include "../config/Configuration.h"
 #include "../Diag.h"
+#include "RctCrc.h"
 #include "RctTypes.h"
 
 #define RCT_RX_TIMEOUT_MS 2000    // per-frame receive window
@@ -49,23 +50,10 @@ static WiFiClient rctClient;
 // Protocol helpers
 // ---------------------------------------------------------------------------
 
-// CRC16 as implemented by the rctclient reference (see rctclient.utils.CRC16).
-static uint16_t rctCrc16(const uint8_t *data, size_t len) {
-  uint32_t crcsum = 0xFFFF;
-  const uint32_t polynom = 0x1021;
-  size_t paddedLen = len + (len & 0x01); // append 0x00 if length is odd
-
-  for (size_t i = 0; i < paddedLen; i++) {
-    uint8_t byte = (i < len) ? data[i] : 0x00;
-    crcsum ^= ((uint32_t)byte) << 8;
-    for (int j = 0; j < 8; j++) {
-      crcsum <<= 1;
-      if (crcsum & 0x7FFF0000) {
-        crcsum = (crcsum & 0x0000FFFF) ^ polynom;
-      }
-    }
-  }
-  return (uint16_t)(crcsum & 0xFFFF);
+// The checksum of a frame, in its own header so the check values can be
+// verified on the build machine (tools/crc_test).
+static inline uint16_t rctCrc16(const uint8_t *data, size_t len) {
+  return rctcrc::compute(data, len);
 }
 
 // Build and send a READ frame for an OID.
