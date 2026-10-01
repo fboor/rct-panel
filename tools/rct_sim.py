@@ -16,14 +16,22 @@ Differences from rctclient's stock simulator:
     device so the GUI looks realistic.
 
 Usage:  python3 tools/rct_sim.py [--host 0.0.0.0] [--port 8899]
+       [--quiet-after SECONDS]
 Then point the panel's RCT host at this machine (http://<panel-ip> WiFi
 config or NVS: host = <dev-ip>, port = 8899).
+
+Quiet mode (--quiet-after, or SIGUSR1 to toggle at any time) keeps the
+connection open and stops answering. That combination is the one the panel
+cannot get otherwise: a device that is silent but reachable makes it hold the
+values it has and say so, after 60 s. Killing the simulator instead drops the
+TCP link, and the panel then reports a lost connection - a different state.
 """
 
 import argparse
 import logging
 import math
 import select
+import signal
 import socket
 import threading
 import time
@@ -296,6 +304,26 @@ def _drift_thread():
             log.warning("drift failed: %s", exc)
 
 
+# Quiet: the socket stays open, nothing is answered. A plain global, because a
+# signal handler must not take a lock - Event.set() would not be safe here.
+_QUIET = False
+
+
+def _set_quiet(on, why):
+    global _QUIET  # pylint: disable=global-statement
+    _QUIET = on
+    log.info("quiet %s (%s)", "on" if on else "off", why)
+
+
+def _toggle_quiet(_signum, _frame):
+    _set_quiet(not _QUIET, "SIGUSR1")
+
+
+def _quiet_after(seconds):
+    time.sleep(seconds)
+    _set_quiet(True, f"--quiet-after {seconds:g} s")
+
+
 def handle_connection(conn, addr):
     log.info("client connected: %s", addr)
     frame = ReceiveFrame(ignore_crc_mismatch=True)
@@ -331,10 +359,15 @@ def handle_connection(conn, addr):
                           frame.complete(),
                           hex(frame.id) if frame.command.name != "_NONE" else None)
                 if frame.complete():
-                    try:
-                        respond(conn, frame)
-                    except Exception:  # pylint: disable=broad-except
-                        log.exception("respond failed")
+                    if _QUIET:
+                        # Read and discarded, no answer, socket untouched: the
+                        # panel keeps its link and stops getting new values.
+                        log.debug("quiet: request dropped, link stays open")
+                    else:
+                        try:
+                            respond(conn, frame)
+                        except Exception:  # pylint: disable=broad-except
+                            log.exception("respond failed")
                     frame = ReceiveFrame(ignore_crc_mismatch=True)
     except OSError as exc:
         log.debug("connection error: %s", exc)
@@ -391,6 +424,15 @@ def main():
         "meter, so --lastung 4 is what makes the grid draw exceed the "
         "relay's 500 W default threshold.",
     )
+    ap.add_argument(
+        "--quiet-after",
+        type=float,
+        default=None,
+        metavar="SECONDS",
+        help="stop answering after SECONDS while keeping every connection "
+        "open, so the panel holds its last values and reports them as old. "
+        "SIGUSR1 toggles the same thing while it runs.",
+    )
     args = ap.parse_args()
 
     global _LOAD_BASE
@@ -406,6 +448,11 @@ def main():
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(levelname)-7s %(message)s",
     )
+
+    signal.signal(signal.SIGUSR1, _toggle_quiet)
+    if args.quiet_after is not None:
+        threading.Thread(target=_quiet_after, args=(args.quiet_after,),
+                         daemon=True).start()
 
     threading.Thread(target=_drift_thread, daemon=True).start()
 
