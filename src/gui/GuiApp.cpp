@@ -55,7 +55,7 @@
 #include "../rct/RctTypes.h"
 #include "../storage/sdlog.h"
 #include "../web/WebServer.h"
-#include "fonts/lv_font_portal_icons_20.h"
+#include "fonts/lv_font_mdi_icons_28.h"
 // Montserrat with German umlauts (Latin-1 supplement), falling back to the
 // LVGL built-ins for the LV_SYMBOL_* glyphs. See OFL-Montserrat.txt.
 #include "fonts/lv_font_montserrat_14_uml.h"
@@ -99,12 +99,27 @@ static const lv_color_t FLOW_BORDER = lv_color_hex(0x6E6F72); // node ring
 static const lv_color_t FLOW_LINE = lv_color_hex(0xCBCBCD);  // idle connector
 static const lv_color_t FLOW_WHITE = lv_color_hex(0xFFFFFF); // node fill
 
-// RCT Portal icons (U+E039 "provided" = grid/Netz node, U+E044 "solar" = PV
-// node) from the portal's embedded icon font. Baked into
-// lv_font_portal_icons_20 (see src/gui/fonts/); the built-in Montserrat
-// symbol fonts do not cover PUA/Unicode beyond the LV_SYMBOL_* set.
-static const char kPortalGridIcon[] = "\uE039";
-static const char kPortalSolarIcon[] = "\uE044";
+// The two flow-diagram icons, from Material Design Icons (Community),
+// Apache-2.0, https://github.com/pictogrammers/material-design-icons - see
+// NOTICE. They replace the two glyphs lifted from the portal's own embedded
+// icon font, whose origin could not be established: U+E039 and U+E044 do not
+// match today's Google Material Icons at those code points, so nothing could be
+// attributed. MDI carries the same Apache-2.0 that ESP-IDF and the ported RCT
+// client already bring, so no new licence enters the tree.
+//
+// Two glyphs baked into lv_font_mdi_icons_28 (see src/gui/fonts/). The built-in
+// Montserrat has neither a pylon nor a solar panel, and its symbols stop at the
+// LV_SYMBOL_* glyphs.
+//
+// Written as UTF-8 bytes, not as \uXXXX: a universal character name in a
+// narrow string literal consumed only four hex digits here, so "\uF0D3E"
+// became U+F0D3 followed by a literal 'E' - the panel then drew a
+// placeholder box and the letter. LVGL declares its LV_SYMBOL_* glyphs the
+// same way for the same reason.
+static const char kFlowGridIcon[] =
+    "\xF3\xB0\xB4\xBE"; // transmission-tower U+F0D3E, Netz node
+static const char kFlowSolarIcon[] =
+    "\xF3\xB0\xA9\xB2"; // solar-power U+F0A72, PV node
 
 // ---------------------------------------------------------------------------
 // Page model
@@ -563,7 +578,7 @@ static void pageBuildOverview(AppPage *p) {
 
   // Node circles.
   makeNode(root, 240, 82, 92, LV_SYMBOL_HOME, &lv_font_montserrat_28_uml); // haus
-  makeNode(root, 60, 80, 60, kPortalSolarIcon, &lv_font_portal_icons_20); // pv
+  makeNode(root, 60, 80, 60, kFlowSolarIcon, &lv_font_mdi_icons_28); // pv
   // Battery node: battery icon on top, SOC % below (inside the node).
   lv_obj_t *bat = lv_obj_create(root);
   lv_obj_set_size(bat, 60, 60);
@@ -587,8 +602,8 @@ static void pageBuildOverview(AppPage *p) {
   lv_obj_align(batSoc, LV_ALIGN_CENTER, 0, 9);
   p->labels[OV_BAT_SOC] = batSoc;
 
-  // NETZ node: portal grid icon ("provided", U+E039).
-  makeNode(root, 420, 80, 60, kPortalGridIcon, &lv_font_portal_icons_20);
+  // NETZ node: the transmission tower.
+  makeNode(root, 420, 80, 60, kFlowGridIcon, &lv_font_mdi_icons_28);
 
   // Connector lines (haus <-> node), animated later via color/style.
   static const lv_point_precise_t ptsGrid[2] = {{240, 82}, {420, 80}};

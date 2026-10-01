@@ -36,12 +36,24 @@ license text is next to them: src/gui/fonts/OFL-Montserrat.txt. The generator
 command is in the header of each file; it adds the Latin-1 range (0xA0-0xFF) to
 the ASCII set of the upstream font.
 
-lv_font_portal_icons_20.c is generated the same way from `portal_icons.ttf`, a
-subset that holds only the symbols the flow diagram uses. The generator command
-is in the file's header. Where that symbol font came from is not recorded in
-this repository — if it was taken from Google's Material Design Icons, then
-Apache-2.0 applies to it. That should be settled before a binary is published
-rather than after.
+Icon font (src/gui/fonts/lv_font_mdi_icons_20.c)
+-----------------------------------------------
+The two glyphs of the energy-flow diagram are `transmission-tower` (U+F0D3E,
+grid node) and `solar-power` (U+F0A72, PV node) from **Material Design Icons
+(Community)**, Apache License 2.0:
+
+    https://github.com/pictogrammers/material-design-icons
+    Copyright (c) 2021 Pictogrammers
+
+Generated with lv_font_conv from the webfont of `@mdi/font` 7.4.47. Apache-2.0 is
+already in this distribution through ESP-IDF and the ported RCT client, so no
+new license enters the tree.
+
+These replace two glyphs that had been taken from the icon font embedded in the
+RCT Portal. Their code points, U+E039 and U+E044, do not match Google's
+Material Icons at those positions — they were checked against the current
+upstream font — so nothing about that font could be attributed and it has been
+removed.
 
 Build-time dependencies, linked into the firmware
 ------------------------------------------------
