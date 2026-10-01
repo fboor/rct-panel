@@ -66,12 +66,14 @@ satisfies that most simply: no prebuilt binary is part of the repository. The
 license texts are in the upstream repositories and in the PlatformIO package
 directories (.pio/libdeps, ~/.platformio/packages).
 
-Development-only dependency, not part of the firmware
-----------------------------------------------------
-tools/rct_sim.py and tools/rct_sim_test.py import the Python package `rctclient`
-(GPL-3.0, https://github.com/svalouch/rctclient) for the frame codec, the
-object-ID registry and the value tables. It runs on the build machine as a
-separate process and is not redistributed with the firmware.
+No GPL-licensed code
+--------------------
+The repository carries no copyleft dependency. The RCT simulator that used to
+live in tools/ imports the Python package `rctclient` (GPL-3.0,
+https://github.com/svalouch/rctclient) for the frame codec, the object-ID
+registry and the value tables, so it has moved out: it keeps its own directory
+next to this project, with its own README, and is not part of the distribution.
+That is also why the frame checksum got its own implementation — see below.
 
 Protocol reference
 ------------------

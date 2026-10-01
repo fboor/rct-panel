@@ -133,6 +133,7 @@ src/
 include/lv_conf.h       LVGL 9 configuration
 boards/                 Guition board definition (16 MB flash, PSRAM)
 partitions/             16 MB partition table (OTA-capable)
-tools/                  host tests, the RCT simulator, the md2pdf renderer
+tools/                  host tests and the md2pdf renderer (the RCT simulator
+                        lives outside the repository, see ../rct-panel-simulator)
 docs/                   developer documentation and the user manual
 ```

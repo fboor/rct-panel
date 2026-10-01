@@ -127,8 +127,8 @@ Zeitpunkt nichts mehr und lässt die Verbindung offen, `SIGUSR1` schaltet
 um:
 
 ```
-tools/rct_sim.py --port 8899 --quiet-after 60   # ab 60 s schweigt er
-kill -USR1 <pid>                               # einmal: um, zweimal: an
+python3 ../rct-panel-simulator/rct_sim.py --port 8899 --quiet-after 60   # ab 60 s schweigt er
+kill -USR1 <pid>                                                        # einmal: um, zweimal: an
 ```
 
 Das Panel muss dafür auf den Simulator zeigen. Dafür gibt es das Build-Flag
@@ -236,14 +236,14 @@ Polarität. Dafür der Testknopf.
 
 ## 8. Gegen den Simulator prüfen
 
-`tools/rct_sim.py` ist ein Wechselrichterersatz auf Port 8899. Für die beiden
+`rct_sim.py` ist ein Wechselrichterersatz auf Port 8899. Für die beiden
 Funktionen, die keinen Störungswort brauchen, ist er das Werkzeug, mit dem die
 Schwelle eingestellt wird:
 
 ```
-tools/rct_sim.py --port 8899                            # Standardlast ~870 W
-tools/rct_sim.py --port 8899 --lastung 4                # Haushalt ~2,8 kW
-tools/rct_sim.py --port 8899 --faults 0x00000040,0,0,0  # Störung bit 6
+python3 ../rct-panel-simulator/rct_sim.py --port 8899                            # Standardlast ~870 W
+python3 ../rct-panel-simulator/rct_sim.py --port 8899 --lastung 4                # Haushalt ~2,8 kW
+python3 ../rct-panel-simulator/rct_sim.py --port 8899 --faults 0x00000040,0,0,0  # Störung bit 6
 ```
 
 `--lastung` ist nötig, weil im Simulator nur ein Viertel der Last/PV-Differenz
@@ -251,11 +251,16 @@ tools/rct_sim.py --port 8899 --faults 0x00000040,0,0,0  # Störung bit 6
 entstehen höchstens rund 270 W Netzbezug, also nie die 500 W der
 Voreinstellung. Erst `--lastung 4` macht den Bezug groß genug.
 
-`tools/rct_sim_test.py` prüft den Simulator selbst, ohne Panel: dass er jede
-Kennung beantwortet, die `rctOids[]` in `RctClient.cpp` abfragt, dass die
-Bilanz `Last − PV + Batterie = Netz` in jeder Probe aufgeht, dass der
-Inselbetrieb wieder endet und dass Überschuss und Netzbezug die
-Standardschwelle übersteigen. Läuft mit in `tools/run_host_tests.sh`.
+Der Simulator liegt **nicht** in diesem Repository: er benutzt das Python-Paket
+`rctclient` (GPL-3.0), und eine Copyleft-Abhängigkeit im Repository würde die
+Frage aufwerfen, unter welcher Lizenz das Repository als Ganzes steht. Er hat
+sein eigenes Verzeichnis neben diesem Projekt
+(`../rct-panel-simulator/`, mit eigener README) und einen eigenen Prüflauf,
+`rct_sim_test.py`: dass er jede Kennung beantwortet, die `rctOids[]` in
+`RctClient.cpp` abfragt, dass die Bilanz `Last − PV + Batterie = Netz` in jeder
+Probe aufgeht, dass der Inselbetrieb wieder endet und dass Überschuss und
+Netzbezug die Standardschwelle übersteigen. `tools/run_host_tests.sh` führt ihn
+mit, sobald das Verzeichnis neben dem Projekt liegt.
 
 Der Test hat zwei echte Fehler gefunden: der Simulator beantwortete die sechs
 `energy.e_ext_*`-Zähler des Wechselrichters nicht (das Panel hätte dort eine

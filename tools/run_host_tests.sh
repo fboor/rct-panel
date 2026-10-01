@@ -22,9 +22,10 @@
 #   crc_test       the frame checksum: check values computed independently of
 #                  the implementation, plus the padding rule for odd lengths
 #                  that the three-byte extension frame depends on
-#   rct_sim_test   the RCT simulator: that it answers every id the firmware
-#                  polls, that its numbers add up, and that its relay modes
-#                  are reachable
+#
+# The RCT simulator test used to be here. It imports rctclient (GPL-3.0), so the
+# simulator lives outside this repository now - see its own README. It is run
+# when it is next to the project, and skipped with a note when it is not.
 #
 # What cannot be in here: everything that needs the card, the display, the
 # inverter or the Wi-Fi. The list of those is in docs/web-interface.md
@@ -47,13 +48,20 @@ for t in relay_test sd_queue_test numfmt_test i18n_test backlight_test badge_tes
 done
 
 # The simulator test is Python and drives the sim in-process on a loopback
-# port, so it needs no compiler and no build directory.
-printf '\n=== rct_sim_test ===\n'
-if python3 tools/rct_sim_test.py; then
-  :
-else
-  fail=1
-fi
+# port, so it needs no compiler and no build directory. It is not part of this
+# repository (GPL-3.0 dependency, see the header), so it only runs when someone
+# kept it next to the project.
+for simdir in ../rct-panel-simulator ../rct_sim "$PWD"; do
+  if [ -f "$simdir/rct_sim_test.py" ]; then
+    printf '\n=== rct_sim_test (%s) ===\n' "$simdir"
+    if python3 "$simdir/rct_sim_test.py"; then
+      :
+    else
+      fail=1
+    fi
+    break
+  fi
+done
 
 printf '\n'
 if [ "$fail" -eq 0 ]; then

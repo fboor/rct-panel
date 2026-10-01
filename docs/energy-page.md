@@ -1,7 +1,8 @@
 # Energy page ("Energie") — design (rct-panel)
 
 Status: **implemented and verified on the board** (2026-09-29) against
-`tools/rct_sim.py`. The five series, colors and layout below are as built.
+`rct_sim.py` (see ../rct-panel-simulator). The five series, colors and layout
+below are as built.
 
 Goal: the second page (after "Energiefluss") shows the accumulated energies in
 kWh as horizontal bars, like the RCT portal's measurement area
@@ -144,7 +145,7 @@ the same color read as noise, the bar is a strong enough signal on its own.
 
 ## 5. Simulator
 
-`tools/rct_sim.py` gains the 13 OIDs with realistic month/year/total values
+`rct_sim.py` gains the 13 OIDs with realistic month/year/total values
 (day values already simulated). `_drift()` increments the month counters by a
 tiny fraction of the day drift so the totals slowly move, matching the panel's
 10 s / 1 Hz refresh. The seeded numbers are internally consistent — per period
