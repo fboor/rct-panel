@@ -112,8 +112,9 @@ const char *const kLang[T_COUNT] = {
     "The last 24 hours",                                        // T_NOTE_LIVE
     "Loading the log &hellip;",                            // T_NOTE_LOADING
     "There is no file for this period on the card.",         // T_NOTE_NO_FILE
-    "This file has 16 columns: the sums are missing, so the days "
-    "before the update show 0.",                                // T_NOTE_OLD_SUMS
+    "Some rows have no sums (from before the update): days entirely before it "
+    "show 0, and a period across the change starts at the first row that "
+    "has them.",                                       // T_NOTE_OLD_SUMS
     "24 h",                                                     // T_RANGE_LIVE
     "Day",                                                      // T_RANGE_DAY
     "Week",                                                     // T_RANGE_WEEK

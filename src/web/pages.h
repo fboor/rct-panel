@@ -24,8 +24,9 @@ namespace web {
 
 // ---------------------------------------------------------------------------
 // Shared shell. %T is replaced by the page title, %L by the language attribute,
-// %R by a refresh tag, %S by the style block, %J by the chart script (empty on
-// the pages without a chart), %B by the body.
+// %R by a refresh tag, %S by the style block, %J by the chart logic, %K by the
+// chart script, %B by the body. %J and %K stay empty on the pages without a
+// chart.
 // ---------------------------------------------------------------------------
 static const char kShell[] PROGMEM = R"(<!DOCTYPE html>
 <html %L><head>
@@ -37,6 +38,7 @@ static const char kShell[] PROGMEM = R"(<!DOCTYPE html>
 </head><body>
 <div class="wrap">%B</div>
 <script>%J</script>
+<script>%K</script>
 </body></html>)";
 
 // One style block for all pages: a couple of rules that would bloat every
@@ -325,7 +327,7 @@ function rpSpan(rows,day){
   }
   return a<0?null:[a,b];
 }
-// The energy of the rows from a to b, in Wh.
+// The energy of the rows of one period, in Wh.
 //
 // A difference of the lifetime counters, not a sum of momentary values: that is
 // the size the device counts itself, and it stays right across a gap. The
@@ -336,25 +338,32 @@ function rpSpan(rows,day){
 // The feed-in counter arrives negative on the real device, so the magnitude of
 // the difference is what went in - the same one place where the panel drops the
 // sign.
-function rpEnergy(rows,a,b){
-  var s0=rows[a].s,s1=rows[b].s;
-  if(!s0&&!s1){
-    // Neither end has the sums: the period was recorded before the firmware
-    // wrote them. The panel's own reader fills those with 0 (csvrow::parse()),
-    // so the view stays continuous - and the page above the chart names the
-    // state, so the zero is not read as a measured value.
-    //
-    // What is not filled in: the two rates. A period with no counters has no
-    // share to report, and "100 % self-sufficiency" would be one invented.
+//
+// The difference is taken between the first and the last row that carries the
+// sums. Rows without them are the ones written before the firmware added them,
+// and a month that begins in that format still gets a figure instead of none;
+// what such a period misses at its front end is named on the page.
+//
+// Decided per row and not per file: a month file created before the update
+// carries the old header with the new rows behind it - on the development card
+// 231 rows with 16 values and 333 with 23 in the same file - and a note taken
+// from the header would claim missing sums for days that have them.
+function rpEnergy(rows){
+  var first=-1,last=-1,i,missing=0;
+  for(i=0;i<rows.length;i++){
+    if(!rows[i].s){missing=1;continue}
+    if(first<0){first=i}
+    last=i;
+  }
+  if(last-first<1){
+    // Fewer than two rows with sums: there is no difference to take. The sums
+    // are then 0, which is what the panel's own reader says (csvrow::parse()),
+    // and the two rates stay empty - a period without counters has no share, and
+    // "100 % self-sufficiency" would be an answer nobody asked for.
     return {values:{pv:0,own:0,feed:0,draw:0,load:0},autarky:null,
-            ownShare:null,sums:false};
+            ownShare:null,sums:false,missing:missing};
   }
-  if(!s0||!s1){
-    // The period reaches over the change: one end has the sums, the other has
-    // not, and the difference between a counter and a zero is that counter's
-    // whole life - not the energy of this period. So there is no number here.
-    return null;
-  }
+  var s0=rows[first].s,s1=rows[last].s;
   var ext=Math.max(0,s1[2]-s0[2]);
   var pv=Math.max(0,(s1[0]-s0[0])+(s1[1]-s0[1]))+ext;
   var load=Math.max(0,s1[3]-s0[3])+ext;
@@ -364,9 +373,9 @@ function rpEnergy(rows,a,b){
   return {values:{pv:pv,own:own,feed:feed,draw:grid,load:load},
           autarky:load>0?Math.max(0,1-grid/load)*100:100,
           ownShare:pv>0?Math.min(100,own/pv*100):0,
-          sums:true,
-          rows:b-a+1};
+          sums:true,missing:missing};
 }
+
 // The gaps of a period, counted the way the panel counts them
 // (histPush in src/gui/GuiApp.cpp): a sample that is more than one and a half
 // intervals late means the slots in between were never written, and the time
@@ -425,16 +434,6 @@ function rpBands(rows,days){
   }
   return out;
 }
-// A file whose header line is shorter than the current one was written before
-// the sums were added to the format. Its rows carry no sums at all.
-function rpLegacy(txt){
-  var lines=txt.split('\n'),i;
-  for(i=0;i<lines.length;i++){
-    if(lines[i].indexOf('ts,')!==0){continue}
-    return lines[i].split(',').length<23;
-  }
-  return false;
-}
 // The chart of one day: one point per sample, chronological. A sample that is
 // not there is a point that is not there, and the line breaks over it.
 function rpDayPoints(rows,day){
@@ -488,7 +487,11 @@ function rpFail(el){
 // width the scale is about 1:1 and the axis labels stay as big as the rest of
 // the text; on a wide screen the whole thing scales up, which is what a vector
 // drawing is for.
-var rpVX0=34,rpVY0=8,rpVW=320,rpVH=182;   // plot area inside the viewBox
+// The plot area inside the viewBox. The gutters are for the axis labels, which
+// are written the way they would be written in running text: the number, then
+// the unit behind it ("10,0 kW"), and on the right the scale of the state of
+// charge from 0 % to 100 %.
+var rpVX0=48,rpVY0=10,rpVW=272,rpVH=176;
 function rpChart(el,j){
   var tz=rpTz(j.tz);
   var labs=rpSplit(el.getAttribute('data-lab'));
@@ -538,15 +541,22 @@ function rpChart(el,j){
   // The SOC has its own axis, 0..100 over the full height.
   var ySoc=function(v){return rpVY0+(100-v)/100*rpVH};
   var h='<svg viewBox="0 0 360 208">';
-  // The three scale markers, inside the plot on the left, like on the panel.
+  // The unit of the state of charge comes from the answer, so it is the one the
+  // panel sent.
+  var socUnit=(j.unit&&j.unit[5])?j.unit[5]:'%';
+  // The three scale markers, inside the plot on the left, like on the panel -
+  // with the unit behind the number, the way it would be written in text.
   var marks=[mhi,0,mlo];
   for(i=0;i<marks.length;i++){
     var ym=yOf(marks[i]);
     h+='<line x1="'+rpVX0+'" y1="'+ym.toFixed(1)+'" x2="'+(rpVX0+rpVW)+'" y2="'+ym.toFixed(1)+
        '" stroke="#e3e7eb" stroke-width="1"/>';
-    h+='<text x="'+(rpVX0-4)+'" y="'+(ym+3).toFixed(1)+'" text-anchor="end" font-size="9" fill="#5a6672">'+
-       rpEsc(rpNum(marks[i]/1000,1,sep))+'</text>';
+    h+='<text x="'+(rpVX0-5)+'" y="'+(ym+3).toFixed(1)+'" text-anchor="end" font-size="11" fill="#5a6672">'+
+       rpEsc(rpNum(marks[i]/1000,1,sep)+' kW')+'</text>';
   }
+  // The scale of the state of charge at the right edge, where its series runs.
+  h+='<text x="'+(rpVX0+rpVW+6)+'" y="'+(rpVY0+7)+'" font-size="11" fill="#5a6672">100 '+rpEsc(socUnit)+'</text>';
+  h+='<text x="'+(rpVX0+rpVW+6)+'" y="'+(rpVY0+rpVH)+'" font-size="11" fill="#5a6672">0 '+rpEsc(socUnit)+'</text>';
   if(band){
     // The days along the bottom, thinned out so the labels cannot collide. The
     // short pattern drops the year: a row of days either all share one or none
@@ -555,7 +565,7 @@ function rpChart(el,j){
     for(i=0;i<n;i++){
       if(i%every!==0){continue}
       var day=rpKeyOf(pts[i].t+12*3600);
-      h+='<text x="'+xOf(pts[i].t+12*3600).toFixed(1)+'" y="202" text-anchor="middle" font-size="9" fill="#5a6672">'+
+      h+='<text x="'+xOf(pts[i].t+12*3600).toFixed(1)+'" y="202" text-anchor="middle" font-size="11" fill="#5a6672">'+
          rpEsc(rpFmtDate(day,sf||fmt))+'</text>';
     }
   }else{
@@ -564,7 +574,7 @@ function rpChart(el,j){
     // hour or two off.
     var stepT=6*3600;
     for(var t=Math.ceil(t0/stepT)*stepT;t<=t1;t+=stepT){
-      h+='<text x="'+xOf(t).toFixed(1)+'" y="202" text-anchor="middle" font-size="9" fill="#5a6672">'+
+      h+='<text x="'+xOf(t).toFixed(1)+'" y="202" text-anchor="middle" font-size="11" fill="#5a6672">'+
          rpEsc(rpHm(tz,t))+'</text>';
     }
   }
@@ -666,7 +676,7 @@ function rpFile(key,names,tz,cb){
     if(!r.ok){throw new Error(r.status)}
     return r.text();
   }).then(function(txt){
-    var f={key:key,rows:rpRows(txt,names,tz),short:rpLegacy(txt)};
+    var f={key:key,rows:rpRows(txt,names,tz)};
     rpFiles[key]=f;
     cb(f);
   }).catch(function(){
@@ -763,7 +773,12 @@ function rpVerlauf(){
       rpFail(el);
     });
   }
-  function rday(){return rpDayKey(rpTz(rule),Math.floor(Date.now()/1000))}
+  function rday(){
+    // Without the rule there is no day to name: the first answer brings it, and
+    // until then the switch does nothing. A click in that moment used to throw.
+    if(!rule){return ''}
+    return rpDayKey(rpTz(rule),Math.floor(Date.now()/1000));
+  }
   function setButtons(){
     if(!seg){return}
     var bs=seg.getElementsByTagName('button'),i;
@@ -787,7 +802,7 @@ function rpVerlauf(){
   // other and then stay in memory, so walking through the history costs no
   // further access to the panel.
   function fromFile(){
-    var days=rpDays(st.range,st.day),months=[],byMonth={},all=[],i,a,legacy=false,found=0;
+    var days=rpDays(st.range,st.day),months=[],byMonth={},all=[],i,a,found=0;
     for(i=0;i<days.length;i++){
       var m=days[i].substring(0,7);
       if(months.indexOf(m)<0){months.push(m)}
@@ -798,7 +813,6 @@ function rpVerlauf(){
         rpFile('RCT-'+months[k].replace('-','')+'.csv',names,rpTz(rule),function(f){
           byMonth[months[k]]=f?f.rows:null;
           if(f){found=1}
-          if(f&&f.short){legacy=true}
           step(k+1);
         });
         return;
@@ -812,11 +826,11 @@ function rpVerlauf(){
         if(sp){for(a=sp[0];a<=sp[1];a++){all.push(rows[a])}}
       }
       all.sort(function(x,y){return x.t-y.t});
-      draw(all,days,legacy,found);
+      draw(all,days,found);
     };
     step(0);
   }
-  function draw(rows,days,legacy,found){
+  function draw(rows,days,found){
     var band=st.range!=='day',pts=[],i;
     // Two different "nothing here": the card has no file for this period at
     // all, or the file has no rows in it. One sentence each, because "no
@@ -838,17 +852,17 @@ function rpVerlauf(){
     if(nav){nav.style.display='flex'}
     var nx=document.getElementById('next');
     if(nx){nx.disabled=days[days.length-1]>=rday()}
-    // The energy of the period: the difference of the counters between its
-    // first and its last row. Both ends need the sums - a row without them has
-    // nothing to subtract, which is what the note below the chart says.
-    var e=(rows.length>1)?rpEnergy(rows,0,rows.length-1):null;
+    // The energy of the period, and with it the answer to the one question the
+    // period cannot answer by itself: are there rows in it without the sums?
+    var e=rows.length?rpEnergy(rows):null;
     if(per){
       if(e){rpEnergyBars(per,e)}
       else{per.innerHTML='<div class="note">'+rpEsc(empty)+'</div>'}
     }
     var nt=document.getElementById('hinweis');
     if(nt){
-      nt.innerHTML=legacy?'<div class="note">'+rpEsc(nt.getAttribute('data-old'))+'</div>':'';
+      nt.innerHTML=(e&&e.missing)
+        ?'<div class="note">'+rpEsc(nt.getAttribute('data-old'))+'</div>':'';
     }
     var g=rpGaps(rows);
     rpShowGaps(el,g.count,g.minutes);
@@ -871,12 +885,14 @@ function rpVerlauf(){
       // reader has not stepped back, or every step would be undone by the next
       // redraw.
       var t=rday();
+      if(t===''){return}
       if(st.day===null||st.follow){st.day=t}
       if(st.range==='live'){liveView();return}
       fromFile();
     });
   }
   function step(n){
+    if(st.day===''||!st.day){return}
     if(st.range==='month'){
       st.day=rpShiftMonth(st.day,n);
     }else{
@@ -889,8 +905,10 @@ function rpVerlauf(){
     seg.addEventListener('click',function(ev){
       var b=ev.target;
       if(!b||b.tagName!=='BUTTON'){return}
+      var t=rday();
+      if(t===''){return}
       st.range=b.getAttribute('data-r');
-      st.day=rday();
+      st.day=t;
       st.follow=true;
       show();
     });

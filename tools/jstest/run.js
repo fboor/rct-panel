@@ -31,7 +31,7 @@ function blockOf(name) {
 
 const sandbox = {console: console};
 vm.createContext(sandbox);
-vm.runInContext(blockOf('kLogic') + '\nthis.__api={rpTz:rpTz,rpOffsetAt:rpOffsetAt,rpDayKey:rpDayKey,rpHm:rpHm,rpDateHm:rpDateHm,rpRows:rpRows,rpSpan:rpSpan,rpEnergy:rpEnergy,rpDays:rpDays,rpBands:rpBands,rpShift:rpShift,rpShiftMonth:rpShiftMonth,rpDow:rpDow,rpDaysInMonth:rpDaysInMonth,rpFmtDate:rpFmtDate,rpKeyOf:rpKeyOf,rpLegacy:rpLegacy,rpGaps:rpGaps,rpDayPoints:rpDayPoints};',
+vm.runInContext(blockOf('kLogic') + '\nthis.__api={rpTz:rpTz,rpOffsetAt:rpOffsetAt,rpDayKey:rpDayKey,rpHm:rpHm,rpDateHm:rpDateHm,rpRows:rpRows,rpSpan:rpSpan,rpEnergy:rpEnergy,rpDays:rpDays,rpBands:rpBands,rpShift:rpShift,rpShiftMonth:rpShiftMonth,rpDow:rpDow,rpDaysInMonth:rpDaysInMonth,rpFmtDate:rpFmtDate,rpKeyOf:rpKeyOf,rpGaps:rpGaps,rpDayPoints:rpDayPoints};',
                      sandbox);
 const api = sandbox.__api;
 
@@ -193,7 +193,7 @@ check(rows[2].v[2] === 4100, 'production of the last row', rows[2].v[2], 4100);
 const span = api.rpSpan(rows, '2026-10-02');
 check(span !== null && span[0] === 0 && span[1] === 2, 'the span of the day',
       String(span), '0,2');
-const en = api.rpEnergy(rows, span[0], span[1]);
+const en = api.rpEnergy(rows);
 check(en.values.pv === 23680, 'generated in Wh', en.values.pv, 23680);
 check(en.values.feed === 15890, 'fed in in Wh (the counter is negative)',
       en.values.feed, 15890);
@@ -215,22 +215,17 @@ const csvExt = NAMES.join(',') + '\n' +
                row(T0, [0, 0, 0, 0, 0, 0], {s0: 300}) + '\n' +
                row(T1, [0, 0, 1000, 0, 0, 0], {s0: 300}) + '\n';
 const rowsExt = api.rpRows(csvExt, NAMES, tz);
-const enExt = api.rpEnergy(rowsExt, 0, 1);
+const enExt = api.rpEnergy(rowsExt);
 check(enExt.values.pv === 1000, 'external generator is generated energy',
       enExt.values.pv, 1000);
 check(enExt.values.load === 1000, 'external generator is consumed energy',
       enExt.values.load, 1000);
 
 // --- a file from before the sums were added ---------------------------------
-// Sixteen columns, one row before the format change and one after: the panel's
-// own reader fills the missing sums with 0 (csvrow::parse()), and the browser
-// has to notice that the file is in the old format.
 const csvOld = NAMES.slice(0, 16).join(',') + '\n' +
                row(T0, null, {l1: 400, l2: 500, g1: 50, bat: 100, soc: 50}) + '\n' +
                row(T1, null, {pv_a: 4100, l1: 350, l2: 380, g1: 120, bat: 120,
                               soc: 51}) + '\n';
-check(api.rpLegacy(csvOld) === true, 'a 16-column file is recognised', 'true', 'true');
-check(api.rpLegacy(csv) === false, 'a 23-column file is not', 'false', 'false');
 const rowsOld = api.rpRows(csvOld, NAMES, tz);
 check(rowsOld.length === 2, 'both old rows are still read', rowsOld.length, 2);
 check(rowsOld[0].s === null, 'an old row has no sums', String(rowsOld[0].s), 'null');
@@ -240,7 +235,7 @@ check(rowsOld[1].v[2] === 4100, 'the powers of an old row are there',
 // A period that is entirely in the old format: the sums are filled with 0, the
 // way the panel's own reader fills them, so the view stays continuous - and the
 // two rates are left out rather than invented.
-const enOld = api.rpEnergy(rowsOld, 0, 1);
+const enOld = api.rpEnergy(rowsOld);
 check(enOld !== null, 'an old period still has an answer', String(enOld), 'object');
 check(enOld.values.pv === 0, 'no generated energy without a counter',
       enOld.values.pv, 0);
@@ -253,16 +248,57 @@ check(enOld.autarky === null, 'no self-sufficiency without a counter',
 check(enOld.ownShare === null, 'no own share without a counter',
       String(enOld.ownShare), 'null');
 check(enOld.sums === false, 'and it says so', String(enOld.sums), 'false');
+check(enOld.missing === 1, 'and that rows are missing the sums',
+      String(enOld.missing), '1');
 
-// A period that reaches over the change: one end has the sums, the other has
-// not. The difference between a counter and a zero would be the counter's whole
-// life, so there is no number at all.
-const csvMix = NAMES.join(',') + '\n' +
-               row(T0, null) + '\n' +
-               row(T1, END, {pv_a: 4100}) + '\n';
-const rowsMix = api.rpRows(csvMix, NAMES, tz);
-check(api.rpEnergy(rowsMix, 0, 1) === null, 'a period across the change',
-      String(api.rpEnergy(rowsMix, 0, 1)), 'null');
+// A month file created before the update: the old header, and behind it the new
+// rows. That is what the development card has (231 rows with 16 values, 333 with
+// 23 in October 2026), and it is the reason the decision is made per row and not
+// per file.
+const csvGemischt = NAMES.slice(0, 16).join(',') + '\n' +
+                    row(T0, null, {l1: 400, g1: 50, bat: 100, soc: 50}) + '\n' +
+                    row(T0 + 300, null, {l1: 420, g1: 30, bat: 101, soc: 51}) + '\n' +
+                    row(T0 + 600, [20000, 20000, 5000, 32000, -9000, 8900],
+                        {pv_a: 3200, l1: 300, g1: 300, bat: 102, soc: 52}) + '\n' +
+                    row(T1, END, {pv_a: 4100, l1: 350, g1: 120, bat: 120,
+                                  soc: 52}) + '\n';
+const rowsGemischt = api.rpRows(csvGemischt, NAMES, tz);
+check(rowsGemischt.length === 4, 'all four rows are read', rowsGemischt.length, 4);
+check(rowsGemischt[0].s === null && rowsGemischt[1].s === null,
+      'the two old rows have no sums',
+      String(rowsGemischt[0].s) + '/' + String(rowsGemischt[1].s), 'null/null');
+check(rowsGemischt[2].s !== null, 'the new row has sums',
+      String(rowsGemischt[2].s), 'numbers');
+const enGemischt = api.rpEnergy(rowsGemischt);
+check(enGemischt.sums === true, 'a mixed period has sums to subtract',
+      String(enGemischt.sums), 'true');
+check(enGemischt.missing === 1, 'and says that rows are missing them',
+      String(enGemischt.missing), '1');
+// The difference runs from the first row that has sums to the last, not from
+// the first row of the period: with all rows counted the result would be the
+// counter's whole life.
+check(enGemischt.values.pv === 13680, 'the generated energy is the difference',
+      enGemischt.values.pv, 13680);
+// Smaller than the figures of a period without old rows, because the start is
+// the first row that has sums - the two old rows are not counted as zero, they
+// are not counted at all.
+check(enGemischt.values.load === 1890, 'and so is the consumption',
+      enGemischt.values.load, 1890);
+check(enGemischt.values.draw === 910, 'and the grid draw',
+      enGemischt.values.draw, 910);
+
+// One row with sums is still no difference - it is the first day after the
+// update, and a counter needs two readings before it says anything.
+const csvEin = NAMES.slice(0, 16).join(',') + '\n' +
+               row(T0, null, {l1: 400, g1: 50, bat: 100, soc: 50}) + '\n' +
+               row(T0 + 300, [20000, 20000, 5000, 32000, -9000, 8900],
+                   {pv_a: 3200, l1: 300, g1: 300, bat: 101, soc: 51}) + '\n';
+const enEin = api.rpEnergy(api.rpRows(csvEin, NAMES, tz));
+check(enEin.sums === false, 'a single counter reading gives no difference',
+      String(enEin.sums), 'false');
+check(enEin.values.pv === 0, 'and no energy', enEin.values.pv, 0);
+check(enEin.missing === 1, 'while it still names the old row',
+      String(enEin.missing), '1');
 
 // --- the days a period covers ----------------------------------------------
 check(api.rpDays('day', '2026-10-07').join(',') === '2026-10-07', 'one day',

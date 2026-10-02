@@ -115,8 +115,9 @@ const char *const kLang[T_COUNT] = {
     "Die letzten 24 Stunden",                        // T_NOTE_LIVE
     "Lade die Aufzeichnung …",                       // T_NOTE_LOADING
     "F&uuml;r diesen Zeitraum liegt keine Datei auf der Karte.", // T_NOTE_NO_FILE
-    "Diese Datei hat 16 Spalten: Die Summen fehlen, "
-    "die Tage vor dem Update zeigen 0.",              // T_NOTE_OLD_SUMS
+    "Teile der Zeilen haben keine Summen (von vor dem Update): Tage ganz "
+    "davor zeigen 0, ein Zeitraum über den Wechsel beginnt mit der ersten "
+    "Zeile, die Summen hat.",                           // T_NOTE_OLD_SUMS
     "24 h",                                          // T_RANGE_LIVE
     "Tag",                                           // T_RANGE_DAY
     "Woche",                                         // T_RANGE_WEEK

@@ -199,27 +199,38 @@ keinen einzigen weiteren Zugriff aufs Panel.
 ### Dateien im alten Format
 
 Monatsdateien, die vor dem Wechsel auf 23 Spalten angelegt wurden, tragen 16
-Namen über den Zeilen. Der Browser liest beides und füllt die fehlenden Summen
-mit **0** - genau wie der Panel-Leser es macht (`csvrow::parse()`: ein Zähler,
-der nicht geloggt wurde, liest sich als 0, und nur die eine Stelle, die das
-weiß, darf das sagen). Damit bleibt die Ansicht durchgehend befüllt und der
-Browser rechnet ohne Sonderfall.
+Namen über den Zeilen. Hinter der Kopfzeile können aber Zeilen mit 23 Werten
+stehen - **das ist der Normalfall und nicht der Ausnahmefall**: auf der
+Entwicklerkarte hat `RCT-202610.csv` 231 Zeilen mit 16 und 333 Zeilen mit 23
+Werten. Die Entscheidung fällt deshalb **je Zeile**, nicht je Datei; eine Meldung
+aus der Kopfzeile würde Tagen ohne Summen nennen, die welche haben.
 
-Damit die Null nicht als Messwert gelesen wird, steht ein Satz über dem Diagramm,
-sobald die geladene Datei im alten Format ist:
+Der Browser füllt die fehlenden Summen mit **0** - genau wie der Panel-Leser es
+macht (`csvrow::parse()`: ein Zähler, der nicht geloggt wurde, liest sich als 0,
+und nur die eine Stelle, die das weiß, darf das sagen). Damit bleibt die Ansicht
+durchgehend befüllt und der Browser rechnet ohne Sonderfall. Damit die Null nicht
+als Messwert gelesen wird, steht ein Satz über dem Diagramm, sobald **im
+gewählten Zeitraum** eine Zeile ohne Summen liegt:
 
-> Diese Datei hat 16 Spalten: Die Summen fehlen, die Tage vor dem Update zeigen 0.
+> Teile der Zeilen haben keine Summen (von vor dem Update): Tage ganz davor
+> zeigen 0, ein Zeitraum über den Wechsel beginnt mit der ersten Zeile, die
+> Summen hat.
 
-Zwei Dinge werden dabei **nicht** erfunden:
+Drei Fälle, und keiner von ihnen erfindet eine Zahl:
 
-* die beiden Prozente stehen als **–**, nicht als Zahl. Ein Zeitraum ohne Zähler
+* **Der Zeitraum hat überall Summen.** Die Differenz zwischen seiner ersten und
+  seiner letzten Zeile - dieselbe Größe wie im Kapitel über die Energie-Seite.
+* **Der Zeitraum hat keine.** Dann gibt es nichts zu subtrahieren: die Balken
+  zeigen 0, und die beiden Prozente stehen als **–**. Ein Zeitraum ohne Zähler
   hat keine Quote, und „100 % Eigenverbrauch" wäre eine Antwort auf eine Frage,
-  die niemand gestellt hat;
-* ein Zeitraum, der **über** den Wechsel reicht, bekommt überhaupt keine Zahl.
-  An einem Ende stehen Summen, am anderen nicht, und die Differenz zwischen einem
-  Zähler und einer Null ist das ganze Leben dieses Zählers, nicht die Energie
-  dieses Zeitraums. Auf dem Entwicklergerät mit einer Karte aus dem September 2026
-  betrifft das die Woche um den 1.10.
+  die niemand gestellt hat. Das trifft auch den ersten Tag nach dem Update,
+  wenn er nur eine einzige Zeile mit Summen hat: ein Zähler braucht zwei
+  Ablesungen, bevor er etwas sagt.
+* **Der Zeitraum hat beide.** Dann läuft die Differenz von der ersten Zeile
+  **mit** Summen bis zur letzten mit Summen, nicht von der ersten Zeile des
+  Zeitraums - sonst wäre sie die Differenz zwischen einem Zähler und einer Null,
+  also dessen ganzes Leben statt der Energie dieses Zeitraums. Was am Anfang des
+  Zeitraums fehlt, steht in dem Satz über dem Diagramm.
 
 Für eine Anlage, die später auf die Firmware kommt, gibt es den Fall nicht.
 
@@ -248,6 +259,13 @@ gezählt - dieselbe Zahl, die das Panel unter seinem Diagramm zeigt.
   Seite anders heißen als in der Sprachtabelle. Dasselbe gilt für das
   Datumsformat (`{D}.{M}.{Y}` oder `{Y}-{M}-{D}`), die Trennfarbe und die
   sechs Reihenfarben.
+* **Einheiten an den Achsen, weil hier Platz ist.** Jede Skalenmarke links
+  trägt die Einheit hinter der Zahl (`10,0 kW`), und rechts am Rand steht die
+  Skalierung des Ladezustands von `0 %` unten bis `100 %` oben - geschrieben,
+  wie man es auch im Text schreiben würde. Auf dem 480-Pixel-Display fehlt dafür
+  der Platz; die Marken stehen dort ohne Einheit, die Legende nennt die Reihen.
+  Die Einheit des Ladezustands kommt aus der Antwort des Panels, ist also die,
+  die er geschickt hat.
 * **Die Oberfläche steht während eines Dateizugs.** Bei der gemessenen Rate von
   ~470 kB/s sind die ~1,2 MB einer Monatsdatei rund 2,6 s Lesezeit, in denen die
   Bedienung des Panels wartet - dieselbe Arbeit, an der die Oberfläche beim

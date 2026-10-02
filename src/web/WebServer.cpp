@@ -282,9 +282,13 @@ void addBarAttrs(String &b) {
 // handleShots): a capture is written in the background, so the list has to be
 // asked again to show the new file.
 //
-// withScript sends the chart script with the page. Only the pages that have a
-// chart pay for it: it is about 2 kB, and a page without a chart would only run
-// it to find nothing to draw.
+// withScript sends the chart logic and the chart script with the page. Only the
+// pages that have a chart pay for them: together about 30 kB, and a page without
+// a chart would only run them to find nothing to draw.
+//
+// They are two placeholders and not one concatenation on purpose: each is a
+// flash string that becomes a String only for the moment of the replace, where
+// a joined string would be a second copy of both.
 void sendNavPage(const char *title, const char *current, const String &body,
                  const char *refreshTag = nullptr, bool withScript = false) {
   char t[48];
@@ -300,13 +304,20 @@ void sendNavPage(const char *title, const char *current, const String &body,
   frame += F("</main>");
   String page;
   page.reserve(strlen_P(web::kShell) + strlen_P(web::kStyle) + frame.length() +
-               strlen(t) + (withScript ? strlen_P(web::kScript) : 0) + 64);
+               strlen(t) +
+               (withScript ? strlen_P(web::kLogic) + strlen_P(web::kScript) : 0) +
+               64);
   page = FPSTR(web::kShell);
   page.replace("%T", String(t));
   page.replace("%L", tr(T_HTML_LANG));
   page.replace("%R", refreshTag != nullptr ? String(refreshTag) : String());
   page.replace("%S", FPSTR(web::kStyle));
-  page.replace("%J", withScript ? String(FPSTR(web::kScript)) : String());
+  // %J and %K are the logic and the drawing of the charts. Both have to go out
+  // together: the drawing calls the logic, and a page with only one of them
+  // fails on the first call with "rpDayKey is not defined" - which is exactly
+  // what happened before this had two placeholders.
+  page.replace("%J", withScript ? String(FPSTR(web::kLogic)) : String());
+  page.replace("%K", withScript ? String(FPSTR(web::kScript)) : String());
   // %B goes in last: the body carries values with percent signs and units, and
   // replacing the shell's tokens after that would read those as tokens.
   page.replace("%B", frame);

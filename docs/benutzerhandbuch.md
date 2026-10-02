@@ -487,19 +487,31 @@ nichts — es hat die Zahlen bereits auf die Karte geschrieben.
 
 Fehlt eine Probe, bricht die Linie dort, wo nichts gemessen wurde, statt über
 die Lücke hinwegzugehen. Unter dem Diagramm steht derselbe Hinweis wie am
-Panel, etwa „9 Lücken, 110 min ohne Messwerte“ — damit eine Aufzeichnungspause
+Panel, etwa „9 Lücken, 110 min ohne Messwerte" — damit eine Aufzeichnungspause
 nicht wie ein Einbruch aussieht.
 
-> **Hinweis zu Aufzeichnungen von vor dem Firmware-Update:** Enthält eine
-> Monatsdatei nur 16 statt 23 Spalten, fehlen ihr die Summenzähler. Der Browser
-> füllt diese dann mit 0, so wie es das Panel selbst tut, und schreibt einen
-> Satz über das Diagramm. Die Tage vor dem Update zeigen in den Balken deshalb
-> 0 kWh, und die beiden Quoten bleiben leer. Betrifft nur Geräte, deren Karte
-> schon vor dem Update beschrieben wurde.
+Die Achsen tragen ihre Einheit so, wie man sie auch im Text schreiben würde:
+links neben jeder Marke die Leistung mit **kW** dahinter, rechts am Rand die
+Skalierung des Ladezustands von **0 %** unten bis **100 %** oben.
 
 <figure class="web-shot">
-  <img src="img/web-uebersicht.png" alt="Weboberfläche des Panels: vier Wertekarten für Netz, PV, Batterie und Verbrauch, darunter eine Tabelle mit Wechselrichter, Firmware, Speicher, SD-Karte, Takt und der Adresse">
-  <figcaption>Bild 4: Die Übersichtseite — oben die aktuellen Werte, unten die Geräteangaben und die Adresse, unter der das Panel erreichbar ist</figcaption>
+  <img src="img/web-verlauf.png" alt="Verlaufsseite des Panels: oben der Bereichswähler 24 Stunden, Tag, Woche, Monat, darunter das Datum mit den Pfeilen zum Blättern, dann ein Liniendiagramm eines ganzen Tages mit sechs Linien und die Achsenbeschriftungen kW links und Prozent rechts, darunter die Farblegende und die Angabe des Zeitpunkts der jüngsten Messung">
+  <figcaption>Bild 5: Der Verlauf für einen einzelnen Tag (hier der 2. Oktober 2026) — die sechs Linien wie auf dem Panel, mit den Einheiten an den Achsen und der Legende darunter</figcaption>
+</figure>
+
+> **Hinweis zu Aufzeichnungen von vor dem Firmware-Update:** Enthält eine
+> Monatsdatei nur 16 statt 23 Spalten, fehlen einzelnen Zeilen die Summenzähler —
+> hinter der Kopfzeile stehen aber durchaus Zeilen mit allen 23 Werten, das ist
+> der Normalfall. Der Browser füllt die fehlenden Summen dann mit 0, so wie es
+> das Panel selbst tut, und schreibt einen Satz über das Diagramm. Tage ganz vor
+> dem Update zeigen in den Balken deshalb 0 kWh, und die beiden Quoten bleiben
+> leer. Ein Zeitraum, der über den Wechsel reicht, fängt bei der ersten Zeile
+> an, die Summen hat — was am Anfang fehlt, steht in dem Satz. Betrifft nur
+> Geräte, deren Karte schon vor dem Update beschrieben wurde.
+
+<figure class="web-shot">
+  <img src="img/web-uebersicht.png" alt="Weboberfläche des Panels: oben vier Wertekarten für Netz, PV, Batterie und Verbrauch, darunter der Zeitraumwechsel Tag, Monat, Jahr, Gesamt mit fünf Energiebalken und den beiden Quoten Autarkie und Eigenverbrauchsquote">
+  <figcaption>Bild 4: Die Übersichtseite — oben die aktuellen Werte, darunter die Energiebalken für den gewählten Zeitraum (hier Monat) mit Autarkie und Eigenverbrauchsquote, weiter unten die Geräteangaben und die Adresse, unter der das Panel erreichbar ist</figcaption>
 </figure>
 
 ### Daten abrufen
