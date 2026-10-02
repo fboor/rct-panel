@@ -128,6 +128,9 @@ enum LangId : int {
   T_NOTE_SHOT_RUN,
   T_NOTE_SHOT_IDLE,
 
+  // --- web: the charts -----------------------------------------------------
+  T_ERR_LOAD_FAILED,   // a JSON answer did not arrive
+
   // --- web: /update --------------------------------------------------------
   T_H_FIRMWARE,
   T_BTN_FW_WRITE,

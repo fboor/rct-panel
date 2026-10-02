@@ -250,8 +250,12 @@ void addNav(String &page, const char *current) {
 // browser load the page again on its own. Only the picture list uses it (see
 // handleShots): a capture is written in the background, so the list has to be
 // asked again to show the new file.
+//
+// withScript sends the chart script with the page. Only the pages that have a
+// chart pay for it: it is about 2 kB, and a page without a chart would only run
+// it to find nothing to draw.
 void sendNavPage(const char *title, const char *current, const String &body,
-                 const char *refreshTag = nullptr) {
+                 const char *refreshTag = nullptr, bool withScript = false) {
   char t[48];
   escape(title, t, sizeof(t));
   String frame;
@@ -265,12 +269,13 @@ void sendNavPage(const char *title, const char *current, const String &body,
   frame += F("</main>");
   String page;
   page.reserve(strlen_P(web::kShell) + strlen_P(web::kStyle) + frame.length() +
-               strlen(t) + 64);
+               strlen(t) + (withScript ? strlen_P(web::kScript) : 0) + 64);
   page = FPSTR(web::kShell);
   page.replace("%T", String(t));
   page.replace("%L", tr(T_HTML_LANG));
   page.replace("%R", refreshTag != nullptr ? String(refreshTag) : String());
   page.replace("%S", FPSTR(web::kStyle));
+  page.replace("%J", withScript ? String(FPSTR(web::kScript)) : String());
   // %B goes in last: the body carries values with percent signs and units, and
   // replacing the shell's tokens after that would read those as tokens.
   page.replace("%B", frame);
@@ -285,7 +290,7 @@ void handleRoot() {
   const RctSnapshot &s = rctState;
   char v[40];
   String b;
-  b.reserve(3800);
+  b.reserve(4800);
 
   b += F("<div class=\"big\">");
   auto card = [&b, &v](LangId label, const char *value) {
@@ -309,6 +314,62 @@ void handleRoot() {
   fmtNumLang(v, sizeof(v), "%.0f W", (double)loadSum(s));
   card(T_CARD_LOAD, v);
   b += F("</div>");
+
+  // The energy bars of the selected period. The page ships with the cards and
+  // the tables already filled; this one part asks the panel afterwards
+  // (/api/energie.json) and the browser draws it - five bars plus the two
+  // percentages, in the wording and the colours of the panel's own energy page.
+  //
+  // It is fetched once, not polled: the page below holds the form for the
+  // output threshold, and a value that reloads itself would wipe what someone
+  // is typing into it. The figures are counters, so a page that was loaded ten
+  // minutes ago is ten minutes old at worst - and the reload is one tap.
+  b += F("<h2>");
+  b += tr(T_D_HEAD_ENERGY);
+  b += F("</h2>");
+  // The four periods, same words as the panel (kPeriodId there). The value of
+  // data-p is what the endpoint takes; the word is only for the reader.
+  {
+    static const char *kZeitraum[4] = {"tag", "monat", "jahr", "gesamt"};
+    static const LangId kZeitId[4] = {T_D_PER_DAY, T_D_PER_MONTH,
+                                      T_D_PER_YEAR, T_D_PER_TOTAL};
+    b += F("<div class=\"seg\" id=\"per\">");
+    for (int i = 0; i < 4; i++) {
+      b += F("<button");
+      if (i == 0) {
+        b += F(" class=\"on\"");
+      }
+      b += F(" data-p=\"");
+      b += kZeitraum[i];
+      b += F("\">");
+      b += tr(kZeitId[i]);
+      b += F("</button>");
+    }
+    b += F("</div>");
+  }
+  // Everything the script needs comes with the container, in the same order as
+  // the five bars on the panel and the keys of the JSON answer.
+  {
+    static const LangId kBarId[5] = {T_D_EN_PV, T_D_EN_SELFUSE, T_D_EN_EXPORT,
+                                     T_D_EN_IMPORT, T_D_EN_LOAD};
+    b += F("<div id=\"energie\" data-sep=\"");
+    b += langDecPoint();
+    b += F("\" data-period=\"tag\" data-key=\"pv|own|feed|draw|load\" "
+           "data-lab=\"");
+    for (int i = 0; i < 5; i++) {
+      if (i > 0) {
+        b += F("|");
+      }
+      b += tr(kBarId[i]);
+    }
+    b += F("\" data-r=\"");
+    b += tr(T_D_CARD_SELF);
+    b += F("|");
+    b += tr(T_D_CARD_SELFRATE);
+    b += F("\" data-err=\"");
+    b += tr(T_ERR_LOAD_FAILED);
+    b += F("\"></div>");
+  }
 
   b += F("<h2>");
   b += tr(T_H_DEVICE);
@@ -439,7 +500,7 @@ void handleRoot() {
   b += tr(T_BTN_SETUP);
   b += F("</button>");
   b += F("</form>");
-  sendNavPage(tr(T_PAGE_ROOT), "/", b);
+  sendNavPage(tr(T_PAGE_ROOT), "/", b, nullptr, true);
 }
 
 // ---------------------------------------------------------------------------

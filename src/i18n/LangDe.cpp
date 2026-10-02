@@ -105,6 +105,9 @@ const char *const kLang[T_COUNT] = {
     "<code>shot...bmp</code> auf der Karte; die Seite l&auml;dt sich "
     "danach einmal neu.",                                       // T_NOTE_SHOT_IDLE
 
+    // --- web: die Diagramme --------------------------------------------
+    "Daten konnten nicht geladen werden.",           // T_ERR_LOAD_FAILED
+
     // --- web: /update --------------------------------------------------------
     "Firmware aktualisieren",            // T_H_FIRMWARE
     "Firmware schreiben",                // T_BTN_FW_WRITE
@@ -196,7 +199,7 @@ const char *const kLang[T_COUNT] = {
     "Verbrauch",       // T_D_CARD_CONSUMED
     "Bezug",           // T_D_CARD_IMPORTED
     "Autarkie",        // T_D_CARD_SELF
-    "Eigenverbrauch",  // T_D_CARD_SELFRATE
+    "Eigenverbrauchsquote", // T_D_CARD_SELFRATE
 
     // --- Anzeige: 24 h Verlauf -------------------------------------
     "Netz",                               // T_D_SER_GRID

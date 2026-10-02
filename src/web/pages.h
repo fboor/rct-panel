@@ -24,7 +24,8 @@ namespace web {
 
 // ---------------------------------------------------------------------------
 // Shared shell. %T is replaced by the page title, %L by the language attribute,
-// %R by a refresh tag, %S by the style block, %B by the body.
+// %R by a refresh tag, %S by the style block, %J by the chart script (empty on
+// the pages without a chart), %B by the body.
 // ---------------------------------------------------------------------------
 static const char kShell[] PROGMEM = R"(<!DOCTYPE html>
 <html %L><head>
@@ -35,6 +36,7 @@ static const char kShell[] PROGMEM = R"(<!DOCTYPE html>
 <style>%S</style>
 </head><body>
 <div class="wrap">%B</div>
+<script>%J</script>
 </body></html>)";
 
 // One style block for all pages: a couple of rules that would bloat every
@@ -80,10 +82,125 @@ input[type=file]{display:block;width:100%;margin:10px 0;padding:11px;background:
 input[type=text],input[type=number],select{width:100%;padding:11px;margin:10px 0;border:1px solid #dfe3e8;border-radius:8px;font-size:16px;background:#fff}
 .btn+.btn{margin-left:8px}
 code{background:#e8ebef;padding:1px 5px;border-radius:4px;font-size:14px}
+/* --- the charts -----------------------------------------------------------
+   The panel sends numbers, the browser draws them (see kScript). A bar row is
+   label and value on one line over a full-width bar, like on the panel: the
+   label is the legend, so the colours need no separate key. The bar colours are
+   the portal palette, in the order pv, own, feed, draw, load. */
+.seg{display:flex;gap:6px;margin:0 0 12px}
+.seg button{flex:1;padding:9px 4px;border:1px solid #dfe3e8;background:#fff;border-radius:8px;font-size:14px;color:#5a6672;cursor:pointer}
+.seg button.on{background:#2f6fb5;border-color:#2f6fb5;color:#fff;font-weight:600}
+.bar{background:#fff;border:1px solid #dfe3e8;border-radius:8px;padding:9px 12px;margin-bottom:7px}
+.bar .l{display:flex;justify-content:space-between;gap:10px;font-size:14px}
+.bar .l b{font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.bar .t{height:9px;background:#eef1f4;border-radius:5px;margin-top:6px}
+.bar .f{height:9px;border-radius:5px;width:0}
+.b0 .f{background:#ebd300}.b1 .f{background:#12a40a}.b2 .f{background:#f48756}
+.b3 .f{background:#ca0c0f}.b4 .f{background:#3cbcd4}
+.rates{display:flex;gap:8px;margin:10px 0 0}
+.rates div{flex:1;background:#fff;border:1px solid #dfe3e8;border-radius:8px;padding:9px 11px;font-size:13px;color:#5a6672}
+.rates div b{display:block;font-size:18px;font-weight:600;color:#1d2530;font-variant-numeric:tabular-nums}
+.chart{background:#fff;border:1px solid #dfe3e8;border-radius:8px;padding:8px 8px 4px;margin-bottom:10px}
+.chart svg{display:block;width:100%;height:auto}
+.legend{font-size:13px;color:#5a6672;margin:6px 2px 0}
+.legend i{display:inline-block;width:11px;height:3px;border-radius:2px;margin:0 4px 3px 10px;vertical-align:middle}
+.legend i:first-child{margin-left:2px}
+.note.bad{background:#fdecea;border-color:#f0b8b3}
 )" ;
 
 // The navigation words and the page titles are not here: they are texts, and
 // texts live in src/i18n (see Lang.h), one table per language.
+//
+// ---------------------------------------------------------------------------
+// The chart script. It is only sent with the pages that have a chart (%J).
+//
+// The panel sends numbers, this draws them. Two rules shape it:
+//
+// 1. No library, no CDN. The page lives in the local network, and a download
+//    from the internet would break the whole thing the moment the router has no
+//    uplink - which is the normal case for a panel nobody looks at.
+//
+// 2. No text in here. Labels, headings and the failure message come from the
+//    firmware as data-* attributes on the container, so a word can never be
+//    spelled one way on the page and another way in the language table.
+//
+// The drawing is hand-made SVG and plain DOM: about 2 kB of flash for the whole
+// thing, which is cheaper than the drawing library it would replace.
+static const char kScript[] PROGMEM = R"(
+function rpSep(el,n){var v=el.getAttribute(n);return v?v.charAt(0):'.'}
+function rpSplit(s){return s?s.split('|'):[]}
+function rpEsc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function rpNum(v,d,sep){var s=Number(v).toFixed(d);return sep==='.'?s:s.replace('.',sep)}
+// kWh below a megawatt hour, MWh above - the same split the panel's energy bars
+// make, so a value reads the same in both places.
+function rpWh(wh,sep){
+  if(wh===null||wh===undefined||wh!==wh)return '--';
+  if(Math.abs(wh)<1000000)return rpNum(wh/1000,1,sep)+' kWh';
+  return rpNum(wh/1000000,2,sep)+' MWh';
+}
+function rpFail(el){
+  el.innerHTML='<div class="note bad">'+rpEsc(el.getAttribute('data-err'))+'</div>';
+}
+function rpEnergyBars(el,j){
+  var sep=rpSep(el,'data-sep');
+  var keys=rpSplit(el.getAttribute('data-key'));
+  var labs=rpSplit(el.getAttribute('data-lab'));
+  var rates=rpSplit(el.getAttribute('data-r'));
+  var h='',i,v,mx=0,vals=[];
+  for(i=0;i<keys.length;i++){
+    v=j.values[keys[i]];
+    if(typeof v!=='number'){v=0}
+    vals.push(v);
+    if(v>mx){mx=v}
+  }
+  if(mx<=0){mx=1}
+  if(rates.length>=2){
+    h+='<div class="rates"><div><b>'+rpNum(j.autarky,1,sep)+' %</b>'+rpEsc(rates[0])+'</div>'
+      +'<div><b>'+rpNum(j.ownShare,1,sep)+' %</b>'+rpEsc(rates[1])+'</div></div>';
+  }
+  for(i=0;i<vals.length;i++){
+    h+='<div class="bar b'+i+'"><div class="l"><span>'+rpEsc(labs[i]||'')+'</span>'
+      +'<b>'+rpWh(j.values[keys[i]],sep)+'</b></div><div class="t"><div class="f" '
+      +'style="width:'+Math.round(vals[i]/mx*100)+'%"></div></div></div>';
+  }
+  el.innerHTML=h;
+}
+function rpLoadEnergy(el){
+  var p=el.getAttribute('data-period')||'tag';
+  fetch('/api/energie.json?zeitraum='+encodeURIComponent(p)).then(function(r){
+    if(!r.ok){throw new Error(r.status)}
+    return r.json();
+  }).then(function(j){
+    rpEnergyBars(el,j);
+  }).catch(function(){
+    rpFail(el);
+  });
+}
+function rpBoot(){
+  var el=document.getElementById('energie');
+  if(el){
+    var seg=document.getElementById('per');
+    if(seg){
+      seg.addEventListener('click',function(ev){
+        var b=ev.target;
+        if(!b||b.tagName!=='BUTTON'){return}
+        var bs=seg.getElementsByTagName('button');
+        for(var i=0;i<bs.length;i++){
+          bs[i].className=(bs[i]===b?'on':'');
+        }
+        el.setAttribute('data-period',b.getAttribute('data-p'));
+        rpLoadEnergy(el);
+      });
+    }
+    rpLoadEnergy(el);
+  }
+}
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded',rpBoot);
+}else{
+  rpBoot();
+}
+)";
 
 } // namespace web
 

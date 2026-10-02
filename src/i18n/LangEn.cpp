@@ -102,6 +102,9 @@ const char *const kLang[T_COUNT] = {
     "<code>shot...bmp</code>; the page reloads itself once afterwards.",
                                                        // T_NOTE_SHOT_IDLE
 
+    // --- web: the charts -------------------------------------------------
+    "Could not load the data.",                                 // T_ERR_LOAD_FAILED
+
     // --- web: /update --------------------------------------------------------
     "Update firmware",                  // T_H_FIRMWARE
     "Write firmware",                   // T_BTN_FW_WRITE

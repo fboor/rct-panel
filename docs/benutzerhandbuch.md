@@ -217,7 +217,7 @@ Die Tageswerte des aktuellen Kalendertags:
 - Erzeugt / Eigenverbrauch / Eingespeist (kWh),
 - Verbrauch / Bezug (kWh),
 - Autarkie (%): = 1 − Netzbezug ÷ Hausverbrauch des Tages
-- Eigenverbrauch (%): Anteil der Erzeugung, der selbst genutzt wird.
+- Eigenverbrauchsquote (%): Anteil der Erzeugung, der selbst genutzt wird.
 
 Hinweis: Entlädt sich die Batterie zur Deckung des Hausbedarfs, zählt diese
 Energie als Eigenverbrauch.
