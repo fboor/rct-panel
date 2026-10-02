@@ -50,7 +50,8 @@ pins appears as `/dev/ttyUSB0` and flashes just as well.
 | `pio device monitor` | serial console, 115200 baud |
 | `tools/run_host_tests.sh` | the host tests — no panel, no card, no inverter |
 
-First boot: the panel has no network yet, so it serves the access point
+First boot: 
+While the panel has no network yet, it serves the access point
 **RCT-Panel**. Connect to it and open `http://192.168.4.1` to enter the Wi-Fi
 credentials and the address of the RCT device (`rct_host`, `rct_port`,
 default `192.168.0.1:8899`). Everything after that is in the panel's own web
@@ -74,3 +75,8 @@ MIT for the project code — see [`LICENSE`](LICENSE). The firmware links
 LGPL-2.1-or-later (Arduino-ESP32 core) and Apache-2.0 (ESP-IDF) components, so
 an image is distributed under those terms; every component and its license is
 listed in [`NOTICE`](NOTICE).
+
+## History
+
+This project was started as part of a research study about the abilities of AI
+and was implemented by machine workers completely.
