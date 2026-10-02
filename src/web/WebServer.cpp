@@ -216,6 +216,10 @@ void sendMsg(int code, const char *msg) {
   page.replace("%L", tr(T_HTML_LANG));
   page.replace("%R", String("")); // no auto-reload on a message page
   page.replace("%S", FPSTR(web::kStyle));
+  // The chart script has no place on a message page - but the shell has the
+  // tokens, and a token that is never replaced goes out as text.
+  page.replace("%J", String());
+  page.replace("%K", String());
   // %B goes in last: the body carries values with percent signs and units, and
   // replacing the shell's tokens after that would read those as tokens.
   page.replace("%B", body);
