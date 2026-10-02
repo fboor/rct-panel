@@ -19,8 +19,12 @@ network — in German or English, one per build.
 - **24 h history** from an SD card: one row every five minutes, 288 points, and
   the chart is filled again after a restart. The CSV keeps the month, with the
   rows in plain text (23 columns, see `docs/sd-history.md`).
-- **Web interface** at the panel's address: the same values, the CSV and the
-  screenshots as downloads, firmware update over the air.
+- **Web interface** at the panel's address: the same values, the energy bars of
+  one period, the history as charts (24 h live from the panel, day, week and
+  month computed in the browser from the recorded CSV), the CSV and the
+  screenshots as downloads, firmware update over the air. The panel sends
+  numbers; the browser draws them — no chart library and nothing from the
+  internet.
 - **The switching output** (1-Way port) puts 3.3 V on one header pin and drives
   the coil of an external relay from it; the relay's contact then switches the
   consumer. It can follow grid draw, PV surplus, a fault word or island mode,
@@ -67,7 +71,7 @@ the board.
 | [`docs/relay.md`](docs/relay.md) | the switching output and the ten-minute data deadline |
 | [`docs/sd-history.md`](docs/sd-history.md) | the CSV format and the SD logger |
 | [`docs/energy-page.md`](docs/energy-page.md) | the totals page and its arithmetic |
-| [`docs/web-interface.md`](docs/web-interface.md) | the web interface, its routes and its limits |
+| [`docs/web-interface.md`](docs/web-interface.md) | the web interface: its routes, the two JSON endpoints, the browser-drawn charts and their limits |
 
 ## License
 

@@ -47,7 +47,8 @@ zu den Seiten stehen in Kapitel 3, zur Einrichtung ab Kapitel 1.
 
 Die Messwerte liegen außerdem auf der SD-Karte und lassen sich später im
 Browser abrufen: IP-Adresse und Code dafür stehen auf der **Service-Seite**
-(Kapitel 5).
+(Kapitel 5). Dort gibt es auch die Energiebalken und den Verlauf — die
+Diagramme zeichnet Ihr Browser, das Panel liefert nur die Zahlen.
 
 ---
 
@@ -410,6 +411,11 @@ Monatsdatei über die SNTP-Zeit.
 > 23`. Tabellenkalkulationen kommen mit der gemischten Datei nicht klar:
 > Kopfzeile überspringen und die 23 Namen aus der Tabelle oben setzen, dann
 > fehlen die Summen der älteren Zeilen als leerer Feld — nicht als 0.
+>
+> In der Verlaufsansicht des Browsers (Kapitel 5) ist es genau andersherum:
+> Dort werden die fehlenden Summen als 0 angezeigt, mit einem Hinweis über dem
+> Diagramm. Beides stimmt für sich: In der **Datei** steht kein Wert, in der
+> **Ansicht** steht eine Null.
 
 ---
 
@@ -431,10 +437,65 @@ nehmen Sie die IP-Adresse).
 
 | Adresse | Inhalt |
 |---|---|
-| `/` | Übersicht: Netz, PV, Akku, Karte, Ausgang, Adresse, Wartung |
+| `/` | Übersicht: Netz, PV, Akku, Karte, Energiebalken, Ausgang, Adresse, Wartung |
+| `/verlauf` | Verlauf: Liniendiagramm über 24 Stunden, Tag, Woche, Monat |
 | `/daten` | Liste der aufgezeichneten CSV-Dateien |
 | `/bilder` | Liste der gespeicherten Screenshots |
 | `/update` | Firmware aktualisieren |
+
+Die Diagramme zeichnet Ihr Browser, nicht das Panel. Das Panel liefert die
+Zahlen; wie es auf Ihrem Bildschirm aussehen, entscheidet damit der Browser
+und nicht die 480 × 480 Pixel große Anzeige des Panels. Ein Diagramm ist so
+scharf und so groß wie das Fenster, in dem Sie es ansehen.
+
+### Energie auf der Übersicht
+
+Unter den vier Wertekarten stehen fünf Balken — PV-Erzeugung, Eigenverbrauch,
+Netzeinspeisung, Netzbezug, Verbrauch — mit dem Zahlenwert darüber. Darüber
+wählen Sie den Zeitraum: **Tag, Monat, Jahr, Gesamt**. Wortlaut, Farben und
+Reihenfolge sind dieselben wie auf der Panel-Seite *Energie*; rechts oben
+stehen Autarkie und Eigenverbrauchsquote.
+
+Diese Balken werden einmal geladen, wenn Sie die Seite öffnen, und laufen
+**nicht** von selbst weiter. Der Grund ist praktisch: weiter unten auf derselben
+Seite steht das Formular für die Schwelle des Ausgangs, und eine Seite, die sich
+selbst neu lädt, würde überschreiben, was Sie gerade eintippen. Zum
+Aktualisieren genügt ein Neuladen des Browsers. Die Werte sind Zähler, eine
+vor zehn Minuten geladene Seite ist also höchstens zehn Minuten alt.
+
+### Verlauf
+
+Auf `/verlauf` steht dasselbe Diagramm wie auf der Panel-Seite *24 h Verlauf*,
+mit denselben sechs Linien und denselben Farben — nur eben in der Größe Ihres
+Fensters. Oben wählen Sie den Bereich:
+
+| Bereich | Was gezeigt wird |
+|---|---|
+| **24 h** | die letzten 24 Stunden, ein Punkt alle fünf Minuten; die Ansicht aktualisiert sich selbst alle fünf Sekunden |
+| **Tag** | ein einzelner Tag als Linie, aus der aufgezeichneten Datei |
+| **Woche** | sieben Tage als Bänder: je Tag der tiefste und der höchste Wert |
+| **Monat** | derselbe Monat, ebenfalls als Bänder |
+
+Die Pfeile ‹ › blättern in die Vergangenheit und zurück; in der Mitte steht der
+Zeitraum. Bei **Woche** beginnt die Woche am Montag.
+
+Woche und Monat kommen aus den aufgezeichneten CSV-Dateien. Beim ersten Öffnen
+lädt der Browser die Datei des betreffenden Monats (etwa 1,2 MB, das dauert ein
+paar Sekunden) und behält sie im Speicher: weiterblättern kostet danach keinen
+weiteren Zugriff aufs Panel. Das Panel selbst rechnet bei diesen Bereichen
+nichts — es hat die Zahlen bereits auf die Karte geschrieben.
+
+Fehlt eine Probe, bricht die Linie dort, wo nichts gemessen wurde, statt über
+die Lücke hinwegzugehen. Unter dem Diagramm steht derselbe Hinweis wie am
+Panel, etwa „9 Lücken, 110 min ohne Messwerte“ — damit eine Aufzeichnungspause
+nicht wie ein Einbruch aussieht.
+
+> **Hinweis zu Aufzeichnungen von vor dem Firmware-Update:** Enthält eine
+> Monatsdatei nur 16 statt 23 Spalten, fehlen ihr die Summenzähler. Der Browser
+> füllt diese dann mit 0, so wie es das Panel selbst tut, und schreibt einen
+> Satz über das Diagramm. Die Tage vor dem Update zeigen in den Balken deshalb
+> 0 kWh, und die beiden Quoten bleiben leer. Betrifft nur Geräte, deren Karte
+> schon vor dem Update beschrieben wurde.
 
 <figure class="web-shot">
   <img src="img/web-uebersicht.png" alt="Weboberfläche des Panels: vier Wertekarten für Netz, PV, Batterie und Verbrauch, darunter eine Tabelle mit Wechselrichter, Firmware, Speicher, SD-Karte, Takt und der Adresse">
@@ -683,6 +744,9 @@ sich prüfen, ob am Port überhaupt etwas passiert.
 | „Der Code stimmt nicht“ | Code von der Service-Seite; er ändert sich bei jedem Start des Panels. Antippen zieht einen neuen. |
 | Download bricht ab | Der Browser hat die Verbindung geschlossen (Ruhezustand, Netzwechsel). Der Vorgang lässt sich einfach wiederholen. |
 | `/daten` bleibt leer | Auf der Karte steht noch keine Datei — es wird erst ab dem ersten Fünf-Minuten-Wert geschrieben. |
+| Balken auf `/` fehlen | Die Seite lädt die Zahlen erst nach dem Öffnen. Läuft ein sehr alter Browser ohne JavaScript, bleiben die Balken leer; die Werte stehen dann weiter unten in den Geräteangaben und auf den Panel-Seiten. |
+| „Daten konnten nicht geladen werden“ auf `/verlauf` | Der Browser konnte die JSON-Antwort nicht holen, meist weil währenddessen ein Download lief (das Panel bedient eine Anfrage zur Zeit). Seite neu laden. |
+| Auf `/verlauf` steht „Für diesen Zeitraum liegt keine Datei auf der Karte“ | Für den gewählten Monat gibt es keine Aufzeichnung: entweder vor dem ersten Fünf-Minuten-Wert oder die Datei wurde von der Karte gelöscht. Mit ‹ in einen Monat mit Daten blättern. |
 | Ausgang schaltet nicht | Erst die Funktion prüfen (Service-Seite, Feld `Ausgang`): `Aus` schaltet nie. Bei `Netzbezug`/`Überschuss` muss der Wert die Schwelle 20 s lang übersteigen — die angezeigte Zahl ist der Wert, der gerade verglichen wird. |
 | Ausgang schaltet ständig | Schwelle zu niedrig angesetzt. Der Wert pendelt um die Schwelle, weil 20 % Hysterese zu wenig sind, wenn die Last grob springt. Schwelle erhöhen. |
 | Ausgang war länger aus | Zehn Minuten lang keine Werte vom Wechselrichter — das kann auch bei offener TCP-Verbindung passieren. Ohne Daten schaltet der Ausgang aus, siehe Kapitel 6. |
@@ -841,7 +905,7 @@ dem Netzteil gilt ohne Last ohnehin nichts.
 |---|---|
 | Datenabfrage | RCT-Wechselrichter über TCP (Port 8899), alle 10 s |
 | Datenaufzeichnung | alle 5 Minuten als CSV (ca. 48 KB pro Tag), 24-h-Puffer im RAM bei fehlender Karte |
-| Weboberfläche | HTTP-Server im lokalen Netz (Port 80): Status, CSV-/Bild-Download, Firmware-Update; änderende Funktionen mit 4-stelligem Code |
+| Weboberfläche | HTTP-Server im lokalen Netz (Port 80): Status, Energiebalken, Verlauf mit Diagrammen (24 h, Tag, Woche, Monat), CSV-/Bild-Download, Firmware-Update; änderende Funktionen mit 4-stelligem Code |
 | Schaltausgang | 3,3 V am Header H1 zum Ansteuern der Spule eines externen Relais (Kathode der Freilaufdiode an 3,3 V), 5 wählbare Funktionen, 20 s Einschaltverzögerung, 60 s Mindesthaltezeit, 20 % Hysterese; aus bei jedem Start |
 | Ausgang bei Datenausfall | schaltet aus, wenn der Wechselrichter länger als 10 min keine Daten liefert; bis dahin arbeitet er mit dem letzten empfangenen Wert, sichtbar als „letzte Messung“ |
 

@@ -1,8 +1,9 @@
 # Web-Oberfläche im Normalbetrieb
 
 Zusätzlich zum Einrichtungs-Portal (WLAN „RCT-Panel“, 192.168.4.1) bringt das
-Panel im Normalbetrieb einen eigenen Webserver auf Port 80: Statusseite,
-CSV-Daten und Screenshots von der SD-Karte, Firmware-Update per Upload.
+Panel im Normalbetrieb einen eigenen Webserver auf Port 80: Statusseite mit
+Energiebalken, Verlauf mit Diagrammen, CSV-Daten und Screenshots von der
+SD-Karte, Firmware-Update per Upload.
 
 ## Warum ein eigener Server statt WiFiManager
 
@@ -24,7 +25,10 @@ teilen sich Port 80 und das Radio, nie gleichzeitig.
 
 | Route           | Art                | Zweck                                             |
 | --------------- | ------------------ | ------------------------------------------------- |
-| `/`             | GET                | Übersicht: Netz, PV, Akku, Karte, Ausgang, Adresse, Wartung |
+| `/`             | GET                | Übersicht: Netz, PV, Akku, Karte, Energiebalken, Ausgang, Adresse, Wartung |
+| `/verlauf`      | GET                | 24 h und die Historie: Linien- bzw. Banddiagramm, Zeitraumwahl |
+| `/api/energie.json` | GET            | die Energiezahlen eines Zeitraums als Zahlen (`?zeitraum=tag\|monat\|jahr\|gesamt`) |
+| `/api/verlauf.json` | GET            | der 24-h-Ring aus dem RAM als Zahlen                |
 | `/daten`        | GET                | Liste der CSV-Dateien in `/hist`                    |
 | `/daten/<name>` | GET                | eine CSV-Datei, `?tail=<bytes>` für die letzten n Bytes |
 | `/bilder`       | GET                | Liste der Screenshots in `/shot`                   |
@@ -56,6 +60,213 @@ Der Code wird vor dem Schreiben geprüft, nicht danach: das Formular auf
 `/update` stellt das Code-Feld **vor** das Datei-Feld, weil der WebServer die
 Parts der Reihenfolge nach auswertet. Bei `UPLOAD_FILE_START` ist das Feld also
 schon da, und ein falscher Code schreibt kein Byte in den Flash.
+
+## Die Diagrammseiten: der Browser zeichnet
+
+**Das Panel zeichnet nichts.** Es liefert Zahlen, der Browser malt daraus Balken
+und Linien. Grund ist der Speicher, nicht die Bequemlichkeit:
+
+| Ressource                        | Wert                              |
+| -------------------------------- | --------------------------------- |
+| interner Heap im Betrieb         | 120 764 Byte frei                 |
+| PSRAM                            | 7 588 299 Byte frei               |
+| Flash                            | 5,9 MB frei                       |
+| Karte                            | ~470 kB/s gemessen                |
+| ganze Monatsdatei streamen       | geht heute, rund 3 s              |
+
+Ein serverseitig gerendertes Bild wäre ein Zeichenpuffer plus PNG-Kodierung
+(~0,5 MB PSRAM) und mehrere Sekunden Rechenzeit pro Aufruf. Auf einem Gerät mit
+480 × 480 Pixeln zusätzlich sinnlos, denn die Diagramme sind so scharf und so
+groß wie das Fenster, in dem man sie ansieht.
+
+Die Messung oben ist vom 2.10.2026; sie steht im Boot-Protokoll, mit dem
+`stall`-Zähler daneben, weil das die einzige Zahl ist, die sich bei jeder
+Änderung an dieser Stelle sofort bewegt.
+
+### Zwei Endpunkte, beide aus dem RAM
+
+`/api/energie.json?zeitraum=tag|monat|jahr|gesamt` liefert die fünf
+Energiewerte eines Zeitraums und die beiden Prozente:
+
+```json
+{"tz":"CET-1CEST,M3.5.0,M10.5.0/3","period":"day","unit":"Wh",
+ "values":{"pv":23680,"own":7790,"feed":15890,"draw":1810,"load":3890},
+ "autarky":53.5,"ownShare":32.9}
+```
+
+`/api/verlauf.json` liefert den 24-h-Ring, den die Panel-Seite *24 h Verlauf*
+zeichnet:
+
+```json
+{"tz":"...","points":288,"series":["grid","load","pv","ext","battery","soc"],
+ "unit":["W","W","W","W","W","%"],
+ "data":[{"t":1790875294,"v":[82,1214,750,0,-480,55]}, null, …],
+ "from":1790875294,"to":1790884294}
+```
+
+Vier Regeln dazu, jede davon eine Stelle, an der etwas schiefgehen kann:
+
+1. **Ganzzahlig, ohne Exponent.** Die Zähler des Geräts sind ganze Wattstunden;
+   `snprintf("%g")` hätte aus einer kleinen Zahl `1e-05` gemacht. Die
+   Formatierung steht in `src/web/Json.h`, ohne Arduino-Abhängigkeit, und ist in
+   `tools/json_test` geprüft.
+2. **`null` statt `nan`.** Ein NaN erreicht `snprintf` als `nan`, und daran
+   bleibt ein JSON-Parser stehen - auch der Rest der Antwort wäre weg.
+3. **`tz` ist die POSIX-Regel, kein Versatz.** Das Panel stellt seine Zeit mit
+   `configTzTime(kTimeZone, …)` (`src/config/Configuration.h`), also mit
+   Sommerzeit. Ein fester Versatz wäre ab dem letzten Sonntag im Oktober eine
+   Stunde falsch, und die Tagesgrenzen der ganzen Historie verschöben sich genau
+   dann um einen Tag. Der Browser rechnet die Regel selbst aus; die Rechnung ist
+   in `tools/jstest` gegen Prüfwerte aus Pythons `zoneinfo` geprüft (jede sechste
+   Stunde von 2026 und jede Stunde um beide Umstelltage).
+4. **`data` ist flach und in Ringordnung**, ältester Punkt zuerst. Eine Lücke ist
+   `null` und keine Sechser aus Nullen - so bricht die Linie dort, wo nichts
+   gemessen wurde, statt über eine Zeit zu gehen, in der nichts passiert ist.
+
+Die Zahlen kommen aus denselben Rechnungen, die die Anzeigeseiten füllen:
+`guiEnergyPeriod()` ruft `energyPeriodValues()`, `guiHistoryPoint()` liest den
+Ring, den `histPush()` schreibt. Seite und JSON können deshalb nicht
+auseinanderlaufen - dieselbe Disziplin wie `src/DataStatus.h` für das Badge auf
+Panel und Web.
+
+Der Ring wird Punkt für Punkt gelesen, nicht kopiert: 288 × 6 Werte plus
+Zeitstempel wären 8 kB RAM für eine einzige Anfrage, und die Antwort ist danach
+weg. Die JSON-Antwort selbst ist ein `String` mit einer einzigen Reservierung
+für die ganze Länge. Gemessen an einer gefüllten Antwort aus dem RAM: **16 kB**
+für den Ring (288 Punkte, `?k=` nur gegen den Cache), **163 Byte** für die
+Energiewerte. Beides geht in einem Ruck über das WLAN; der Aufwand liegt
+eher im Formatieren als im Senden.
+
+### Die Energiebalken auf der Übersicht
+
+Unter den vier Karten stehen fünf Balken (Erzeugung, Eigenverbrauch,
+Netzeinspeisung, Netzbezug, Verbrauch) mit dem Wert als Text darüber und einem
+Zeitraumwechsel **Tag | Monat | Jahr | Gesamt** darüber - Wortlaut, Farben und
+Reihenfolge wie auf der Panel-Seite *Energie*.
+
+Sie werden **einmal** geholt, nicht nachgeladen. Grund: weiter unten auf derselben
+Seite steht das Formular für die Schwelle des Schaltausgangs, und eine Seite, die
+sich selbst neu lädt, überschreibt, was jemand gerade eintippt. Die Werte sind
+Zähler, eine Seite von vor zehn Minuten ist im schlimmsten Fall zehn Minuten alt,
+und das Nachladen ist ein Fingertipp.
+
+### Die Verlauf-Seite
+
+Vier Bereiche, ein Zustand:
+
+* **24 h** aus `/api/verlauf.json`, ohne Kartenzugriff. Aktualisiert sich selbst
+  alle 5 s - anders als die Übersicht ist auf dieser Seite nichts, was jemand
+  eintippt, und die neueste Probe kommt alle fünf Minuten.
+* **Tag** aus derselben Monatsdatei, als Linie: 288 Punkte, eine Probe alle fünf
+  Minuten, eine fehlende Probe eine Lücke in der Linie.
+* **Woche** und **Monat** als **Band je Tag** (Tagesminimum bis Tagesmaximum).
+  Fünf-Minuten-Punkte über einen Monat als Linie durch Punkte wären eine
+  erfundene Genauigkeit; ein Band sagt, was der Tag wirklich hergegeben hat. Die
+  sechs Bänder stehen nebeneinander statt übereinander, sonst verdeckten sie
+  sich gegenseitig.
+
+Dazu ein Navigator (‹ ›) über die Zeiträume, mit dem Datum in der Mitte. Die
+Woche beginnt am Montag, weil das der deutsche Sprachgebrauch ist; das
+Jahresdatum steht in der Mitte nur dann, wenn es sich ändert.
+
+### Wie der Browser aus der CSV rechnet
+
+**Die Energie eines Zeitraums ist die Differenz der Lebensdauerzähler zwischen
+seiner ersten und seiner letzten Zeile** - nicht die Summe von Momentanwerten.
+Das ist genau die Größe, die das Gerät selbst zählt, und sie bleibt über eine
+Lücke hinweg richtig. Der externe Generator zählt zur Erzeugung und zum Verbrauch
+(dieselbe Rechnung wie `energyPeriodValues`), und der Eigenverbrauch ist, was
+geblieben ist: erzeugt minus eingespeist. Die Einspeisezähler kommen am Gerät
+negativ an, deshalb wird der Betrag genommen - an einer Stelle, nicht sechsmal.
+
+Die sechs Reihen sind dieselben wie in `csvrow::toSample()`: der Lastzähler des
+Wechselrichters hat den S0-Zähler schon abgezogen, deshalb ist der Verbrauch
+Zähler plus extern, und die Erzeugung sind beide Strings zusammen.
+
+Die Spaltennamen kommen aus `csvrow::kHeader` und stehen als `data-cols` im
+HTML; der Browser liest die Zeilen **nach Namen**, nicht nach Position. Eine
+neue Spalte in der CSV ändert damit nichts an dieser Seite, und unbekannte
+Spalten werden ignoriert statt geraten.
+
+Die Monatsdateien werden **nacheinander** geholt, nicht nebeneinander: das Panel
+bedient einen Download zur Zeit und beantwortet einen zweiten mit „busy". Sie
+bleiben danach im Speicher des Browsers, unter ihrem **vollen Dateinamen** als
+Schlüssel - ein `RCT-202609.csv` und ein `RCT-202610.csv` sind verschiedene
+Dateien, und ein Cache nur über den Monat gäbe die falsche aus. Wer sich drei
+Monate weit durchblättert, hat danach eine Datei von ~1,2 MB im Handy liegen und
+keinen einzigen weiteren Zugriff aufs Panel.
+
+### Dateien im alten Format
+
+Monatsdateien, die vor dem Wechsel auf 23 Spalten angelegt wurden, tragen 16
+Namen über den Zeilen. Der Browser liest beides und füllt die fehlenden Summen
+mit **0** - genau wie der Panel-Leser es macht (`csvrow::parse()`: ein Zähler,
+der nicht geloggt wurde, liest sich als 0, und nur die eine Stelle, die das
+weiß, darf das sagen). Damit bleibt die Ansicht durchgehend befüllt und der
+Browser rechnet ohne Sonderfall.
+
+Damit die Null nicht als Messwert gelesen wird, steht ein Satz über dem Diagramm,
+sobald die geladene Datei im alten Format ist:
+
+> Diese Datei hat 16 Spalten: Die Summen fehlen, die Tage vor dem Update zeigen 0.
+
+Zwei Dinge werden dabei **nicht** erfunden:
+
+* die beiden Prozente stehen als **–**, nicht als Zahl. Ein Zeitraum ohne Zähler
+  hat keine Quote, und „100 % Eigenverbrauch" wäre eine Antwort auf eine Frage,
+  die niemand gestellt hat;
+* ein Zeitraum, der **über** den Wechsel reicht, bekommt überhaupt keine Zahl.
+  An einem Ende stehen Summen, am anderen nicht, und die Differenz zwischen einem
+  Zähler und einer Null ist das ganze Leben dieses Zählers, nicht die Energie
+  dieses Zeitraums. Auf dem Entwicklergerät mit einer Karte aus dem September 2026
+  betrifft das die Woche um den 1.10.
+
+Für eine Anlage, die später auf die Firmware kommt, gibt es den Fall nicht.
+
+### Lücken
+
+Gezählt wie auf dem Panel (`histPush` in `src/gui/GuiApp.cpp`): eine Probe, die
+mehr als eineinhalb Intervalle zu spät kommt, heißt, dass die Plätze dazwischen
+nie geschrieben wurden. Angezeigt wird derselbe Satz wie am Panel („9 Lücken,
+110 min ohne Messwerte", `T_D_GAP_MANY`). Ohne diese Zeile liest sich eine
+Aufzeichnungspause wie ein Einbruch.
+
+Im 24-h-Bild sind die Lücken die leeren Plätze des Rings, also direkt
+gezählt - dieselbe Zahl, die das Panel unter seinem Diagramm zeigt.
+
+### Was das kostet und was nicht geht
+
+* **Kein Nachladen auf `/`.** Aus dem Grund oben.
+* **Kein Server-Rendering, keine Bibliothek, kein CDN.** Die Seite läuft im
+  lokalen Netz; ein Nachladen aus dem Internet würde genau die Seite brechen, die
+  zeigt, ob das Panel noch lebt. Handgeschriebenes SVG und DOM, zusammen
+  `src/web/pages.h`: 18,4 kB CSS, 11,8 kB Logik, 17,8 kB Script. In der
+  Flash-Rechnung ist das eine Zeile (5,8 MB frei); der eigentliche Preis ist die
+  Prüfbarkeit, nicht der Platz - und die ist mit `tools/jstest` bezahlt.
+* **Keine Texte im Script.** Beschriftungen, Überschriften und der Fehlsatz
+  kommen als `data-*`-Attribute aus der Firmware, sonst könnte ein Wort auf der
+  Seite anders heißen als in der Sprachtabelle. Dasselbe gilt für das
+  Datumsformat (`{D}.{M}.{Y}` oder `{Y}-{M}-{D}`), die Trennfarbe und die
+  sechs Reihenfarben.
+* **Die Oberfläche steht während eines Dateizugs.** Bei der gemessenen Rate von
+  ~470 kB/s sind die ~1,2 MB einer Monatsdatei rund 2,6 s Lesezeit, in denen die
+  Bedienung des Panels wartet - dieselbe Arbeit, an der die Oberfläche beim
+  Schreiben der CSV-Zeile schon 4,4 s stillsteht. Der 24-h-Bereich ist davon
+  nicht betroffen: er kommt aus dem RAM.
+* **Ein Zeitraum mit zwei Monatsdateien** (eine Woche über den Monatswechsel)
+  lädt beide, der zweite erst, wenn der erste fertig ist.
+
+### Prüfung
+
+* `tools/jstest` schneidet den Logikblock aus `src/web/pages.h` heraus und führt
+  ihn in node aus - **derselbe** Code, der im Browser läuft, keine Abschrift.
+  Geprüft werden die Zeitzonenregel gegen `zoneinfo`, das Lesen der CSV, die
+  Tagesbereiche, die Monatsrechnung und die Energiedifferenz an den Zahlen vom
+  2.10.2026 (23,68 kWh erzeugt, 15,89 kWh eingespeist, 7,79 kWh Eigenverbrauch,
+  1,81 kWh Bezug, 3,89 kWh Verbrauch).
+* `tools/json_test` prüft die Zahlenformatierung der Antworten.
+* Die Seiten wurden im Browser gegen beide Spaltenformate bei 360 px und 1024 px
+  Breite angesehen, in beiden Sprachfassungen.
 
 ## Daten aus der SD-Karte: Stream statt Datei im RAM
 
@@ -213,6 +424,11 @@ Anzeigetexte sind normales UTF-8 (Montserrat hat die Umlaute). Geprüft wird das
 in `tools/i18n_test`: gleiche IDs und gleiche Platzhalter auf beiden Seiten,
 kein deutscher Buchstabe in `src/web/` und `src/storage/`.
 
+Für die Diagrammseiten kommt derselbe Weg über den Browser: Die Worte, das
+Datumsformat und die Trennfarbe stehen als `data-*`-Attribute im HTML, das Script
+liest sie. Ein Wort, das im Script stünde, wäre beim nächsten Übersetzen eine
+zweite Stelle, an der es falsch werden kann.
+
 Nicht übersetzt sind das Serienprotokoll (Entwicklertext, bleibt wie er ist) und
 die CSV-Spaltenköpfe (`ts,pv_a,...` - eine Tabelle in Excel darf ihre Spalten
 nicht mit der Anzeigesprache wechseln).
@@ -223,12 +439,21 @@ nicht mit der Anzeigesprache wechseln).
 * 2 kB Listenpuffer im Worker
 * 2 kB Sende-Puffer im Webserver
 * PROGMEM-Seiten (`src/web/pages.h`), pro Request ~2-3 kB `String` in RAM
+* JSON-Antworten: 163 Byte für die Energiewerte, ~16 kB für den 24-h-Ring,
+  jeweils eine einzige Reservierung für die ganze Antwort
 
 Interne Heap-Reserve in Normalbetrieb ~150 kB; Webserver und Worker liegen bei
 ~2 kB statischem Bedarf darüber. Die Seiten sind aus Flash-Bausteinen
-zusammengesetzt (ein Shell-Dokument mit `%T`/`%L`/`%R`/`%S`/`%B`-Platzhaltern),
-nicht aus `String`-Konkatenation - sonst würde jeder Seitenaufbau einen großen
-Teil des Heaps verbrauchen.
+zusammengesetzt (ein Shell-Dokument mit `%T`/`%L`/`%R`/`%S`/`%J`/`%B`-Platzhaltern,
+`%J` ist das Diagrammscript und bleibt auf den Seiten ohne Diagramm leer), nicht
+aus `String`-Konkatenation - sonst würde jeder Seitenaufbau einen großen Teil des
+Heaps verbrauchen.
+
+Der Verlauf hat die Diagrammseite in **zwei** Teile geteilt, und das ist der
+eigentliche Speichergrund: die Übersicht lädt ihre Datei nicht, sie fragt nach
+Zahlen aus dem RAM. Der Verlauf lädt genau eine Monatsdatei - und die liegt im
+Speicher des **Browsers**, nicht im Panel. Statisch ist durch die Diagrammseiten
+nichts dazugekommen (112 264 Byte, vor und nach der Änderung gemessen).
 
 ## SD-Takt
 

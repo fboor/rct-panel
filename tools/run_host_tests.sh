@@ -37,9 +37,10 @@
 # when it is next to the project, and skipped with a note when it is not.
 #
 # What cannot be in here: everything that needs the card, the display, the
-# inverter or the Wi-Fi. The list of those is in docs/web-interface.md
-# ("Was noch offen ist") - it is short on purpose, and everything on it needs a
-# panel on the wall.
+# inverter or the Wi-Fi - the drawing of the two chart pages, the reading of a
+# month file off a card and the look of both pages on a phone. That is a panel
+# on the wall, plus a browser; docs/web-interface.md says what each of those
+# checks was worth and where the rest still stands.
 #
 # SPDX-License-Identifier: MIT
 set -e
