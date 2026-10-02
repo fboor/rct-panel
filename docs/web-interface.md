@@ -137,25 +137,47 @@ für den Ring (288 Punkte, `?k=` nur gegen den Cache), **163 Byte** für die
 Energiewerte. Beides geht in einem Ruck über das WLAN; der Aufwand liegt
 eher im Formatieren als im Senden.
 
-### Zwei Zahlen für denselben Tag, und warum
+### Dieselbe Zahl auf beiden Seiten
 
-Die Balken auf der Übersicht kommen aus den Zählern des Panels
-(`guiEnergyPeriod` → `energyPeriodValues`), die in dessen RAM stehen und **nach
-jedem Start bei null beginnen**. Nur der 24-h-Ring wird beim Start aus der
-Aufzeichnung zurückgespielt (`sdRequestHistory` → `histPush`), weil er für das
-Diagramm gebraucht wird; die Tag-, Monats-, Jahr- und Gesamtzähler nicht.
+Beide Seiten rechnen aus Zählern, nicht aus Momentanwerten — nur aus
+verschiedenen:
 
-Die Verlauf-Seite rechnet aus den CSV-Dateien und ist deshalb der Ort für die
-Frage „was war am Dienstag". Die Übersicht zählt ab dem letzten Start. Nach einem
-Neustart, einem Netzausfall oder einem Tag, an dem der Wechselrichter keine
-Daten lieferte, stehen die beiden Seiten also auseinander - die Übersicht zeigt
-weniger, der Verlauf die ganze Zahl. Geprüft am 3.10.2026, 01:20: Übersicht Tag
-0 kWh (Start um 01:15, keine Daten vom Wechselrichter), Verlauf Tag 02.10.
-23,7 kWh erzeugt.
+* die **Übersicht** liest die Zähler, die das Gerät selbst meldet
+  (`energy.e_dc_*`, `e_load_*`, `e_feed_*`, `e_grid_*`) — Tag, Monat, Jahr und
+  Lebensdauer, so wie der Wechselrichter sie führt;
+* die **Verlauf-Seite** bildet die Differenz dieser Zähler in der
+  aufgezeichneten Datei zwischen der ersten und der letzten Zeile des Zeitraums.
 
-Das ist keine Besonderheit der Weboberfläche: die Panel-Seite *Heute* zeigt
-dieselben RAM-Zähler. Wer die Zahl nach einem Neustart braucht, nimmt den
-Verlauf.
+Innerhalb eines Tages nennen beide dasselbe. Gemessen am 3.10.2026 um 01:52:
+Übersicht 709 Wh Verbrauch für den Tag, Datei 603 Wh bis zur letzten Probe von
+01:38 — die 106 Wh sind die vierzehn Minuten dazwischen.
+
+Zwei Fälle, in denen sie auseinandergehen, und beide liegen an der Datei, nicht
+an der Anzeige:
+
+* **Ein Zeitraum, in dem die Datei am Rand keine Zeile hat.** Die Differenz
+  beginnt dann mit der ersten und endet mit der letzten Probe, nicht mit dem
+  Tagesanfang. Auf der Entwicklerkarte ist das für den Oktober der Fall: die
+  Monatsdatei beginnt am 1.10. um 19:21 (die Karte war davor nicht in diesem
+  Format), der Monatszähler des Geräts deckt den ganzen Monat — 35 184 Wh gegen
+  23 684 Wh Differenz in der Datei.
+* **Ein Monat, dessen erste Zeilen noch im alten Format sind** — siehe den
+  nächsten Abschnitt.
+
+Der S0-Anteil wird **nicht** aus der Momentanleistung hochgerechnet.
+`ext_total_wh` zählt die *Erzeugung* an diesem Eingang, und eine Anlage ohne
+Erzeugung dort hat schlicht keinen Anteil an den Summen - auch wenn die Linie EXT
+im Diagramm den Verbrauch am selben Eingang zeigt
+(`io_board.s0_external_power`, ein Momentanwert). Auf dem Entwicklergerät ist das
+genau so: über 30 h und 338 Proben keine einzige Änderung an `ext_total_wh`
+(fest bei 1 545 861 Wh), während `s0` in 117 Proben ungleich null war.
+
+Dass die Summe den S0 **enthält**, ist an den Lebensdauerzahlen abzulesen: die
+Summe des Geräts liegt um genau 1 545 860 Wh über der Summe der beiden
+CSV-Stränge `pv_a_total_wh + pv_b_total_wh`, also um den Betrag des
+S0-Zählers. Addiert wird er genau einmal, auf beiden Seiten: im Panel in
+`energyPeriodValues` (`pv += ext; load += ext;`), im Browser in `rpEnergy`
+(`pv = Δpv_a + Δpv_b + Δext`, `load = Δload + Δext`).
 
 ### Die Energiebalken auf der Übersicht
 

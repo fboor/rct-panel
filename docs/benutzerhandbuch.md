@@ -463,12 +463,14 @@ selbst neu lädt, würde überschreiben, was Sie gerade eintippen. Zum
 Aktualisieren genügt ein Neuladen des Browsers. Die Werte sind Zähler, eine
 vor zehn Minuten geladene Seite ist also höchstens zehn Minuten alt.
 
-> **Wichtig:** Diese Balken zählen ab dem **letzten Start des Panels**, nicht ab
-> Tagesbeginn. Nach einem Neustart, einem Netzausfall oder einem Tag ohne Daten
-> vom Wechselrichter stehen sie bei null, obwohl an diesem Tag Energie geflossen
-> ist — das Panel selbst zählt genauso, seine Seite *Heute* zeigt dieselben
-> Zahlen. Für „was war am Dienstag" nehmen Sie den **Verlauf**: der rechnet aus
-> der Aufzeichnung auf der Karte und ist nach einem Start nicht auf null.
+> **Wichtig:** Balken und Verlauf rechnen beide aus Zählern, nur aus
+> verschiedenen: die Übersicht aus den Zählern, die das **Gerät** selbst meldet
+> (Tag, Monat, Jahr, Lebensdauer), der Verlauf aus der Differenz der Zähler in
+> der Aufzeichnung. Innerhalb eines Tages nennen beide dieselbe Zahl. Sie
+> unterscheiden sich, wenn die Aufzeichnung am Rand des Zeitraums keine Zeile
+> hat — die Differenz beginnt dann mit der ersten Probe — oder wenn sie dort
+> noch nicht lief. Weicht Ihnen das auf, liegt es an der Datei auf der Karte,
+> nicht an der Anzeige.
 
 ### Verlauf
 
@@ -492,6 +494,11 @@ paar Sekunden) und behält sie im Speicher: weiterblättern kostet danach keinen
 weiteren Zugriff aufs Panel. Das Panel selbst rechnet bei diesen Bereichen
 nichts — es hat die Zahlen bereits auf die Karte geschrieben.
 
+> **Hinweis:** Die Balken enthalten den S0-Zähler, und zwar **einmal**:
+> Nachkommen lässt sich das an den Lebensdauerzahlen — die Summe des Geräts
+> liegt dort um genau den Betrag des S0-Zählers über der Summe der beiden
+> PV-Stränge in der Datei.
+>
 > **Hinweis zur Linie EXT und zu den Summen:** Die Linie **EXT** zeigt die
 > Momentanleistung am S0-Eingang. In die Balken darunter zählt dagegen nur, was
 > dort **erzeugt** wird (`ext_total_wh` seit Inbetriebnahme), nicht was
