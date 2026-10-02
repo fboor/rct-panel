@@ -31,7 +31,7 @@ function blockOf(name) {
 
 const sandbox = {console: console};
 vm.createContext(sandbox);
-vm.runInContext(blockOf('kLogic') + '\nthis.__api={rpTz:rpTz,rpOffsetAt:rpOffsetAt,rpDayKey:rpDayKey,rpHm:rpHm,rpDateHm:rpDateHm,rpRows:rpRows,rpSpan:rpSpan,rpEnergy:rpEnergy,rpDays:rpDays,rpBands:rpBands,rpShift:rpShift,rpShiftMonth:rpShiftMonth,rpDow:rpDow,rpDaysInMonth:rpDaysInMonth,rpFmtDate:rpFmtDate,rpKeyOf:rpKeyOf,rpLegacy:rpLegacy,rpDayPoints:rpDayPoints};',
+vm.runInContext(blockOf('kLogic') + '\nthis.__api={rpTz:rpTz,rpOffsetAt:rpOffsetAt,rpDayKey:rpDayKey,rpHm:rpHm,rpDateHm:rpDateHm,rpRows:rpRows,rpSpan:rpSpan,rpEnergy:rpEnergy,rpDays:rpDays,rpBands:rpBands,rpShift:rpShift,rpShiftMonth:rpShiftMonth,rpDow:rpDow,rpDaysInMonth:rpDaysInMonth,rpFmtDate:rpFmtDate,rpKeyOf:rpKeyOf,rpLegacy:rpLegacy,rpGaps:rpGaps,rpDayPoints:rpDayPoints};',
                      sandbox);
 const api = sandbox.__api;
 
@@ -236,8 +236,33 @@ check(rowsOld.length === 2, 'both old rows are still read', rowsOld.length, 2);
 check(rowsOld[0].s === null, 'an old row has no sums', String(rowsOld[0].s), 'null');
 check(rowsOld[1].v[2] === 4100, 'the powers of an old row are there',
       rowsOld[1].v[2], 4100);
-check(api.rpEnergy(rowsOld, 0, 1) === null, 'no energy without the sums',
-      String(api.rpEnergy(rowsOld, 0, 1)), 'null');
+
+// A period that is entirely in the old format: the sums are filled with 0, the
+// way the panel's own reader fills them, so the view stays continuous - and the
+// two rates are left out rather than invented.
+const enOld = api.rpEnergy(rowsOld, 0, 1);
+check(enOld !== null, 'an old period still has an answer', String(enOld), 'object');
+check(enOld.values.pv === 0, 'no generated energy without a counter',
+      enOld.values.pv, 0);
+check(enOld.values.own === 0, 'no own consumption without a counter',
+      enOld.values.own, 0);
+check(enOld.values.load === 0, 'no consumption without a counter',
+      enOld.values.load, 0);
+check(enOld.autarky === null, 'no self-sufficiency without a counter',
+      String(enOld.autarky), 'null');
+check(enOld.ownShare === null, 'no own share without a counter',
+      String(enOld.ownShare), 'null');
+check(enOld.sums === false, 'and it says so', String(enOld.sums), 'false');
+
+// A period that reaches over the change: one end has the sums, the other has
+// not. The difference between a counter and a zero would be the counter's whole
+// life, so there is no number at all.
+const csvMix = NAMES.join(',') + '\n' +
+               row(T0, null) + '\n' +
+               row(T1, END, {pv_a: 4100}) + '\n';
+const rowsMix = api.rpRows(csvMix, NAMES, tz);
+check(api.rpEnergy(rowsMix, 0, 1) === null, 'a period across the change',
+      String(api.rpEnergy(rowsMix, 0, 1)), 'null');
 
 // --- the days a period covers ----------------------------------------------
 check(api.rpDays('day', '2026-10-07').join(',') === '2026-10-07', 'one day',
@@ -329,6 +354,36 @@ check(api.rpDayPoints(rows2, '2026-10-01').length === 2, 'two points for one day
       api.rpDayPoints(rows2, '2026-10-01').length, 2);
 check(api.rpBands(rows2, api.rpDays('week', '2026-10-08')).length === 0,
       'no bands for a week without rows', api.rpBands(rows2, api.rpDays('week', '2026-10-08')).length, 0);
+
+// --- the gaps of a period ---------------------------------------------------
+// The rule the panel uses (histPush in src/gui/GuiApp.cpp): more than one and a
+// half intervals between two samples means the slots in between are missing.
+const T = Date.UTC(2026, 9, 5, 0, 0) / 1000;
+function stamps(offsets) {
+  return offsets.map(o => ({t: T + o * 300}));
+}
+check(api.rpGaps(stamps([0, 1, 2, 3])).count === 0, 'no gap in a full day',
+      api.rpGaps(stamps([0, 1, 2, 3])).count, 0);
+// 25 minutes between two samples: four slots missing, ten minutes.
+check(api.rpGaps(stamps([0, 5])).count === 4, '25 minutes is four missing samples',
+      api.rpGaps(stamps([0, 5])).count, 4);
+check(api.rpGaps(stamps([0, 5])).minutes === 20, 'and twenty minutes',
+      api.rpGaps(stamps([0, 5])).minutes, 20);
+// A sample that is a little late is not a gap: the threshold absorbs up to one
+// and a half intervals, so 400 s of extra time still counts as the next sample.
+check(api.rpGaps(stamps([0, 1, 2, 3]).concat([{t: T + 3 * 300 + 400}])).count === 0,
+      'a sample 400 s late is not a gap',
+      api.rpGaps(stamps([0, 1, 2, 3]).concat([{t: T + 3 * 300 + 400}])).count, 0);
+check(api.rpGaps(stamps([0, 1, 2, 3]).concat([{t: T + 3 * 300 + 600}])).count === 1,
+      'a sample two intervals late leaves one slot empty',
+      api.rpGaps(stamps([0, 1, 2, 3]).concat([{t: T + 3 * 300 + 600}])).count, 1);
+check(api.rpGaps(stamps([0, 7])).count === 6, '35 minutes is six missing samples',
+      api.rpGaps(stamps([0, 7])).count, 6);
+check(api.rpGaps(stamps([0, 3, 10])).count === 8, 'two gaps add up',
+      api.rpGaps(stamps([0, 3, 10])).count, 8);
+check(api.rpGaps(stamps([0, 3, 10])).minutes === 40, 'and their minutes',
+      api.rpGaps(stamps([0, 3, 10])).minutes, 40);
+check(api.rpGaps([]).count === 0, 'nothing to count', api.rpGaps([]).count, 0);
 
 // --- the date on the page ----------------------------------------------------
 check(api.rpFmtDate('2026-10-02', '{D}.{M}.{Y}') === '02.10.2026', 'German date',

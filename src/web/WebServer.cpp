@@ -745,12 +745,19 @@ void handleVerlauf() {
   b += tr(T_NOTE_NO_DATA);
   b += F("\" data-nofile=\"");
   b += tr(T_NOTE_NO_FILE);
+  b += F("\" data-gap1=\"");
+  b += tr(T_D_GAP_ONE);
+  b += F("\" data-gapn=\"");
+  b += tr(T_D_GAP_MANY);
   b += F("\" data-err=\"");
   b += tr(T_ERR_LOAD_FAILED);
   b += F("\"></div>");
   b += F("<div id=\"hinweis\" data-old=\"");
   b += tr(T_NOTE_OLD_SUMS);
   b += F("\"></div>");
+  // The gap sentence, filled in by the browser: the empty slots of the ring, or
+  // the missing samples between two timestamps in a file.
+  b += F("<div id=\"luecken\"></div>");
   // The energy of the chosen period, over the same five bars as the overview.
   // Wording, colours and both rates come out of one function, so the two pages
   // cannot drift apart.

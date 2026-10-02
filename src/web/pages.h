@@ -337,8 +337,24 @@ function rpSpan(rows,day){
 // the difference is what went in - the same one place where the panel drops the
 // sign.
 function rpEnergy(rows,a,b){
-  var s0=rows[a].s,s1=rows[b].s,i;
-  if(!s0||!s1){return null}
+  var s0=rows[a].s,s1=rows[b].s;
+  if(!s0&&!s1){
+    // Neither end has the sums: the period was recorded before the firmware
+    // wrote them. The panel's own reader fills those with 0 (csvrow::parse()),
+    // so the view stays continuous - and the page above the chart names the
+    // state, so the zero is not read as a measured value.
+    //
+    // What is not filled in: the two rates. A period with no counters has no
+    // share to report, and "100 % self-sufficiency" would be one invented.
+    return {values:{pv:0,own:0,feed:0,draw:0,load:0},autarky:null,
+            ownShare:null,sums:false};
+  }
+  if(!s0||!s1){
+    // The period reaches over the change: one end has the sums, the other has
+    // not, and the difference between a counter and a zero is that counter's
+    // whole life - not the energy of this period. So there is no number here.
+    return null;
+  }
   var ext=Math.max(0,s1[2]-s0[2]);
   var pv=Math.max(0,(s1[0]-s0[0])+(s1[1]-s0[1]))+ext;
   var load=Math.max(0,s1[3]-s0[3])+ext;
@@ -348,7 +364,24 @@ function rpEnergy(rows,a,b){
   return {values:{pv:pv,own:own,feed:feed,draw:grid,load:load},
           autarky:load>0?Math.max(0,1-grid/load)*100:100,
           ownShare:pv>0?Math.min(100,own/pv*100):0,
+          sums:true,
           rows:b-a+1};
+}
+// The gaps of a period, counted the way the panel counts them
+// (histPush in src/gui/GuiApp.cpp): a sample that is more than one and a half
+// intervals late means the slots in between were never written, and the time
+// they stand for is what the panel reports under the chart. Without it a pause
+// in the recording reads like a collapse.
+function rpGaps(rows){
+  var count=0,seconds=0,i,step=300;
+  for(i=1;i<rows.length;i++){
+    var dt=rows[i].t-rows[i-1].t;
+    if(dt>step+step/2){
+      var missing=Math.round(dt/step)-1;
+      if(missing>0){count+=missing;seconds+=missing*step}
+    }
+  }
+  return {count:count,minutes:Math.round(seconds/60)};
 }
 // The days a period covers, as day keys. The week starts on Monday, the way the
 // manual names it; the month is the calendar month of the anchor day.
@@ -439,6 +472,11 @@ function rpWh(wh,sep){
   if(wh===null||wh===undefined||wh!==wh)return '--';
   if(Math.abs(wh)<1000000)return rpNum(wh/1000,1,sep)+' kWh';
   return rpNum(wh/1000000,2,sep)+' MWh';
+}
+// A percentage, or a dash when there is none.
+function rpRate(x,sep){
+  if(x===null||x===undefined||x!==x)return '--';
+  return rpNum(x,1,sep)+' %';
 }
 function rpFail(el){
   el.innerHTML='<div class="note bad">'+rpEsc(el.getAttribute('data-err'))+'</div>';
@@ -591,9 +629,25 @@ function rpLoadChart(el){
   }).then(function(j){
     rpChart(el,j);
     el.setAttribute('data-stamp',j.to||0);
+    // The gaps of the window: the ring keeps a slot per sample and leaves the
+    // ones empty that were never filled, so counting the empty slots counts
+    // the gaps - the same number the panel shows under its own chart.
+    var n=0,pts=j.data||[],i;
+    for(i=0;i<pts.length;i++){if(!pts[i]){n++}}
+    rpShowGaps(el,n,n*5);
   }).catch(function(){
     rpFail(el);
   });
+}
+// The sentence about the gaps, in the wording of the panel (T_D_GAP_ONE /
+// T_D_GAP_MANY). Nothing at all when there were none: a line saying "0 gaps" is
+// noise on a day that was recorded completely.
+function rpShowGaps(el,count,minutes){
+  var box=document.getElementById('luecken');
+  if(!box){return}
+  if(!count){box.innerHTML='';return}
+  var t=(count===1)?(el.getAttribute('data-gap1')||''):(el.getAttribute('data-gapn')||'');
+  box.innerHTML='<p class="stamp">'+rpEsc(t.replace('%lu',minutes).replace('%d',count))+'</p>';
 }
 // --- the history from the CSV -------------------------------------------------
 // A month file, loaded once and then kept in memory under its full file name -
@@ -633,8 +687,11 @@ function rpEnergyBars(el,j){
   }
   if(mx<=0){mx=1}
   if(rates.length>=2){
-    h+='<div class="rates"><div><b>'+rpNum(j.autarky,1,sep)+' %</b>'+rpEsc(rates[0])+'</div>'
-      +'<div><b>'+rpNum(j.ownShare,1,sep)+' %</b>'+rpEsc(rates[1])+'</div></div>';
+    // A rate that is not there is written as a dash, not as a number: the
+    // period has no counters, and "100 %" would be an answer to a question
+    // nobody asked.
+    h+='<div class="rates"><div><b>'+rpRate(j.autarky,sep)+'</b>'+rpEsc(rates[0])+'</div>'
+      +'<div><b>'+rpRate(j.ownShare,sep)+'</b>'+rpEsc(rates[1])+'</div></div>';
   }
   for(i=0;i<vals.length;i++){
     h+='<div class="bar b'+i+'"><div class="l"><span>'+rpEsc(labs[i]||'')+'</span>'
@@ -723,6 +780,8 @@ function rpVerlauf(){
     if(lab){lab.textContent=el.getAttribute('data-live')}
     if(nav){nav.style.display='none'}
     if(per){per.innerHTML=''}
+    var box=document.getElementById('luecken');
+    if(box){box.innerHTML=''}
   }
   // One period out of the CSV files. The files it needs arrive one after the
   // other and then stay in memory, so walking through the history costs no
@@ -791,6 +850,8 @@ function rpVerlauf(){
     if(nt){
       nt.innerHTML=legacy?'<div class="note">'+rpEsc(nt.getAttribute('data-old'))+'</div>':'';
     }
+    var g=rpGaps(rows);
+    rpShowGaps(el,g.count,g.minutes);
   }
   function rangeText(days){
     if(st.range==='day'){return rpFmtDate(days[0],fmt)}
