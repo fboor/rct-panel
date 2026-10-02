@@ -539,7 +539,17 @@ static void energyPeriodValues(const RctSnapshot &s, int period,
   out[EB_VAL_FEED] = feed < 0.0f ? -feed : feed;
   out[EB_VAL_GRID] = grid;
   out[EB_VAL_LOAD] = load;
-  out[EB_VAL_SELF] = load - grid > 0.0f ? load - grid : 0.0f;
+  // Eigenverbrauch = Erzeugung minus Einspeisung: alles, was das Geraet
+  // erzeugt hat und nicht eingespeist wurde, ist im eigenen Haus genutzt worden
+  // - direkt, ueber den externen Generator oder als Ladung in den Akku. Die
+  // Akkuladung zaehlt dazu, weil dieser Akku ausschliesslich das eigene Haus
+  // versorgt und nie zur Einspeisung dient; ihre Entnahme erscheint in einem
+  // anderen Zeitraum als Verbrauch, und genau deshalb ist hier nichts doppelt
+  // gezaehlt. Geklammert bei 0: die Zaehler laufen nach einem Geraete-Neustart
+  // kurz auseinander, und ein negativer Balken waere sinnlos.
+  const float selfUse =
+      pv - out[EB_VAL_FEED] > 0.0f ? pv - out[EB_VAL_FEED] : 0.0f;
+  out[EB_VAL_SELF] = selfUse;
 }
 
 // Highlight the active period button (portal dashboard style).
@@ -1993,16 +2003,22 @@ static void refreshCb(lv_timer_t *t) {
   diagPhase("gui.energy");
   AppPage &en = s_pages[PAGE_HEUTE];
   if (en.labels[EN_GEN_VAL]) {
-    // Portal "Heute" day counters (all Wh). Eigenverbrauch ist hier wie auf
-    // der Energie-Seite der verbrauchsseitige Ausdruck: Hausverbrauch minus
-    // Netzbezug.
+    // Portal "Heute" day counters (all Wh). Eigenverbrauch = Erzeugt minus
+    // Eingespeist, wie auf der Energie-Seite: alles, was erzeugt und nicht
+    // eingespeist wurde, ist im eigenen Haus genutzt worden - auch der Teil, der
+    // als Akkuladung auf Vorrat liegt. Der Akku versorgt ausschliesslich das
+    // eigene Haus und wird nie zur Einspeisung benutzt, deshalb zaehlt die
+    // Ladung mit; ihre Entnahme erscheint in einem anderen Zeitraum als
+    // Verbrauch, und genau deshalb ist hier nichts doppelt gezaehlt. NICHT
+    // Verbrauch minus Bezug: das laesst die Akkuladung ausser vor und waere an
+    // einem Tag mit Ladebetrieb zu niedrig (live geprueft: nachts 569 Wh Last
+    // bei 0,1 Wh Bezug = 569 Wh aus dem Akku).
     float gen = s.dayPvWh + s.dayExtWh; // Erzeugt: PV-DC plus externer Generator
     float feed = s.dayFeedInWh;     // Eingespeist, kommt negativ vom Geraet
     if (feed < 0.0f) feed = -feed;  // Betrag, nicht Vorzeichen
     float consumed = s.dayLoadWh + s.dayExtWh; // Verbrauch: Last plus extern
     float gridIn = s.dayGridLoadWh;     // Bezug (grid draw)
-    float selfUse = consumed - gridIn;  // Eigenverbrauch: im Haus verbraucht,
-                                        // nicht aus dem Netz
+    float selfUse = gen - feed;         // Eigenverbrauch, nie negativ
     if (selfUse < 0.0f) selfUse = 0.0f; // Zaehler kurz nach Geraete-Neustart versetzt
     // Autarkie = 1 - Bezug / Verbrauch. No load consumes nothing from the
     // grid, so the day is fully independent.
@@ -2010,8 +2026,10 @@ static void refreshCb(lv_timer_t *t) {
         consumed > 0.0f ? (1.0f - gridIn / consumed) * 100.0f : 100.0f;
     if (autarkie < 0.0f) autarkie = 0.0f;
     // Eigenverbrauchsquote = Eigenverbrauch / Erzeugung, begrenzt auf
-    // [0, 100]: nach einem Geraete-Neustart laufen die Zaehler kurz
-    // phasenversetzt (daher oben).
+    // [0, 100]: mit Erzeugung minus Einspeisung ist das der Anteil der
+    // erzeugten Energie, der im eigenen Haus genutzt wurde, also
+    // 1 - Einspeisung/Erzeugung. Nach einem Geraete-Neustart laufen die
+    // Zaehler kurz phasenversetzt (daher die Klammer oben).
     float evb = gen > 0.0f ? selfUse / gen * 100.0f : 0.0f;
     if (evb > 100.0f) evb = 100.0f;
 
