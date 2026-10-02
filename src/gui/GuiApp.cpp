@@ -276,19 +276,20 @@ static const LangId kHistId[HIST_SERIES] = {
     T_D_SER_GRID, T_D_SER_CONSUMPTION, T_D_SER_PV,
     T_D_SER_EXT,  T_D_SER_BATTERY,      T_D_SER_SOC};
 static const int LEGEND_GAP = 24; // space between two legend entries
-// Chart frame on the Verlauf page. Shifts the chart right so a left gutter
-// stays free for the min/0/max scale markers of the power axis.
-static const int kHistChartX = 56, kHistChartY = 52;
-static const int kHistChartW = 412, kHistChartH = 280;
+// Chart frame on the Verlauf page. The card starts near the left edge because
+// the min/0/max scale markers sit inside it (see applyScaleMarkers) instead of
+// in a gutter beside it: the width that went into those labels goes into the
+// plot area instead.
+static const int kHistChartX = 10, kHistChartY = 52;
+static const int kHistChartW = 458, kHistChartH = 280;
 static const int kHistChartPad = 10;
 static lv_obj_t *s_chart = nullptr;
 static lv_chart_series_t *s_chartSer[HIST_SERIES] = {nullptr};
-// Scale markers of the primary (power) axis in the chart's left gutter,
-// refreshed by updateChartRange(). The SOC series gets no markers: its own
-// fixed 0..100 axis spans the whole chart height by construction.
+// Scale markers of the primary (power) axis, drawn over the left end of the
+// plot area, refreshed by updateChartRange(). The SOC series gets no markers:
+// its own fixed 0..100 axis spans the whole chart height by construction.
 static lv_obj_t *s_scaleMax = nullptr, *s_scaleZero = nullptr,
                 *s_scaleMin = nullptr;
-static lv_obj_t *s_scaleTick[3] = {nullptr, nullptr, nullptr};
 static float s_hist[HIST_POINTS * HIST_SERIES] = {0.0f}; // packed [pt][ser]
 static uint32_t s_histTs[HIST_POINTS] = {0};   // unix s per slot, 0 = unknown
 static uint8_t s_histOk[HIST_POINTS] = {0};    // 1 = measured, 0 = gap marker
@@ -538,13 +539,6 @@ static void energyPeriodValues(const RctSnapshot &s, int period,
   out[EB_VAL_FEED] = feed < 0.0f ? -feed : feed;
   out[EB_VAL_GRID] = grid;
   out[EB_VAL_LOAD] = load;
-  // Eigenverbrauch = Hausverbrauch minus Netzbezug, also der Anteil des
-  // Verbrauchs, der nicht aus dem Netz kam - PV direkt genutzt plus was die
-  // Batterie lieferte. Nicht PV minus Einspeisung: das waere "PV im eigenen
-  // Haus genutzt" ohne den Batteriebeitrag und wuerde zudem die Einspeisung
-  // als Teil des Eigenverbrauchs rechnen, obwohl die exportiert wird.
-  // Geklammert bei 0: die Zaehler laufen nach einem Geraete-Neustart kurz
-  // auseinander, und ein negativer Balken waere sinnlos.
   out[EB_VAL_SELF] = load - grid > 0.0f ? load - grid : 0.0f;
 }
 
@@ -1442,8 +1436,8 @@ static void setScaleVal(lv_obj_t *l, float v) {
 }
 
 // Move the min / 0 / max markers to the power-axis positions of loW / 0 / hiW
-// in the chart's left gutter. When loW == 0 the min marker coincides with the
-// zero one and stays hidden. The SOC series needs no markers: its fixed
+// over the left end of the plot area. When loW == 0 the min marker coincides
+// with the zero one and stays hidden. The SOC series needs no markers: its fixed
 // 0..100 axis spans the full chart height by construction.
 static void applyScaleMarkers(float loW, float hiW) {
   if (s_scaleMax == nullptr) return;
@@ -1452,23 +1446,27 @@ static void applyScaleMarkers(float loW, float hiW) {
   const int plotH = plotBot - plotTop;
   const float span = hiW - loW;
   auto yOf = [plotBot, plotH, span, loW](float w) -> int {
-    return plotBot - (int)lrintf((w - loW) / span * (float)plotH);
+    return plotBot - (int)lroundf((w - loW) / span * (float)plotH);
   };
   const int yMax = yOf(hiW), yZero = yOf(0.0f), yMin = yOf(loW);
-  const int tickX = kHistChartX - 5; // 5 px tick ending at the card edge
-  auto place = [&](lv_obj_t *l, lv_obj_t *tk, int yv, float v) {
+  // Inside the card, two pixels left of the plot area's edge: the digits cover
+  // the first few pixels of every series, so the gap they cut out of the lines
+  // sits as far left as it goes without clipping at the card border.
+  const int labelX = kHistChartX + kHistChartPad - 2;
+  // 14 px font, ~18 px line box plus 2 px padding per side. Both outer labels
+  // ride above their line: the top one would be clipped by the card edge, the
+  // bottom one by the plot edge, and a label hanging over a grid line reads
+  // better than one centred on it.
+  auto place = [&](lv_obj_t *l, int yv, float v, int dy) {
     setScaleVal(l, v);
-    lv_obj_set_pos(l, 8, yv - 9); // 14 px font line box ~18 px: centre it
-    lv_obj_set_pos(tk, tickX, yv);
-    lv_obj_remove_flag(tk, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_pos(l, labelX, yv - 9 + dy);
   };
-  place(s_scaleMax, s_scaleTick[0], yMax, hiW);
-  place(s_scaleZero, s_scaleTick[1], yZero, 0.0f);
+  place(s_scaleMax, yMax, hiW, -2);
+  place(s_scaleZero, yZero, 0.0f, 0);
   if (loW < 0.0f) {
-    place(s_scaleMin, s_scaleTick[2], yMin, loW);
+    place(s_scaleMin, yMin, loW, -5);
   } else {
     lv_obj_add_flag(s_scaleMin, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(s_scaleTick[2], LV_OBJ_FLAG_HIDDEN);
   }
 }
 
@@ -1579,20 +1577,14 @@ static void pageBuildGraph(AppPage *p) {
     lv_chart_set_all_values(s_chart, s_chartSer[i], LV_CHART_POINT_NONE);
   }
 
-  // --- Scale markers (left gutter) ---
-  // Min / 0 / max of the power axis, right-aligned next to the chart. Their
-  // positions and values are refreshed by updateChartRange(); they are only
-  // meaningful once a range was computed, so the initial text stays empty.
-  for (int i = 0; i < 3; i++) {
-    lv_obj_t *tk = lv_obj_create(root);
-    lv_obj_set_size(tk, 5, 1);
-    lv_obj_set_pos(tk, kHistChartX - 5, kHistChartY);
-    lv_obj_set_style_bg_color(tk, COL_BORDER, 0);
-    lv_obj_set_style_border_width(tk, 0, 0);
-    lv_obj_set_style_radius(tk, 0, 0);
-    lv_obj_set_style_shadow_width(tk, 0, 0);
-    s_scaleTick[i] = tk;
-  }
+  // --- Scale markers, inside the card ---
+  // Min / 0 / max of the power axis, drawn over the left end of the plot area
+  // instead of in a gutter beside the card: the chart is 480 px wide and the
+  // gutter cost 48 px of plot. Each label carries the card colour as its own
+  // background, so a series crossing the left edge runs behind the digits
+  // rather than through them. Their positions and values are refreshed by
+  // updateChartRange(); they are only meaningful once a range was computed, so
+  // the initial text stays empty.
   lv_obj_t *scaleLabels[3] = {nullptr, nullptr, nullptr};
   scaleLabels[0] = s_scaleMax =
       makeLabel(root, "", &lv_font_montserrat_14_uml, COL_MUTED);
@@ -1601,9 +1593,12 @@ static void pageBuildGraph(AppPage *p) {
   scaleLabels[2] = s_scaleMin =
       makeLabel(root, "", &lv_font_montserrat_14_uml, COL_MUTED);
   for (int i = 0; i < 3; i++) {
-    lv_obj_set_pos(scaleLabels[i], 8, kHistChartY);
-    lv_obj_set_width(scaleLabels[i], kHistChartX - 14);
-    lv_obj_set_style_text_align(scaleLabels[i], LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_set_width(scaleLabels[i], 52);
+    lv_obj_set_style_text_align(scaleLabels[i], LV_TEXT_ALIGN_LEFT, 0);
+    lv_obj_set_style_bg_color(scaleLabels[i], COL_CARD, 0);
+    lv_obj_set_style_bg_opa(scaleLabels[i], LV_OPA_COVER, 0);
+    lv_obj_set_style_pad_all(scaleLabels[i], 2, 0);
+    lv_obj_set_style_radius(scaleLabels[i], 3, 0);
   }
 
   // --- Gap summary ---
@@ -2000,15 +1995,7 @@ static void refreshCb(lv_timer_t *t) {
   if (en.labels[EN_GEN_VAL]) {
     // Portal "Heute" day counters (all Wh). Eigenverbrauch ist hier wie auf
     // der Energie-Seite der verbrauchsseitige Ausdruck: Hausverbrauch minus
-    // Netzbezug, also der Anteil des Verbrauchs, der nicht aus dem Netz kam
-    // (PV direkt, Batterie-Entladung, externer Generator). NICHT Erzeugung
-    // minus Einspeisung: der Ausdruck wuerde die Batterie-Entladung aussen
-    // vor lassen, denn e_load_day enthaelt sie bereits (live geprueft: nachts
-    // 569 Wh Last bei 0,1 Wh Bezug = 569 Wh aus dem Akku), und eine eigene
-    // Batterie-Entnahme dazu zu addieren wuerde dieselbe Energie doppelt
-    // zaehlen (einmal als Laden beim Erzeugen, einmal als Entnahme beim
-    // Verbrauch). Der Geraet-zaehler battery.used_energy (Lebensdauer, Wh)
-    // ist damit fuer die Quote nicht noetig.
+    // Netzbezug.
     float gen = s.dayPvWh + s.dayExtWh; // Erzeugt: PV-DC plus externer Generator
     float feed = s.dayFeedInWh;     // Eingespeist, kommt negativ vom Geraet
     if (feed < 0.0f) feed = -feed;  // Betrag, nicht Vorzeichen
@@ -2023,10 +2010,8 @@ static void refreshCb(lv_timer_t *t) {
         consumed > 0.0f ? (1.0f - gridIn / consumed) * 100.0f : 100.0f;
     if (autarkie < 0.0f) autarkie = 0.0f;
     // Eigenverbrauchsquote = Eigenverbrauch / Erzeugung, begrenzt auf
-    // [0, 100]: nachts liefert die Batterie Energie aus der *gestrigen*
-    // Erzeugung, und die Quote kann dann rechnerisch ueber 100 % liegen -
-    // die Energie ist verbraucht, aber heute nicht erzeugt worden. Nach einem
-    // Geraete-Neustart laufen die Zaehler kurz phasenversetzt (daher oben).
+    // [0, 100]: nach einem Geraete-Neustart laufen die Zaehler kurz
+    // phasenversetzt (daher oben).
     float evb = gen > 0.0f ? selfUse / gen * 100.0f : 0.0f;
     if (evb > 100.0f) evb = 100.0f;
 
