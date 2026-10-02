@@ -25,6 +25,12 @@
 #   json_test      the numbers in the web interface's JSON answers: fixed-point
 #                  without an exponent, no trailing zeros, and null instead of
 #                  a NaN - the case a parser stops reading at
+#   jstest        the browser-side logic of the web interface, cut out of
+#                  src/web/pages.h and run in node: the POSIX time zone rule
+#                  against check values from Python's zoneinfo, over every six
+#                  hours of 2026 and every hour around both switch-over dates.
+#                  A rule read half right costs an hour for half the year, and
+#                  the day boundaries of the whole history move with it.
 #
 # The RCT simulator test used to be here. It imports rctclient (GPL-3.0), so the
 # simulator lives outside this repository now - see its own README. It is run
@@ -41,8 +47,16 @@ set -e
 cd "$(dirname "$0")/.."
 
 fail=0
-for t in relay_test sd_queue_test numfmt_test i18n_test backlight_test badge_test crc_test json_test; do
+for t in relay_test sd_queue_test numfmt_test i18n_test backlight_test badge_test crc_test json_test jstest; do
   printf '\n=== %s ===\n' "$t"
+  if [ "$t" = "jstest" ]; then
+    if command -v node >/dev/null 2>&1; then
+      node tools/jstest/run.js
+    else
+      echo "uebersprungen: node ist nicht da"
+    fi
+    continue
+  fi
   if sh "tools/$t/run.sh"; then
     :
   else

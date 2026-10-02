@@ -49,6 +49,7 @@
 enum LangId : int {
   // --- web: navigation and page titles -------------------------------------
   T_NAV_HOME = 0,
+  T_NAV_VERLAUF,
   T_NAV_DATA,
   T_NAV_SHOTS,
   T_NAV_UPDATE,
@@ -56,6 +57,7 @@ enum LangId : int {
   // it is still an ID, so a build that wants another name has one place to
   // change it in.
   T_PAGE_ROOT,
+  T_PAGE_VERLAUF,
   T_PAGE_DATA,
   T_PAGE_SHOTS,
   T_PAGE_UPDATE,
@@ -130,6 +132,9 @@ enum LangId : int {
 
   // --- web: the charts -----------------------------------------------------
   T_ERR_LOAD_FAILED,   // a JSON answer did not arrive
+  T_NOTE_NO_DATA,      // the 24 h ring is still empty
+  T_NOTE_UPDATED,      // %s = time of the newest sample, written by the browser
+  T_NOTE_REFRESHED,    // how often the chart asks again
 
   // --- web: /update --------------------------------------------------------
   T_H_FIRMWARE,

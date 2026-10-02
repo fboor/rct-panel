@@ -43,6 +43,7 @@
 
 #include "GuiApp.h"
 
+#include "../Charts.h"
 #include "../DataStatus.h"
 #include "../NumFmt.h"
 #include "../config/Configuration.h"
@@ -268,10 +269,12 @@ static const int HIST_POINTS = 288;              // 288 * 5 min = 24 h
 static const int HIST_SERIES = 6;                // grid, house(+ext), PV, EXT, battery, SOC
 static const uint32_t HIST_INTERVAL_MS = 300000; // 5 min
 static const uint32_t HIST_SEED_WINDOW_MS = 60000; // boot grace without a card
-// SOC yellow: brightened to #FFEA00 so it lifts off the dark card and the
-// orange battery line next to it (0xF0A202).
-static const uint32_t kHistColor[HIST_SERIES] = {0xCA0C0F, 0xA45EE5, 0x3EC97A,
-                                                 0x2E93E5, 0xF0A202, 0xFFEA00};
+// The colours and the number of series come from src/Charts.h: the web
+// interface draws the same six lines, and two written-down colour lists would
+// mean the battery is orange on the panel and yellow on the phone.
+static const uint32_t kHistColor[HIST_SERIES] = {kChartColor[0], kChartColor[1],
+                                                 kChartColor[2], kChartColor[3],
+                                                 kChartColor[4], kChartColor[5]};
 static const LangId kHistId[HIST_SERIES] = {
     T_D_SER_GRID, T_D_SER_CONSUMPTION, T_D_SER_PV,
     T_D_SER_EXT,  T_D_SER_BATTERY,      T_D_SER_SOC};

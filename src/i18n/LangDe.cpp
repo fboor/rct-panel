@@ -17,10 +17,12 @@
 const char *const kLang[T_COUNT] = {
     // --- web: navigation and page titles -----------------------------------
     "Start",                            // T_NAV_HOME
+    "Verlauf",                          // T_NAV_VERLAUF
     "Daten",                            // T_NAV_DATA
     "Bilder",                           // T_NAV_SHOTS
     "Update",                           // T_NAV_UPDATE
     "RCT Power Panel",                  // T_PAGE_ROOT
+    "Verlauf",                          // T_PAGE_VERLAUF
     "Daten",                            // T_PAGE_DATA
     "Bilder",                           // T_PAGE_SHOTS
     "Update",                           // T_PAGE_UPDATE
@@ -107,6 +109,9 @@ const char *const kLang[T_COUNT] = {
 
     // --- web: die Diagramme --------------------------------------------
     "Daten konnten nicht geladen werden.",           // T_ERR_LOAD_FAILED
+    "Noch keine Messwerte.",                         // T_NOTE_NO_DATA
+    "Stand %s.",                                     // T_NOTE_UPDATED
+    "Aktualisiert sich alle 5 Sekunden.",            // T_NOTE_REFRESHED
 
     // --- web: /update --------------------------------------------------------
     "Firmware aktualisieren",            // T_H_FIRMWARE

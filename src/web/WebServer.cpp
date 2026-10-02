@@ -27,6 +27,7 @@
 // SPDX-License-Identifier: MIT
 #include "web/WebServer.h"
 
+#include "../Charts.h"
 #include "../DataStatus.h"
 #include "../Diag.h"
 #include "../NumFmt.h"
@@ -220,13 +221,14 @@ void sendMsg(int code, const char *msg) {
   s_server.send(code, "text/html; charset=utf-8", page);
 }
 
-// Navigation strip, shared by the four real pages.
+// Navigation strip, shared by the five real pages.
 void addNav(String &page, const char *current) {
   page += F("<nav>");
   struct {
     const char *href;
     LangId label;
   } items[] = {{"/", T_NAV_HOME},
+               {"/verlauf", T_NAV_VERLAUF},
                {"/daten", T_NAV_DATA},
                {"/bilder", T_NAV_SHOTS},
                {"/update", T_NAV_UPDATE}};
@@ -637,6 +639,54 @@ void handleApiHistory() {
   j += to;
   j += F("}");
   s_server.send(200, "application/json; charset=utf-8", j);
+}
+
+// GET /verlauf - the 24 h line chart.
+//
+// The page is little more than a container: the drawing happens in the browser
+// (web::kScript) out of /api/verlauf.json, which is what keeps both the drawing
+// code and the buffer it would need off the panel. What the page does carry are
+// the six labels, the six colours and the sentences - all of them from the
+// firmware, so a word or a colour cannot differ from the panel's own chart.
+void handleVerlauf() {
+  String b;
+  b.reserve(900);
+  b += F("<h2>");
+  b += tr(T_D_HEAD_GRAPH);
+  b += F("</h2>");
+  static const LangId kSerId[kChartSeries] = {
+      T_D_SER_GRID, T_D_SER_CONSUMPTION, T_D_SER_PV,
+      T_D_SER_EXT,  T_D_SER_BATTERY,      T_D_SER_SOC};
+  b += F("<div id=\"verlauf\" data-sep=\"");
+  b += langDecPoint();
+  b += F("\" data-col=\"");
+  for (int i = 0; i < kChartSeries; i++) {
+    if (i > 0) {
+      b += F(",");
+    }
+    // The colour as the browser writes it: six hex digits without the 0x.
+    char hex[8];
+    snprintf(hex, sizeof(hex), "%06x", (unsigned)kChartColor[i]);
+    b += hex;
+  }
+  b += F("\" data-lab=\"");
+  for (int i = 0; i < kChartSeries; i++) {
+    if (i > 0) {
+      b += F("|");
+    }
+    b += tr(kSerId[i]);
+  }
+  b += F("\" data-stampfmt=\"");
+  b += tr(T_NOTE_UPDATED);
+  b += F("\" data-none=\"");
+  b += tr(T_NOTE_NO_DATA);
+  b += F("\" data-err=\"");
+  b += tr(T_ERR_LOAD_FAILED);
+  b += F("\"></div>");
+  b += F("<p class=\"stamp\">");
+  b += tr(T_NOTE_REFRESHED);
+  b += F("</p>");
+  sendNavPage(tr(T_PAGE_VERLAUF), "/verlauf", b, nullptr, true);
 }
 
 // ---------------------------------------------------------------------------
@@ -1357,6 +1407,7 @@ void webStart() {
   // Plain URIs match exactly (Uri::canHandle), so the file routes need the
   // brace form: "/daten/{}" takes the name as path argument 0.
   s_server.on(Uri("/"), HTTP_GET, handleRoot);
+  s_server.on(Uri("/verlauf"), HTTP_GET, handleVerlauf);
   s_server.on(Uri("/api/energie.json"), HTTP_GET, handleApiEnergy);
   s_server.on(Uri("/api/verlauf.json"), HTTP_GET, handleApiHistory);
   s_server.on(Uri("/daten"), HTTP_GET, handleData);
