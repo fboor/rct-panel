@@ -199,6 +199,14 @@ Lücke hinweg richtig. Der externe Generator zählt zur Erzeugung und zum Verbra
 geblieben ist: erzeugt minus eingespeist. Die Einspeisezähler kommen am Gerät
 negativ an, deshalb wird der Betrag genommen - an einer Stelle, nicht sechsmal.
 
+Der S0-Anteil wird **nicht** aus der Momentanleistung hochgerechnet. `ext_total_wh`
+zählt die *Erzeugung* an diesem Eingang, und eine Anlage ohne Erzeugung dort hat
+schlicht keinen Anteil an den Summen - auch wenn die Linie EXT im Diagramm den
+Verbrauch am selben Eingang zeigt (`io_board.s0_external_power`, ein
+Momentanwert). Auf dem Entwicklergerät ist das genau so: über 30 h und 338
+Proben keine einzige Änderung an `ext_total_wh` (fest bei 1 545 861 Wh), während
+`s0` in 117 Proben ungleich null war.
+
 Die sechs Reihen sind dieselben wie in `csvrow::toSample()`: der Lastzähler des
 Wechselrichters hat den S0-Zähler schon abgezogen, deshalb ist der Verbrauch
 Zähler plus extern, und die Erzeugung sind beide Strings zusammen.

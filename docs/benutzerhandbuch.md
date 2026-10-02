@@ -492,6 +492,14 @@ paar Sekunden) und behält sie im Speicher: weiterblättern kostet danach keinen
 weiteren Zugriff aufs Panel. Das Panel selbst rechnet bei diesen Bereichen
 nichts — es hat die Zahlen bereits auf die Karte geschrieben.
 
+> **Hinweis zur Linie EXT und zu den Summen:** Die Linie **EXT** zeigt die
+> Momentanleistung am S0-Eingang. In die Balken darunter zählt dagegen nur, was
+> dort **erzeugt** wird (`ext_total_wh` seit Inbetriebnahme), nicht was
+> verbraucht wird. Solange an diesem Eingang nichts erzeugt wird, bleiben die
+> Summen unverändert, während die Linie den Verbrauch am selben Eingang zeigt.
+> Beides ist richtig: erzeugt wird über den Zähler gezählt, der Verbrauch über die
+> Momentanwerte, die der Wechselrichter nicht mitzählt.
+
 Fehlt eine Probe, bricht die Linie dort, wo nichts gemessen wurde, statt über
 die Lücke hinwegzugehen. Unter dem Diagramm steht derselbe Hinweis wie am
 Panel, etwa „9 Lücken, 110 min ohne Messwerte" — damit eine Aufzeichnungspause
