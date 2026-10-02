@@ -302,6 +302,30 @@ static uint32_t s_histSeedStartMs = 0; // boot time used for the no-card grace
 static int s_gapCount = 0;          // gaps in the current 24 h window
 static uint32_t s_gapSeconds = 0;   // total time missing from them
 
+// --- Access for the web interface -------------------------------------------
+// The history ring lives here, so the web interface asks for its points instead
+// of keeping a second copy of the numbers. It reads point by point: a copy for
+// one request would be 288 * 6 floats plus timestamps, about 8 kB of RAM, and
+// the answer is thrown away as soon as it has been sent.
+
+int guiHistoryPoints() { return s_histCount; }
+
+bool guiHistoryPoint(int idx, uint32_t *ts, float *w) {
+  if (idx < 0 || idx >= s_histCount) {
+    return false;
+  }
+  // The ring is a ring: the oldest point is not at index 0 but wherever the
+  // write cursor is now that many slots ahead. Counting from there is the same
+  // order the chart gets (see updateChartRange).
+  const int slot = (s_histNext - s_histCount + idx + HIST_POINTS) % HIST_POINTS;
+  if (!s_histOk[slot] || s_histTs[slot] == 0) {
+    return false; // gap marker, nothing was measured
+  }
+  *ts = s_histTs[slot];
+  memcpy(w, &s_hist[slot * HIST_SERIES], sizeof(float) * HIST_SERIES);
+  return true;
+}
+
 // Defined below refreshCb (which calls it): ring + chart share one writer so
 // restored rows and live samples land in identical state.
 static void histPush(const float v[HIST_SERIES], uint32_t ts);
@@ -550,6 +574,29 @@ static void energyPeriodValues(const RctSnapshot &s, int period,
   const float selfUse =
       pv - out[EB_VAL_FEED] > 0.0f ? pv - out[EB_VAL_FEED] : 0.0f;
   out[EB_VAL_SELF] = selfUse;
+}
+
+// The five figures of one period plus the two percentages, for whoever needs
+// them as numbers instead of as bars. The web interface asks here, so its JSON
+// and the Energie page cannot report different numbers for the same period.
+//
+// period is 0 day, 1 month, 2 year, 3 total. The percentages follow the Heute
+// page: autarky is what the household covered itself, ownShare is how much of
+// the generation stayed here.
+void guiEnergyPeriod(int period, float wh[5], float *autarky,
+                     float *ownShare) {
+  energyPeriodValues(rctState, period, wh);
+  const float pv = wh[EB_VAL_PV];
+  const float grid = wh[EB_VAL_GRID];
+  const float load = wh[EB_VAL_LOAD];
+  *autarky = load > 0.0f ? (1.0f - grid / load) * 100.0f : 100.0f;
+  if (*autarky < 0.0f) {
+    *autarky = 0.0f;
+  }
+  *ownShare = pv > 0.0f ? wh[EB_VAL_SELF] / pv * 100.0f : 0.0f;
+  if (*ownShare > 100.0f) {
+    *ownShare = 100.0f;
+  }
 }
 
 // Highlight the active period button (portal dashboard style).

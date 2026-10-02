@@ -22,6 +22,9 @@
 #   crc_test       the frame checksum: check values computed independently of
 #                  the implementation, plus the padding rule for odd lengths
 #                  that the three-byte extension frame depends on
+#   json_test      the numbers in the web interface's JSON answers: fixed-point
+#                  without an exponent, no trailing zeros, and null instead of
+#                  a NaN - the case a parser stops reading at
 #
 # The RCT simulator test used to be here. It imports rctclient (GPL-3.0), so the
 # simulator lives outside this repository now - see its own README. It is run
@@ -38,7 +41,7 @@ set -e
 cd "$(dirname "$0")/.."
 
 fail=0
-for t in relay_test sd_queue_test numfmt_test i18n_test backlight_test badge_test crc_test; do
+for t in relay_test sd_queue_test numfmt_test i18n_test backlight_test badge_test crc_test json_test; do
   printf '\n=== %s ===\n' "$t"
   if sh "tools/$t/run.sh"; then
     :

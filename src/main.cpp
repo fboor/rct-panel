@@ -145,8 +145,7 @@ void loop() {
     // Wall clock for the "next calibration" countdown on the Gerät page;
     // becomes valid a few seconds after the link is up (non-blocking).
     timeStarted = true;
-    configTzTime("CET-1CEST,M3.5.0,M10.5.0/3", "pool.ntp.org",
-                 "de.pool.ntp.org");
+    configTzTime(kTimeZone, "pool.ntp.org", "de.pool.ntp.org");
   }
   if (networkReady) {
     wifiReconnectLoop();

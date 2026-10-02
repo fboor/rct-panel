@@ -36,4 +36,30 @@ bool guiRequestShot();
 // for up to 5 s, so the file appears a second or two after the button.
 bool guiShotRunning();
 
+// The five energy figures of one period, in Wh, plus the two percentages:
+//
+//   wh[0] pv generation      wh[3] grid draw
+//   wh[1] own consumption    wh[4] consumption (incl. external generator)
+//   wh[2] grid feed-in
+//   *autarky     own consumption as a share of the consumption
+//   *ownShare    own consumption as a share of the generation
+//
+// Same computation the Energie page draws (energyPeriodValues), so the page and
+// the web interface cannot report different numbers for the same period.
+// period is 0 day, 1 month, 2 year, 3 total.
+void guiEnergyPeriod(int period, float wh[5], float *autarky, float *ownShare);
+
+// The 24 h ring, oldest point first, for the web interface's chart.
+// guiHistoryPoints() is how many points the ring holds at the moment (288 once
+// it has been full for a day, fewer right after a restart). False from
+// guiHistoryPoint() means the point has no sample - the ring starts empty and
+// the gaps after a pause stay empty, so the chart can break its line instead of
+// inventing a value.
+//
+// The web handler reads point by point rather than copying the ring into a
+// buffer: 288 * 6 floats plus timestamps would be 8 kB of RAM for the sake of
+// one request.
+int guiHistoryPoints();
+bool guiHistoryPoint(int idx, uint32_t *ts, float *w);
+
 #endif // GUI_APP_H

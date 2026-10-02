@@ -1,12 +1,15 @@
 // Web interface for normal operation - see docs/web-interface.md and
 // src/web/WebServer.h for the design.
 //
-// Four routes, served by one WebServer on port 80 that is pumped from loop():
+// Four pages and two JSON endpoints, served by one WebServer on port 80 that is
+// pumped from loop():
 //
-//   /            overview
-//   /daten       the logged CSV files, tail or whole
-//   /bilder      the screenshots taken on the panel
-//   /update      firmware upload (OTA)
+//   /                      overview
+//   /api/energie.json      the energy figures of one period, as numbers
+//   /api/verlauf.json      the 24 h ring, as numbers
+//   /daten                 the logged CSV files, tail or whole
+//   /bilder                the screenshots taken on the panel
+//   /update                firmware upload (OTA)
 //
 // Four rules shape the code:
 //
@@ -33,6 +36,7 @@
 #include "../output/Relay.h"
 #include "../rct/RctTypes.h"
 #include "../storage/sdlog.h"
+#include "Json.h"
 #include "pages.h"
 
 #include <ESPmDNS.h>
@@ -436,6 +440,142 @@ void handleRoot() {
   b += F("</button>");
   b += F("</form>");
   sendNavPage(tr(T_PAGE_ROOT), "/", b);
+}
+
+// ---------------------------------------------------------------------------
+// JSON for the charts
+// ---------------------------------------------------------------------------
+//
+// Two endpoints, read-only, both drawn by the browser. They carry numbers, not
+// markup: what a phone renders is a decision of the browser, and the panel does
+// not need a drawing library for it.
+//
+// They answer from RAM (guiEnergyPeriod, guiHistoryPoint), not from the card, so
+// they work when no SD card is in the panel and cannot block the GUI. Only the
+// browser-side file history (day, week, month) reads the CSV.
+
+// The time zone goes into every answer, as the POSIX string the panel itself
+// runs with. The browser needs it to group the CSV rows into the same days the
+// panel does; a single UTC offset would be an hour out for half the year once
+// daylight saving is in play.
+static void addTz(String &j) {
+  j += F("\"tz\":\"");
+  j += kTimeZone;
+  j += F("\",");
+}
+
+// One number into the answer. The rules live in Json.h and are host-tested; the
+// buffer here is stack, and the String was reserved once for the whole answer.
+static void addNum(String &j, float v, int decimals) {
+  char b[24];
+  if (jsonNum(b, sizeof(b), (double)v, decimals) > 0) {
+    j += b;
+  }
+}
+
+// GET /api/energie.json?zeitraum=tag|monat|jahr|gesamt
+//
+// The five energy figures of one period and the two percentages, in Wh and in
+// per cent. Same source as the bars on the overview page, so the two cannot
+// disagree. Unknown or missing values mean the day period.
+void handleApiEnergy() {
+  int period = 0;
+  if (s_server.hasArg("zeitraum")) {
+    const String z = s_server.arg("zeitraum");
+    if (z == F("monat")) {
+      period = 1;
+    } else if (z == F("jahr")) {
+      period = 2;
+    } else if (z == F("gesamt")) {
+      period = 3;
+    }
+  }
+  float wh[5], autarky, ownShare;
+  guiEnergyPeriod(period, wh, &autarky, &ownShare);
+
+  String j;
+  j.reserve(320);
+  j = '{';
+  addTz(j);
+  j += F("\"period\":\"");
+  static const char *names[4] = {"day", "month", "year", "total"};
+  j += names[period];
+  j += F("\",\"unit\":\"Wh\",\"values\":{\"pv\":");
+  addNum(j, wh[0], 0);
+  j += F(",\"own\":");
+  addNum(j, wh[1], 0);
+  j += F(",\"feed\":");
+  addNum(j, wh[2], 0);
+  j += F(",\"draw\":");
+  addNum(j, wh[3], 0);
+  j += F(",\"load\":");
+  addNum(j, wh[4], 0);
+  j += F("},\"autarky\":");
+  addNum(j, autarky, 1);
+  j += F(",\"ownShare\":");
+  addNum(j, ownShare, 1);
+  j += F("}");
+  s_server.send(200, "application/json; charset=utf-8", j);
+}
+
+// GET /api/verlauf.json
+//
+// The 24 h ring the Verlauf page draws, as a flat list of numbers.
+//
+//   ts   unix seconds of the sample
+//   v[]  six values: grid, consumption (incl. external), PV, external,
+//        battery power, state of charge
+//
+// The values are one list per point, flattened, and a point that has no sample
+// is null instead of six zeros - the chart then breaks its line there rather
+// than drawing a dip to zero that never happened. First and last are the
+// oldest and newest timestamp in the window.
+void handleApiHistory() {
+  const int n = guiHistoryPoints();
+  float v[6];
+  uint32_t ts = 0;
+  bool written = false;
+  uint32_t from = 0, to = 0;
+
+  // One reservation for the whole answer, so the String grows in a single step:
+  // about 72 bytes per point (10 digits of timestamp, six numbers, punctuation)
+  // plus the header.
+  String j;
+  j.reserve(800 + (size_t)n * 72);
+  j = '{';
+  addTz(j);
+  j += F("\"points\":");
+  j += n;
+  j += F(",\"series\":[\"grid\",\"load\",\"pv\",\"ext\",\"battery\",\"soc\"],"
+         "\"unit\":[\"W\",\"W\",\"W\",\"W\",\"W\",\"%\"],\"data\":[");
+  for (int i = 0; i < n; i++) {
+    if (!guiHistoryPoint(i, &ts, v)) {
+      j += written ? F(",null") : F("null");
+      continue;
+    }
+    if (from == 0) {
+      from = ts; // oldest sample the ring still holds
+    }
+    to = ts;
+    j += written ? F(",") : F("");
+    written = true;
+    j += F("{\"t\":");
+    j += ts;
+    j += F(",\"v\":[");
+    for (int k = 0; k < 6; k++) {
+      if (k > 0) {
+        j += F(",");
+      }
+      addNum(j, v[k], 1);
+    }
+    j += F("]}");
+  }
+  j += F("],\"from\":");
+  j += from;
+  j += F(",\"to\":");
+  j += to;
+  j += F("}");
+  s_server.send(200, "application/json; charset=utf-8", j);
 }
 
 // ---------------------------------------------------------------------------
@@ -1156,6 +1296,8 @@ void webStart() {
   // Plain URIs match exactly (Uri::canHandle), so the file routes need the
   // brace form: "/daten/{}" takes the name as path argument 0.
   s_server.on(Uri("/"), HTTP_GET, handleRoot);
+  s_server.on(Uri("/api/energie.json"), HTTP_GET, handleApiEnergy);
+  s_server.on(Uri("/api/verlauf.json"), HTTP_GET, handleApiHistory);
   s_server.on(Uri("/daten"), HTTP_GET, handleData);
   s_server.on(Uri("/bilder"), HTTP_GET, handleShots);
   s_server.on(UriBraces("/daten/{}"), HTTP_GET, handleCsvFile);

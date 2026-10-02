@@ -17,6 +17,12 @@
 extern char rct_host[41]; // IP address or hostname of the RCT Power device
 extern char rct_port[6];  // TCP port (8899 is the RCT Power standard port)
 
+// Time zone used for SNTP, as a POSIX TZ string. It is also handed to the web
+// interface, because the browser has to group the CSV rows into the same days
+// the panel does - and a single UTC offset would be an hour wrong for half the
+// year once daylight saving is in play.
+static const char kTimeZone[] = "CET-1CEST,M3.5.0,M10.5.0/3";
+
 // Load persisted settings from NVS.
 void readConfig();
 
