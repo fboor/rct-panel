@@ -94,6 +94,12 @@ code{background:#e8ebef;padding:1px 5px;border-radius:4px;font-size:14px}
 .seg{display:flex;gap:6px;margin:0 0 12px}
 .seg button{flex:1;padding:9px 4px;border:1px solid #dfe3e8;background:#fff;border-radius:8px;font-size:14px;color:#5a6672;cursor:pointer}
 .seg button.on{background:#2f6fb5;border-color:#2f6fb5;color:#fff;font-weight:600}
+/* The navigator of the history page: two buttons and the period they move over.
+   The text in between takes what is left and gives up with an ellipsis rather
+   than pushing a button off the edge of a narrow phone. */
+.nav{display:flex;align-items:center;gap:10px;margin:0 0 12px}
+.nav span{flex:1;min-width:0;text-align:center;font-size:14px;color:#5a6672;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nav .btn{flex:0 0 auto}
 .bar{background:#fff;border:1px solid #dfe3e8;border-radius:8px;padding:9px 12px;margin-bottom:7px}
 .bar .l{display:flex;justify-content:space-between;gap:10px;font-size:14px}
 .bar .l b{font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
@@ -243,6 +249,167 @@ function rpHm(tz,t){
 function rpDateHm(tz,t){
   return rpDayKey(tz,t)+' '+rpHm(tz,t);
 }
+// --- civil dates ------------------------------------------------------------
+// A day key is a calendar day, not an instant: shifting one by a day is
+// arithmetic on the calendar and not on time, so no time zone enters here and
+// no switch-over can move a day boundary.
+function rpDayNum(k){
+  var p=k.split('-');
+  return Date.UTC(+p[0],+p[1]-1,+p[2])/1000;
+}
+function rpKeyOf(s){
+  var d=new Date(s*1000),m=d.getUTCMonth()+1;
+  return d.getUTCFullYear()+'-'+(m<10?'0':'')+m+'-'+(d.getUTCDate()<10?'0':'')+d.getUTCDate();
+}
+function rpShift(k,n){return rpKeyOf(rpDayNum(k)+n*86400)}
+// One month forward or back, in months and not in days: the first of October
+// minus 31 days is the 31st of August, so stepping back from a month lands in
+// the wrong one - and from a February it lands in no month at all.
+function rpShiftMonth(k,n){
+  var p=k.split('-'),y=+p[0],m=+p[1]-1+n;
+  y+=Math.floor(m/12);
+  m=((m%12)+12)%12;
+  return y+'-'+(m<9?'0':'')+(m+1)+'-01';
+}
+function rpDow(k){return new Date(rpDayNum(k)*1000).getUTCDay()}
+function rpDaysInMonth(k){
+  var p=k.split('-');
+  return new Date(Date.UTC(+p[0],+p[1],0)).getUTCDate();
+}
+// {Y} {M} {D} - the pattern comes from the firmware, because the order a reader
+// expects is a matter of language and not of logic.
+function rpFmtDate(k,f){
+  var p=k.split('-');
+  return f.replace('{Y}',p[0]).replace('{M}',p[1]).replace('{D}',p[2]);
+}
+// --- the month file ----------------------------------------------------------
+// One row out of a CSV file, as the numbers the chart needs.
+//
+// The six powers are the ones the panel computes in csvrow::toSample()
+// (src/storage/CsvRow.h): the inverter's load meter already has the S0
+// generation subtracted, so the consumption is meter plus external, and the
+// production is the sum of the two strings. The same file has to give the same
+// picture here as it gives on the panel.
+//
+// `s` is null for a row written before the sums were added to the format: the
+// powers are in such a row, the seven lifetime counters are not.
+function rpRows(text,names,tz){
+  var ix={},i,k,out=[],lines=text.split('\n');
+  for(i=0;i<names.length;i++){ix[names[i]]=i}
+  for(i=0;i<lines.length;i++){
+    var line=lines[i];
+    if(line.length<12||line.indexOf('ts,')===0){continue}
+    var f=line.split(',');
+    var t=+f[ix.ts];
+    if(!(t>1000000000)){continue}
+    var sums=null;
+    if(f[ix.grid_total_wh]!==undefined){
+      sums=[+f[ix.pv_a_total_wh],+f[ix.pv_b_total_wh],+f[ix.ext_total_wh],
+            +f[ix.load_total_wh],+f[ix.feed_total_wh],+f[ix.grid_total_wh]];
+    }
+    out.push({t:t,dk:rpDayKey(tz,t),
+      v:[+f[ix.grid_l1]+ +f[ix.grid_l2]+ +f[ix.grid_l3],
+         +f[ix.load_l1]+ +f[ix.load_l2]+ +f[ix.load_l3]+ +f[ix.s0],
+         +f[ix.pv_a]+ +f[ix.pv_b],
+         +f[ix.s0],+f[ix.bat],+f[ix.soc]],
+      s:sums});
+  }
+  return out;
+}
+// First and last row of one calendar day, as indexes. Null when the day has no
+// row at all - an empty day is not a zero day.
+function rpSpan(rows,day){
+  var a=-1,b=-1,i;
+  for(i=0;i<rows.length;i++){
+    if(rows[i].dk===day){if(a<0){a=i}b=i}
+  }
+  return a<0?null:[a,b];
+}
+// The energy of the rows from a to b, in Wh.
+//
+// A difference of the lifetime counters, not a sum of momentary values: that is
+// the size the device counts itself, and it stays right across a gap. The
+// external generator is added to the production and to the consumption, exactly
+// as the panel does (energyPeriodValues), and the own consumption is what stayed
+// here: generated minus fed in.
+//
+// The feed-in counter arrives negative on the real device, so the magnitude of
+// the difference is what went in - the same one place where the panel drops the
+// sign.
+function rpEnergy(rows,a,b){
+  var s0=rows[a].s,s1=rows[b].s,i;
+  if(!s0||!s1){return null}
+  var ext=Math.max(0,s1[2]-s0[2]);
+  var pv=Math.max(0,(s1[0]-s0[0])+(s1[1]-s0[1]))+ext;
+  var load=Math.max(0,s1[3]-s0[3])+ext;
+  var feed=Math.abs(s1[4]-s0[4]);
+  var grid=Math.max(0,s1[5]-s0[5]);
+  var own=Math.max(0,pv-feed);
+  return {values:{pv:pv,own:own,feed:feed,draw:grid,load:load},
+          autarky:load>0?Math.max(0,1-grid/load)*100:100,
+          ownShare:pv>0?Math.min(100,own/pv*100):0,
+          rows:b-a+1};
+}
+// The days a period covers, as day keys. The week starts on Monday, the way the
+// manual names it; the month is the calendar month of the anchor day.
+function rpDays(range,anchor){
+  var out=[],i,k;
+  if(range==='day'){return [anchor]}
+  if(range==='week'){
+    var start=rpShift(anchor,-((rpDow(anchor)+6)%7));
+    for(i=0;i<7;i++){out.push(rpShift(start,i))}
+    return out;
+  }
+  var y=anchor.substring(0,4),m=anchor.substring(5,7);
+  for(i=1;i<=rpDaysInMonth(anchor);i++){out.push(y+'-'+m+'-'+(i<10?'0':'')+i)}
+  return out;
+}
+// A band per day: the lowest and the highest value of each series, which is what
+// five-minute samples over a week or a month can honestly be drawn as. A band
+// is not a line through points that were never plotted.
+function rpBands(rows,days){
+  var out=[],i,k;
+  for(i=0;i<days.length;i++){
+    var sp=rpSpan(rows,days[i]),lo=null,hi=null;
+    if(sp){
+      for(k=sp[0];k<=sp[1];k++){
+        var v=rows[k].v,j;
+        if(lo===null){
+          // One row starts both edges, and each of the six with its own value:
+          // filling all six with the first would clamp every other series to
+          // whatever the grid happened to be on that sample.
+          lo=[v[0],v[0],v[0],v[0],v[0],v[0]];
+          hi=[v[0],v[0],v[0],v[0],v[0],v[0]];
+          for(j=0;j<6;j++){lo[j]=v[j];hi[j]=v[j]}
+        }
+        for(j=0;j<6;j++){
+          if(v[j]<lo[j]){lo[j]=v[j]}
+          if(v[j]>hi[j]){hi[j]=v[j]}
+        }
+      }
+    }
+    if(lo!==null){out.push({t:rpDayNum(days[i]),lo:lo,hi:hi})}
+  }
+  return out;
+}
+// A file whose header line is shorter than the current one was written before
+// the sums were added to the format. Its rows carry no sums at all.
+function rpLegacy(txt){
+  var lines=txt.split('\n'),i;
+  for(i=0;i<lines.length;i++){
+    if(lines[i].indexOf('ts,')!==0){continue}
+    return lines[i].split(',').length<23;
+  }
+  return false;
+}
+// The chart of one day: one point per sample, chronological. A sample that is
+// not there is a point that is not there, and the line breaks over it.
+function rpDayPoints(rows,day){
+  var sp=rpSpan(rows,day),out=[],k;
+  if(!sp){return out}
+  for(k=sp[0];k<=sp[1];k++){out.push({t:rows[k].t,v:rows[k].v})}
+  return out;
+}
 )";
 
 // ---------------------------------------------------------------------------
@@ -292,19 +459,25 @@ function rpChart(el,j){
   var cols=(el.getAttribute('data-col')||'').split(',');
   var sep=rpSep(el,'data-sep');
   var pts=j.data||[];
+  // Two shapes. "line" is one point per sample (24 h, one day); "band" is one
+  // lowest and one highest value per day (a week, a month), because five-minute
+  // samples over a month cannot honestly be drawn as a line through points.
+  var band=j.mode==='band';
   var n=pts.length,first=null,last=null,i,k,p;
   var lo=0,hi=0,seen=false;
+  var look=function(w){
+    if(w===null||w===undefined||!(w===w)){return}
+    if(!seen){lo=hi=w;seen=true}
+    if(w<lo){lo=w}
+    if(w>hi){hi=w}
+  };
   for(i=0;i<n;i++){
     p=pts[i];
     if(!p){continue}
     if(first===null){first=p.t}
     last=p.t;
     for(k=0;k<5;k++){ // the first five are powers; the sixth is the SOC
-      var v=p.v[k];
-      if(v===null||v===undefined){continue}
-      if(!seen){lo=hi=v;seen=true}
-      if(v<lo){lo=v}
-      if(v>hi){hi=v}
+      if(band){look(p.lo[k]);look(p.hi[k])}else{look(p.v[k])}
     }
   }
   if(first===null){
@@ -319,9 +492,13 @@ function rpChart(el,j){
   var step=span<2000?250:(span<4000?500:(span<10000?1000:2000));
   var mlo=Math.floor(lo/step)*step,mhi=Math.ceil(hi/step)*step;
   if(mlo===mhi){mhi=mlo+step}
-  var t0=first,t1=last>first?last:first+1;
+  // A band stands for a whole day, so it is drawn in the middle of it; a point
+  // sits at its own timestamp.
+  var t0=band?first-12*3600:first,t1=last+(band?12*3600:1);
   var xOf=function(t){return rpVX0+(t-t0)/(t1-t0)*rpVW};
   var yOf=function(v){return rpVY0+(mhi-v)/(mhi-mlo)*rpVH};
+  // The SOC has its own axis, 0..100 over the full height.
+  var ySoc=function(v){return rpVY0+(100-v)/100*rpVH};
   var h='<svg viewBox="0 0 360 208">';
   // The three scale markers, inside the plot on the left, like on the panel.
   var marks=[mhi,0,mlo];
@@ -330,33 +507,56 @@ function rpChart(el,j){
     h+='<line x1="'+rpVX0+'" y1="'+ym.toFixed(1)+'" x2="'+(rpVX0+rpVW)+'" y2="'+ym.toFixed(1)+
        '" stroke="#e3e7eb" stroke-width="1"/>';
     h+='<text x="'+(rpVX0-4)+'" y="'+(ym+3).toFixed(1)+'" text-anchor="end" font-size="9" fill="#5a6672">'+
-       rpEsc(rpNum(marks[i]>=0?marks[i]/1000:marks[i]/1000,1,sep))+'</text>';
+       rpEsc(rpNum(marks[i]/1000,1,sep))+'</text>';
   }
-  // Hour marks along the bottom: the time of day at the panel's own zone, not
-  // the browser's - they are the same installation, but a phone abroad would
-  // otherwise put the labels an hour or two off.
-  var stepT=6*3600;
-  for(var t=Math.ceil(t0/stepT)*stepT;t<=t1;t+=stepT){
-    h+='<text x="'+xOf(t).toFixed(1)+'" y="202" text-anchor="middle" font-size="9" fill="#5a6672">'+
-       rpEsc(rpHm(tz,t))+'</text>';
+  if(band){
+    // The days along the bottom, thinned out so the labels cannot collide. The
+    // short pattern drops the year: a row of days either all share one or none
+    // has it.
+    var sf=el.getAttribute('data-sfmt'),every=Math.ceil(n/6);
+    for(i=0;i<n;i++){
+      if(i%every!==0){continue}
+      var day=rpKeyOf(pts[i].t+12*3600);
+      h+='<text x="'+xOf(pts[i].t+12*3600).toFixed(1)+'" y="202" text-anchor="middle" font-size="9" fill="#5a6672">'+
+         rpEsc(rpFmtDate(day,sf||fmt))+'</text>';
+    }
+  }else{
+    // The time of day, at the panel's own zone and not at the browser's: the
+    // same installation, but a phone abroad would otherwise put the labels an
+    // hour or two off.
+    var stepT=6*3600;
+    for(var t=Math.ceil(t0/stepT)*stepT;t<=t1;t+=stepT){
+      h+='<text x="'+xOf(t).toFixed(1)+'" y="202" text-anchor="middle" font-size="9" fill="#5a6672">'+
+         rpEsc(rpHm(tz,t))+'</text>';
+    }
   }
   // The lines. A point without a sample lifts the pen: the line is broken there
-  // instead of closing the gap over a period that was never measured.
+  // instead of closing the gap over a period that was never measured. A band
+  // is the shortest line that says "between these two values", one per day -
+  // and the six are put side by side, because six bands on the same day would
+  // otherwise hide each other.
+  var dayW=n>1?rpVW/(n-1):rpVW;
+  var gap=Math.min(4,dayW/6);
   for(k=0;k<6;k++){
-    var d='',pen=false,yFn;
-    if(k===5){
-      // The SOC has its own axis, 0..100 over the full height.
-      yFn=function(v){return rpVY0+(100-v)/100*rpVH};
+    var d='',pen=false,yFn=(k===5)?ySoc:yOf;
+    if(band){
+      for(i=0;i<n;i++){
+        p=pts[i];
+        if(!p){continue}
+        var a=yFn(p.lo[k]),b=yFn(p.hi[k]);
+        if(!(a===a)||!(b===b)){continue}
+        var xb=(xOf(p.t+12*3600)+(k-2.5)*gap).toFixed(1);
+        d+='M'+xb+' '+Math.min(a,b).toFixed(1)+'L'+xb+' '+Math.max(a,b).toFixed(1);
+      }
     }else{
-      yFn=yOf;
-    }
-    for(i=0;i<n;i++){
-      p=pts[i];
-      if(!p){pen=false;continue}
-      var val=p.v[k];
-      if(val===null||val===undefined){pen=false;continue}
-      d+=(pen?'L':'M')+xOf(p.t).toFixed(1)+' '+yFn(val).toFixed(1);
-      pen=true;
+      for(i=0;i<n;i++){
+        p=pts[i];
+        if(!p){pen=false;continue}
+        var val=p.v[k];
+        if(val===null||val===undefined||!(val===val)){pen=false;continue}
+        d+=(pen?'L':'M')+xOf(p.t).toFixed(1)+' '+yFn(val).toFixed(1);
+        pen=true;
+      }
     }
     if(d){
       h+='<path d="'+d+'" fill="none" stroke="#'+cols[k]+'" stroke-width="1.3"'+
@@ -375,7 +575,9 @@ function rpChart(el,j){
   // so with a number rather than only with a moving line.
   var sf=el.getAttribute('data-stampfmt');
   if(sf){
-    lg+='<p class="stamp">'+rpEsc(sf.replace('%s',rpDateHm(tz,last)))+'</p>';
+    // The newest sample, not the newest shape: in the band view the last point
+    // stands for a whole day and its own timestamp would be midday.
+    lg+='<p class="stamp">'+rpEsc(sf.replace('%s',rpDateHm(tz,(j.stamp||last))))+'</p>';
   }
   el.innerHTML='<div class="chart">'+h+'</div>'+lg;
 }
@@ -391,6 +593,30 @@ function rpLoadChart(el){
     el.setAttribute('data-stamp',j.to||0);
   }).catch(function(){
     rpFail(el);
+  });
+}
+// --- the history from the CSV -------------------------------------------------
+// A month file, loaded once and then kept in memory under its full file name -
+// the month included, because a file called RCT-202609.csv is a different thing
+// from one called RCT-202610.csv and a cache keyed on the month alone would
+// hand out the wrong one.
+//
+// One file at a time: the panel serves one download at a time and answers a
+// second request with "busy", so asking for two months side by side would fail
+// on one of them.
+var rpFiles={};
+function rpFile(key,names,tz,cb){
+  var have=rpFiles[key];
+  if(have){cb(have);return}
+  fetch('/daten/'+encodeURIComponent(key)).then(function(r){
+    if(!r.ok){throw new Error(r.status)}
+    return r.text();
+  }).then(function(txt){
+    var f={key:key,rows:rpRows(txt,names,tz),short:rpLegacy(txt)};
+    rpFiles[key]=f;
+    cb(f);
+  }).catch(function(){
+    cb(null);
   });
 }
 function rpEnergyBars(el,j){
@@ -446,15 +672,173 @@ function rpBoot(){
     }
     rpLoadEnergy(el);
   }
-  // The 24 h chart keeps itself up to date. Unlike the overview this page has
-  // nothing in it that someone could be halfway through typing, and the newest
-  // sample arrives every five minutes - so a static drawing would be stale
-  // almost by definition.
-  var ch=document.getElementById('verlauf');
-  if(ch){
-    rpLoadChart(ch);
-    setInterval(function(){rpLoadChart(ch);},5000);
+  rpVerlauf();
+}
+// The 24 h chart and the history browser. One page, one state: which period is
+// shown and which day it is anchored to.
+function rpVerlauf(){
+  var el=document.getElementById('verlauf');
+  if(!el){return}
+  var seg=document.getElementById('range');
+  var nav=document.getElementById('nav');
+  var lab=document.getElementById('rangetext');
+  var per=document.getElementById('periode');
+  // The column names come from the firmware as the header line of the CSV,
+  // which is comma-separated: one string, split once, read by name.
+  var names=(el.getAttribute('data-cols')||'').split(',');
+  var fmt=el.getAttribute('data-dfmt');
+  var rule=null;                    // the POSIX rule, from the first answer
+  var st={range:'live',day:null,follow:true}; // the period, its day, and whether
+                                            // it still follows the day
+  var live=null;                    // the timer of the live view
+
+  function stopLive(){
+    if(live){clearInterval(live);live=null}
   }
+  // The time zone rule comes with every answer; one is enough, and it is needed
+  // before a day can be named at all.
+  function needRule(cb){
+    if(rule){cb();return}
+    fetch('/api/verlauf.json').then(function(r){return r.json()}).then(function(j){
+      rule=j.tz;
+      cb();
+    }).catch(function(){
+      rpFail(el);
+    });
+  }
+  function rday(){return rpDayKey(rpTz(rule),Math.floor(Date.now()/1000))}
+  function setButtons(){
+    if(!seg){return}
+    var bs=seg.getElementsByTagName('button'),i;
+    for(i=0;i<bs.length;i++){
+      bs[i].className=(bs[i].getAttribute('data-r')===st.range?'on':'');
+    }
+  }
+  // The 24 h ring, from the panel itself: it is in the panel's memory, and it
+  // keeps itself up to date. Nothing on this page is being typed into, so a
+  // drawing that never refreshes would be stale almost by definition.
+  function liveView(){
+    rpLoadChart(el);
+    live=setInterval(function(){rpLoadChart(el);},5000);
+    if(lab){lab.textContent=el.getAttribute('data-live')}
+    if(nav){nav.style.display='none'}
+    if(per){per.innerHTML=''}
+  }
+  // One period out of the CSV files. The files it needs arrive one after the
+  // other and then stay in memory, so walking through the history costs no
+  // further access to the panel.
+  function fromFile(){
+    var days=rpDays(st.range,st.day),months=[],byMonth={},all=[],i,a,legacy=false,found=0;
+    for(i=0;i<days.length;i++){
+      var m=days[i].substring(0,7);
+      if(months.indexOf(m)<0){months.push(m)}
+    }
+    el.innerHTML='<div class="note">'+rpEsc(el.getAttribute('data-load'))+'</div>';
+    var step=function(k){
+      if(k<months.length){
+        rpFile('RCT-'+months[k].replace('-','')+'.csv',names,rpTz(rule),function(f){
+          byMonth[months[k]]=f?f.rows:null;
+          if(f){found=1}
+          if(f&&f.short){legacy=true}
+          step(k+1);
+        });
+        return;
+      }
+      // The rows of the period in chronological order. A week can cross a month
+      // and a month can cross a year, which is why there is more than one file.
+      for(i=0;i<days.length;i++){
+        var rows=byMonth[days[i].substring(0,7)];
+        if(!rows){continue}
+        var sp=rpSpan(rows,days[i]);
+        if(sp){for(a=sp[0];a<=sp[1];a++){all.push(rows[a])}}
+      }
+      all.sort(function(x,y){return x.t-y.t});
+      draw(all,days,legacy,found);
+    };
+    step(0);
+  }
+  function draw(rows,days,legacy,found){
+    var band=st.range!=='day',pts=[],i;
+    // Two different "nothing here": the card has no file for this period at
+    // all, or the file has no rows in it. One sentence each, because "no
+    // measurements" for a month that was never recorded would read as a gap in
+    // the recording.
+    var empty=found?(el.getAttribute('data-none')):(el.getAttribute('data-nofile'));
+    if(band){
+      pts=rpBands(rows,days);
+    }else{
+      for(i=0;i<rows.length;i++){pts.push({t:rows[i].t,v:rows[i].v})}
+    }
+    if(!pts.length){
+      el.innerHTML='<div class="note">'+rpEsc(empty)+'</div>';
+    }else{
+      rpChart(el,{tz:rule,mode:band?'band':'line',data:pts,
+                  stamp:rows.length?rows[rows.length-1].t:0});
+    }
+    if(lab){lab.textContent=rangeText(days)}
+    if(nav){nav.style.display='flex'}
+    var nx=document.getElementById('next');
+    if(nx){nx.disabled=days[days.length-1]>=rday()}
+    // The energy of the period: the difference of the counters between its
+    // first and its last row. Both ends need the sums - a row without them has
+    // nothing to subtract, which is what the note below the chart says.
+    var e=(rows.length>1)?rpEnergy(rows,0,rows.length-1):null;
+    if(per){
+      if(e){rpEnergyBars(per,e)}
+      else{per.innerHTML='<div class="note">'+rpEsc(empty)+'</div>'}
+    }
+    var nt=document.getElementById('hinweis');
+    if(nt){
+      nt.innerHTML=legacy?'<div class="note">'+rpEsc(nt.getAttribute('data-old'))+'</div>':'';
+    }
+  }
+  function rangeText(days){
+    if(st.range==='day'){return rpFmtDate(days[0],fmt)}
+    // A week and a month are shown as the span they cover. The year is written
+    // once, at the front, and dropped at the back when it is the same year -
+    // which also keeps the line inside a narrow phone.
+    var first=rpFmtDate(days[0],fmt),last=days[days.length-1];
+    var tail=(last.substring(0,4)===days[0].substring(0,4))
+      ?rpFmtDate(last,el.getAttribute('data-sfmt')):rpFmtDate(last,fmt);
+    return first+' - '+tail;
+  }
+  function show(){
+    stopLive();
+    needRule(function(){
+      setButtons();
+      // A page left open across midnight follows the day - but only while the
+      // reader has not stepped back, or every step would be undone by the next
+      // redraw.
+      var t=rday();
+      if(st.day===null||st.follow){st.day=t}
+      if(st.range==='live'){liveView();return}
+      fromFile();
+    });
+  }
+  function step(n){
+    if(st.range==='month'){
+      st.day=rpShiftMonth(st.day,n);
+    }else{
+      st.day=rpShift(st.day,n<0?-(st.range==='day'?1:7):(st.range==='day'?1:7));
+    }
+    st.follow=(st.day===rday());
+    show();
+  }
+  if(seg){
+    seg.addEventListener('click',function(ev){
+      var b=ev.target;
+      if(!b||b.tagName!=='BUTTON'){return}
+      st.range=b.getAttribute('data-r');
+      st.day=rday();
+      st.follow=true;
+      show();
+    });
+  }
+  var pv=document.getElementById('prev');
+  var nx=document.getElementById('next');
+  if(pv){pv.addEventListener('click',function(){step(-1)})}
+  if(nx){nx.addEventListener('click',function(){step(1)})}
+  show();
 }
 if(document.readyState==='loading'){
   document.addEventListener('DOMContentLoaded',rpBoot);

@@ -36,6 +36,7 @@
 #include "../i18n/Lang.h"
 #include "../output/Relay.h"
 #include "../rct/RctTypes.h"
+#include "../storage/CsvRow.h"
 #include "../storage/sdlog.h"
 #include "Json.h"
 #include "pages.h"
@@ -246,6 +247,34 @@ void addNav(String &page, const char *current) {
   page += F("</nav>");
 }
 
+// The attributes a bar block needs: the labels, the two rates, the keys of the
+// JSON answer and the decimal separator of this build. One function for both
+// places that draw the five energy bars - the overview and the history page -
+// because two written-down lists would mean one of them shows the wrong thing
+// on the day a bar is renamed.
+void addBarAttrs(String &b) {
+  static const LangId kBarId[5] = {T_D_EN_PV, T_D_EN_SELFUSE, T_D_EN_EXPORT,
+                                   T_D_EN_IMPORT, T_D_EN_LOAD};
+  b += F(" data-sep=\"");
+  b += langDecPoint();
+  b += F("\" data-key=\"pv|own|feed|draw|load\" data-lab=\"");
+  for (int i = 0; i < 5; i++) {
+    if (i > 0) {
+      b += F("|");
+    }
+    b += tr(kBarId[i]);
+  }
+  b += F("\" data-r=\"");
+  b += tr(T_D_CARD_SELF);
+  b += F("|");
+  b += tr(T_D_CARD_SELFRATE);
+  b += F("\" data-err=\"");
+  b += tr(T_ERR_LOAD_FAILED);
+  b += F("\" data-none=\"");
+  b += tr(T_NOTE_NO_DATA);
+  b += F("\"");
+}
+
 // header + nav + main + body, sent as one page.
 //
 // refreshTag != nullptr is a whole meta tag for the head, which makes the
@@ -351,27 +380,9 @@ void handleRoot() {
   }
   // Everything the script needs comes with the container, in the same order as
   // the five bars on the panel and the keys of the JSON answer.
-  {
-    static const LangId kBarId[5] = {T_D_EN_PV, T_D_EN_SELFUSE, T_D_EN_EXPORT,
-                                     T_D_EN_IMPORT, T_D_EN_LOAD};
-    b += F("<div id=\"energie\" data-sep=\"");
-    b += langDecPoint();
-    b += F("\" data-period=\"tag\" data-key=\"pv|own|feed|draw|load\" "
-           "data-lab=\"");
-    for (int i = 0; i < 5; i++) {
-      if (i > 0) {
-        b += F("|");
-      }
-      b += tr(kBarId[i]);
-    }
-    b += F("\" data-r=\"");
-    b += tr(T_D_CARD_SELF);
-    b += F("|");
-    b += tr(T_D_CARD_SELFRATE);
-    b += F("\" data-err=\"");
-    b += tr(T_ERR_LOAD_FAILED);
-    b += F("\"></div>");
-  }
+  b += F("<div id=\"energie\" data-period=\"tag\"");
+  addBarAttrs(b);
+  b += F("></div>");
 
   b += F("<h2>");
   b += tr(T_H_DEVICE);
@@ -641,16 +652,48 @@ void handleApiHistory() {
   s_server.send(200, "application/json; charset=utf-8", j);
 }
 
-// GET /verlauf - the 24 h line chart.
+// GET /verlauf - the 24 h line chart and the history browser.
 //
-// The page is little more than a container: the drawing happens in the browser
-// (web::kScript) out of /api/verlauf.json, which is what keeps both the drawing
-// code and the buffer it would need off the panel. What the page does carry are
-// the six labels, the six colours and the sentences - all of them from the
-// firmware, so a word or a colour cannot differ from the panel's own chart.
+// The page carries the words, the colours, the date format and the 23 column
+// names of the CSV; the drawing and the whole calculation happen in the browser
+// (web::kLogic and web::kScript). That is what keeps the drawing code and the
+// buffer it would need off the panel: the numbers of a month are a difference
+// of two counters out of a file the panel has already written, and doing that
+// per request would cost the panel a pass over a megabyte of card.
 void handleVerlauf() {
   String b;
-  b.reserve(900);
+  b.reserve(2600);
+  // The range: the ring in the panel's memory, or a period out of the files.
+  {
+    static const char *kRange[4] = {"live", "day", "week", "month"};
+    static const LangId kRangeId[4] = {T_RANGE_LIVE, T_RANGE_DAY,
+                                       T_RANGE_WEEK, T_RANGE_MONTH};
+    b += F("<div class=\"seg\" id=\"range\">");
+    for (int i = 0; i < 4; i++) {
+      b += F("<button");
+      if (i == 0) {
+        b += F(" class=\"on\"");
+      }
+      b += F(" data-r=\"");
+      b += kRange[i];
+      b += F("\">");
+      b += tr(kRangeId[i]);
+      b += F("</button>");
+    }
+    b += F("</div>");
+  }
+  // Step back and forth. Hidden while the 24 h view is on: it has no past in it
+  // that is not already shown.
+  b += F("<div class=\"nav\" id=\"nav\" style=\"display:none\">");
+  b += F("<button class=\"btn gray\" id=\"prev\" title=\"");
+  b += tr(T_BTN_PREV);
+  b += F("\">&lsaquo;</button>");
+  b += F("<span id=\"rangetext\"></span>");
+  b += F("<button class=\"btn gray\" id=\"next\" title=\"");
+  b += tr(T_BTN_NEXT);
+  b += F("\">&rsaquo;</button>");
+  b += F("</div>");
+
   b += F("<h2>");
   b += tr(T_D_HEAD_GRAPH);
   b += F("</h2>");
@@ -664,7 +707,7 @@ void handleVerlauf() {
     if (i > 0) {
       b += F(",");
     }
-    // The colour as the browser writes it: six hex digits without the 0x.
+    // The colour the way the browser writes it: six hex digits, no 0x.
     char hex[8];
     snprintf(hex, sizeof(hex), "%06x", (unsigned)kChartColor[i]);
     b += hex;
@@ -676,13 +719,44 @@ void handleVerlauf() {
     }
     b += tr(kSerId[i]);
   }
+  // The date order follows the language, not the logic: the browser fills in
+  // {Y}, {M} and {D} and nothing else. The short pattern is the same without
+  // the year, for the days along the bottom of a week or a month.
+#if defined(RCT_LANG_EN)
+  b += F("\" data-dfmt=\"{Y}-{M}-{D}\" data-sfmt=\"{M}-{D}\"");
+#else
+  b += F("\" data-dfmt=\"{D}.{M}.{Y}\" data-sfmt=\"{D}.{M}.\"");
+#endif
+  // The column names of the CSV, from the code that writes them, so they cannot
+  // go stale. The browser reads the rows by name, so the order may change; and
+  // a row that is shorter than this list is one from before the sums were added
+  // to the format, which the page then names.
+  b += F("\" data-cols=\"");
+  b += csvrow::kHeader;
   b += F("\" data-stampfmt=\"");
   b += tr(T_NOTE_UPDATED);
+  b += F("\" data-live=\"");
+  b += tr(T_NOTE_LIVE);
+  b += F("\" data-load=\"");
+  b += tr(T_NOTE_LOADING);
+  b += F("\" data-old=\"");
+  b += tr(T_NOTE_OLD_SUMS);
   b += F("\" data-none=\"");
   b += tr(T_NOTE_NO_DATA);
+  b += F("\" data-nofile=\"");
+  b += tr(T_NOTE_NO_FILE);
   b += F("\" data-err=\"");
   b += tr(T_ERR_LOAD_FAILED);
   b += F("\"></div>");
+  b += F("<div id=\"hinweis\" data-old=\"");
+  b += tr(T_NOTE_OLD_SUMS);
+  b += F("\"></div>");
+  // The energy of the chosen period, over the same five bars as the overview.
+  // Wording, colours and both rates come out of one function, so the two pages
+  // cannot drift apart.
+  b += F("<div id=\"periode\"");
+  addBarAttrs(b);
+  b += F("></div>");
   b += F("<p class=\"stamp\">");
   b += tr(T_NOTE_REFRESHED);
   b += F("</p>");

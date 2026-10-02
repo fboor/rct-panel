@@ -107,8 +107,19 @@ const char *const kLang[T_COUNT] = {
     // --- web: the charts -------------------------------------------------
     "Could not load the data.",                                 // T_ERR_LOAD_FAILED
     "No measurements yet.",                                     // T_NOTE_NO_DATA
-    "Updated %s.",                                 // T_NOTE_UPDATED
+    "Updated %s.",                                              // T_NOTE_UPDATED
     "Refreshes itself every 5 seconds.",                       // T_NOTE_REFRESHED
+    "The last 24 hours",                                        // T_NOTE_LIVE
+    "Loading the log &hellip;",                            // T_NOTE_LOADING
+    "There is no file for this period on the card.",         // T_NOTE_NO_FILE
+    "This file has 16 columns: the sums are missing, so the days "
+    "before the update show 0.",                                // T_NOTE_OLD_SUMS
+    "24 h",                                                     // T_RANGE_LIVE
+    "Day",                                                      // T_RANGE_DAY
+    "Week",                                                     // T_RANGE_WEEK
+    "Month",                                                    // T_RANGE_MONTH
+    "Back",                                                     // T_BTN_PREV
+    "Forward",                                                  // T_BTN_NEXT
 
     // --- web: /update --------------------------------------------------------
     "Update firmware",                  // T_H_FIRMWARE

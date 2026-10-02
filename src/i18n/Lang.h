@@ -132,9 +132,19 @@ enum LangId : int {
 
   // --- web: the charts -----------------------------------------------------
   T_ERR_LOAD_FAILED,   // a JSON answer did not arrive
-  T_NOTE_NO_DATA,      // the 24 h ring is still empty
+  T_NOTE_NO_DATA,      // the 24 h ring is still empty, or the period has none
   T_NOTE_UPDATED,      // %s = time of the newest sample, written by the browser
-  T_NOTE_REFRESHED,    // how often the chart asks again
+  T_NOTE_REFRESHED,    // how often the live chart asks again
+  T_NOTE_LIVE,         // the name of the 24 h view
+  T_NOTE_LOADING,      // while a month file is on its way
+  T_NOTE_NO_FILE,      // no file on the card for this period at all
+  T_NOTE_OLD_SUMS,     // a file written before the sums were in the format
+  T_RANGE_LIVE,        // 24 h | Tag | Woche | Monat
+  T_RANGE_DAY,
+  T_RANGE_WEEK,
+  T_RANGE_MONTH,
+  T_BTN_PREV,
+  T_BTN_NEXT,
 
   // --- web: /update --------------------------------------------------------
   T_H_FIRMWARE,

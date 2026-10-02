@@ -112,6 +112,17 @@ const char *const kLang[T_COUNT] = {
     "Noch keine Messwerte.",                         // T_NOTE_NO_DATA
     "Stand %s.",                                     // T_NOTE_UPDATED
     "Aktualisiert sich alle 5 Sekunden.",            // T_NOTE_REFRESHED
+    "Die letzten 24 Stunden",                        // T_NOTE_LIVE
+    "Lade die Aufzeichnung …",                       // T_NOTE_LOADING
+    "F&uuml;r diesen Zeitraum liegt keine Datei auf der Karte.", // T_NOTE_NO_FILE
+    "Diese Datei hat 16 Spalten: Die Summen fehlen, "
+    "die Tage vor dem Update zeigen 0.",              // T_NOTE_OLD_SUMS
+    "24 h",                                          // T_RANGE_LIVE
+    "Tag",                                           // T_RANGE_DAY
+    "Woche",                                         // T_RANGE_WEEK
+    "Monat",                                         // T_RANGE_MONTH
+    "Zur&uuml;ck",                                  // T_BTN_PREV
+    "Weiter",                                        // T_BTN_NEXT
 
     // --- web: /update --------------------------------------------------------
     "Firmware aktualisieren",            // T_H_FIRMWARE
