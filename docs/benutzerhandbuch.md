@@ -463,6 +463,13 @@ selbst neu lädt, würde überschreiben, was Sie gerade eintippen. Zum
 Aktualisieren genügt ein Neuladen des Browsers. Die Werte sind Zähler, eine
 vor zehn Minuten geladene Seite ist also höchstens zehn Minuten alt.
 
+> **Wichtig:** Diese Balken zählen ab dem **letzten Start des Panels**, nicht ab
+> Tagesbeginn. Nach einem Neustart, einem Netzausfall oder einem Tag ohne Daten
+> vom Wechselrichter stehen sie bei null, obwohl an diesem Tag Energie geflossen
+> ist — das Panel selbst zählt genauso, seine Seite *Heute* zeigt dieselben
+> Zahlen. Für „was war am Dienstag" nehmen Sie den **Verlauf**: der rechnet aus
+> der Aufzeichnung auf der Karte und ist nach einem Start nicht auf null.
+
 ### Verlauf
 
 Auf `/verlauf` steht dasselbe Diagramm wie auf der Panel-Seite *24 h Verlauf*,

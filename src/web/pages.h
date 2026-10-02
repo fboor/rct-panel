@@ -109,7 +109,7 @@ code{background:#e8ebef;padding:1px 5px;border-radius:4px;font-size:14px}
 .bar .f{height:9px;border-radius:5px;width:0}
 .b0 .f{background:#ebd300}.b1 .f{background:#12a40a}.b2 .f{background:#f48756}
 .b3 .f{background:#ca0c0f}.b4 .f{background:#3cbcd4}
-.rates{display:flex;gap:8px;margin:10px 0 0}
+.rates{display:flex;gap:8px;margin:12px 0 14px}
 .rates div{flex:1;background:#fff;border:1px solid #dfe3e8;border-radius:8px;padding:9px 11px;font-size:13px;color:#5a6672}
 .rates div b{display:block;font-size:18px;font-weight:600;color:#1d2530;font-variant-numeric:tabular-nums}
 .chart{background:#fff;border:1px solid #dfe3e8;border-radius:8px;padding:8px 8px 4px;margin-bottom:10px}
@@ -774,9 +774,8 @@ function rpVerlauf(){
     });
   }
   function rday(){
-    // Without the rule there is no day to name: the first answer brings it, and
-    // until then the switch does nothing. A click in that moment used to throw.
-    if(!rule){return ''}
+    // Today, in the panel's own zone. Only called once the rule has arrived -
+    // draw() and step() both run behind needRule().
     return rpDayKey(rpTz(rule),Math.floor(Date.now()/1000));
   }
   function setButtons(){
@@ -881,18 +880,21 @@ function rpVerlauf(){
     stopLive();
     needRule(function(){
       setButtons();
-      // A page left open across midnight follows the day - but only while the
-      // reader has not stepped back, or every step would be undone by the next
-      // redraw.
-      var t=rday();
-      if(t===''){return}
+      // The day is set here and not in the click, because the rule of the time
+      // zone may still be on its way: a click in that first moment then changes
+      // the period and lands on today once the answer is there, instead of being
+      // dropped. A page left open across midnight follows the day, but only
+      // while the reader has not stepped back.
+      var t=rpDayKey(rpTz(rule),Math.floor(Date.now()/1000));
       if(st.day===null||st.follow){st.day=t}
       if(st.range==='live'){liveView();return}
       fromFile();
     });
   }
   function step(n){
-    if(st.day===''||!st.day){return}
+    // Nothing to step from yet: the day is only known once the time zone rule
+    // has arrived, and the navigator is not shown before that.
+    if(!st.day){return}
     if(st.range==='month'){
       st.day=rpShiftMonth(st.day,n);
     }else{
@@ -905,10 +907,7 @@ function rpVerlauf(){
     seg.addEventListener('click',function(ev){
       var b=ev.target;
       if(!b||b.tagName!=='BUTTON'){return}
-      var t=rday();
-      if(t===''){return}
       st.range=b.getAttribute('data-r');
-      st.day=t;
       st.follow=true;
       show();
     });

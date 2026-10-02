@@ -137,6 +137,26 @@ für den Ring (288 Punkte, `?k=` nur gegen den Cache), **163 Byte** für die
 Energiewerte. Beides geht in einem Ruck über das WLAN; der Aufwand liegt
 eher im Formatieren als im Senden.
 
+### Zwei Zahlen für denselben Tag, und warum
+
+Die Balken auf der Übersicht kommen aus den Zählern des Panels
+(`guiEnergyPeriod` → `energyPeriodValues`), die in dessen RAM stehen und **nach
+jedem Start bei null beginnen**. Nur der 24-h-Ring wird beim Start aus der
+Aufzeichnung zurückgespielt (`sdRequestHistory` → `histPush`), weil er für das
+Diagramm gebraucht wird; die Tag-, Monats-, Jahr- und Gesamtzähler nicht.
+
+Die Verlauf-Seite rechnet aus den CSV-Dateien und ist deshalb der Ort für die
+Frage „was war am Dienstag". Die Übersicht zählt ab dem letzten Start. Nach einem
+Neustart, einem Netzausfall oder einem Tag, an dem der Wechselrichter keine
+Daten lieferte, stehen die beiden Seiten also auseinander - die Übersicht zeigt
+weniger, der Verlauf die ganze Zahl. Geprüft am 3.10.2026, 01:20: Übersicht Tag
+0 kWh (Start um 01:15, keine Daten vom Wechselrichter), Verlauf Tag 02.10.
+23,7 kWh erzeugt.
+
+Das ist keine Besonderheit der Weboberfläche: die Panel-Seite *Heute* zeigt
+dieselben RAM-Zähler. Wer die Zahl nach einem Neustart braucht, nimmt den
+Verlauf.
+
 ### Die Energiebalken auf der Übersicht
 
 Unter den vier Karten stehen fünf Balken (Erzeugung, Eigenverbrauch,
