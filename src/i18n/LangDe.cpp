@@ -54,8 +54,9 @@ const char *const kLang[T_COUNT] = {
     "Der Ausgang schaltet ein, wenn der Wert 20 s lang &uuml;ber der "
     "Schwelle liegt, und bleibt nach dem Einschalten mindestens 60 s an. "
     "&Uuml;berschuss hei&szlig;t PV minus Hausverbrauch (mit S0). Ist der "
-    "Wechselrichter zwei Minuten lang nicht erreichbar, schaltet der Ausgang "
-    "aus.",                                                // T_NOTE_OUTPUT
+    "Wechselrichter zehn Minuten lang nicht erreichbar, schaltet der Ausgang "
+    "aus; bis dahin arbeitet er mit dem letzten empfangenen Wert.",
+                                                       // T_NOTE_OUTPUT
     "Funktion",                         // T_ROW_FUNCTION
     "Zustand",                          // T_ROW_STATE
     "Test l&auml;uft",                  // T_STATE_TEST

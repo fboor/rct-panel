@@ -54,7 +54,8 @@ const char *const kLang[T_COUNT] = {
     "The output switches on when the value stays above the threshold for "
     "20 s, and stays on for at least 60 s after switching. Surplus means PV "
     "minus household load (including S0). If the inverter is unreachable for "
-    "two minutes, the output switches off.",             // T_NOTE_OUTPUT
+    "ten minutes, the output switches off; until then it works with the last "
+    "value received.",                                  // T_NOTE_OUTPUT
     "Function",                         // T_ROW_FUNCTION
     "State",                            // T_ROW_STATE
     "Test running",                     // T_STATE_TEST
