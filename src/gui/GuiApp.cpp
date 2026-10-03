@@ -626,10 +626,15 @@ static void makeStatCard(lv_obj_t *parent, int x, int y, int w, int h,
   lv_obj_t *card = lv_obj_create(parent);
   lv_obj_set_size(card, w, h);
   lv_obj_set_pos(card, x, y);
-  lv_obj_set_style_bg_color(card, COL_CARD, 0);
+  // The same grey as the bars, the rows and the bars in the navigation, not the
+  // darker card colour the chart card and the energy buttons use: one grey for
+  // every panel-shaped field on the display reads as one family, and the two
+  // greys next to each other only said "these two kinds of field". The border
+  // goes with it - COL_BORDER is darker than the fill, which on a card is an
+  // inner groove, and a field that is lighter than the page needs no edge.
+  lv_obj_set_style_bg_color(card, COL_BAR, 0);
   lv_obj_set_style_radius(card, 10, 0);
-  lv_obj_set_style_border_width(card, 1, 0);
-  lv_obj_set_style_border_color(card, COL_BORDER, 0);
+  lv_obj_set_style_border_width(card, 0, 0);
   lv_obj_set_style_pad_all(card, 0, 0);
   lv_obj_set_style_shadow_width(card, 0, 0);
 
