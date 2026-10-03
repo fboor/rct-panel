@@ -2,283 +2,290 @@
 
 ## Worum es geht
 
-Das Panel spricht heute über genau ein Protokoll mit genau einem Gerät: dem
-RCT Power, 60 Register über TCP auf Port 8899, ein gemeinsamer Bus, CRC16,
-Byte-Escaping. Das ist in `src/rct/` auch schon gebündelt, was die Sache
-überraschend leicht macht. Der Wunsch ist, später einen anderen Wechselrichter
-daranhängen zu können, ohne das Panel anzufassen.
+Das Panel spricht über genau ein Protokoll mit genau einem Gerät: dem RCT Power,
+60 Register über TCP auf Port 8899. Die Abstraktion, um die es hier geht,
+versteckt **diese eine Implementierung** hinter einer API, die alle übrigen
+Bauteile aufrufen: GUI, Weboberfläche, Schaltausgang, CSV-Logger, Verlauf.
 
-Dieses Dokument ist ein Plan, kein Vorhaben: nichts davon ist entschieden, und
-nichts davon ist gebaut. Es sagt, wo die Kopplung heute wirklich sitzt, was
-eine zweite Geräteart kostet, und welche drei Entscheidungen vorher fallen
-müssen.
+Ausdrücklich im Umfang:
 
-Die Reihenfolge der Argumente ist bewusst umgekehrt zu der üblichen: erst die
-Bestandsaufnahme, dann das Zielbild, dann die Stufen, und ganz am Ende der
-Aufwand.
+- **Eine** Implementierung, nämlich RCT. Kein zweiter Wechselrichter wird
+  geschrieben, geraten oder vorbereitet.
+- **Verschiedene Transporte sollen möglich sein**, aber keiner wird umgesetzt.
+  Hinter der Schnittstelle liegt eine TCP-Anbindung; die Schnittstelle ist so
+  gebaut, dass eine serielle später dazukommt, ohne die Fahrerseite anzufassen.
+- **Die Herkunft der Daten steht im Dateinamen** (`RCT-202610.csv`), nicht in
+  einer CSV-Spalte. Ein Gerätetyp bekommt ein Kürzel, das Kürzel wandert in den
+  Dateinamen, und alle Logs eines Typs liegen nebeneinander.
 
-## Ausgangslage: wo es heute hängt
+Was nicht im Umfang ist: Fähigkeiten aushandeln (die bestehenden Flags
+`haveBattery` und `islandKnown` bleiben, wie sie sind), ein zweiter Treiber,
+Modbus-Code, eine eigene Task, Änderungen am CSV-Format oder an der
+Web-Schnittstelle.
+
+## Ausgangslage
 
 Fünf Stellen lesen `rctState`, und keine davon kennt das Protokoll:
 
 | Verbraucher | Was er braucht | Code |
 |---|---|---|
-| Übersicht, Verlauf, Energie, Gerät, Service (GUI) | fast alles | `GuiApp.cpp`, `refreshCb()` |
+| GUI: Übersicht, Verlauf, Energie, Gerät, Service | fast alles | `GuiApp.cpp`, `refreshCb()` |
 | Weboberfläche (6 Seiten, 2 JSON-Endpunkte) | fast alles | `WebServer.cpp`, `handleRoot()` |
 | Schaltausgang (4 Regeln) | Netz, Fehlerbits, Insel | `Relay.cpp`, `ruleWantsOn()` |
 | CSV-Zeile (23 Spalten, alle 5 min) | Leistungen, Temperaturen, Fehlermaske | `sdlog.cpp`, `sdLogSample()` |
-| Selbstauskunft (Alter der Daten) | `haveData`, `connected`, `lastUpdateMs` | `DataStatus.h` |
+| Selbstauskunft über das Datenalter | `haveData`, `connected`, `lastUpdateMs` | `DataStatus.h` |
 
-Das ist die gute Nachricht: die Protokollkenntnis liegt fast vollständig in
-`RctClient.cpp`. Kein Verbraucher baut Frames, keiner prüft eine CRC, keiner
-kennt eine OID.
+Kein Verbraucher baut einen Frame, prüft eine CRC oder kennt eine OID. Die
+Protokollkenntnis liegt in `RctClient.cpp` — der Ort ist also richtig, nur das
+`RCT` steckt im Namen und in der Datei.
 
-### Was an *Rückständen* hängen wird
+Was an *Rückständen* hängt, sind die Regeln. „Haus = Lastzähler + externer
+Ertrag" (weil der Lastzähler des RCT den S0-Ertrag nicht sieht) steht an
+**fünf Stellen im C++** (`WebServer.cpp` `loadSum`, `GuiApp.cpp` dreimal,
+`CsvRow.h` `toSample`) und einsechsmal im Browser. „Erzeugung = zwei Strings +
+S0" an vier Stellen im C++ und einer im Browser — und im Verlauf *ohne* S0,
+was ohne Kommentar wie ein Fehler aussieht. Die Vorzeichen (Netz + = Bezug,
+Batterie + = Entladung, PV ≥ 0) sind gemessen und stehen in Kommentaren neben
+den Feldern. Diese Regeln gehören in die API, denn sie sind Anlagenlogik und
+keine Gerätelogik.
 
-Die schlechte Nachricht ist feiner verteilt. Ein Wechselrichter ist nicht nur
-„andere Register": die Werte, die das Panel anzeigt, sind gerechnet, und diese
-Rechnungen stehen an mehreren Stellen:
+Drei weitere Stellen nennen das Gerät beim Namen:
 
-- **Haus = Lastzähler + externer Ertrag.** Weil der Lastzähler des RCT den
-  S0-Ertrag nicht sieht. Steht an **fünf** Stellen im C++ — `WebServer.cpp`
-  (`loadSum`, eine Kachel), `GuiApp.cpp` dreimal (Flussdiagramm, Verlaufssumme,
-  Energie-Seite), `CsvRow.h` (`toSample`) — und einsechsmal im Browser
-  (`rpEnergy` in `pages.h`), wo dieselbe Regel aus CSV-Differenzen statt aus
-  Zählern kommt.
-- **Erzeugung = zwei Strings + S0**, an vier Stellen im C++ und einer im
-  Browser. Der Verlauf rechnet hier *ohne* S0 (`toSample`: die beiden Strings
-  allein, der S0-Ertrag hat seine eigene Reihe) — dieselbe Zahl erscheint auf
-  der Übersicht also mit und im Verlauf ohne S0, und wer das nicht weiß, hält
-  es für einen Fehler.
-- **Einspeisung als Betrag** (das Gerät liefert negative Zähler) — einmal in
-  `GuiApp.cpp`, einmal in `pages.h` im Browser.
-- **Eigenverbrauch = Erzeugung − Einspeisung**, dieselbe Regel noch einmal.
-- **Vorzeichen**: Netz + = Bezug, Batterie + = Entladung, PV ≥ 0. Gemessen
-  dokumentiert in `RctTypes.h` und im Kommentarblock in `GuiApp.cpp`.
-
-Diese Regeln sind nicht „RCT-Logik", sie sind *Anlagen*-Logik. Sie haben in
-einer Datei zu stehen, und ein zweiter Treiber darf sie nicht noch einmal
-erfinden.
-
-### Was bereits geräteneutral ist
-
-Mehr, als man denkt — das ist der Grund, warum der Plan kurz ausfällt:
-
-| Baustein | Warum er schon passt |
+| Stelle | Was |
 |---|---|
-| `DataStatus.h` | fünf Fälle über vier Booleans; kein Wort über RCT |
-| `Charts.h` | sechs Reihen, Namen und Farben |
-| `NumFmt.h` | Zahlenformate |
-| `CsvRow.h` | 23 Spalten plus **Legacy-Regel**: alte Spalten behalten Namen und Reihenfolge, neue kommen hinten an. Das ist schon eine Versionsregel. |
-| `i18n` | 359 Texte, alle über IDs |
-| `/api/*.json` | stabile Form, Zahlen ohne Einheit im Namen |
+| `sdlog.cpp`, `updatePath()` und `sdWorkerReadHistory()` | `\"/hist/RCT-%s.csv\"`, dreimal als Zeichenkette |
+| `Configuration.h` | `extern char rct_host[41]`, `rct_port[6]`, NVS-Schlüssel `rct_host`/`rct_port` |
+| Verzeichnis und Dateinamen | `src/rct/RctClient.{h,cpp}`, `RctTypes.h`, `RctCrc.h` |
 
-Die Perioden-Arithmetik steht allerdings **zweimal**: `energyPeriodValues()` in
-C++ für die Energie-Seite, `rpEnergy()` in JavaScript für die Webseite (dort aus
-CSV-Differenzen statt aus Zählern). Das ist Absicht und soll so bleiben — zwei
-Sprachen, zwei Rechenwege. Was in den Plan gehört, ist die *Regel als Tabelle*,
-nicht die Zusammenführung des Codes.
+## Die API
 
-### Was richtigerweise im Treiber steht
-
-Der RCT-Client ist erstaunlich sauber. Drei Eigenheiten des Geräts sind dort
-korrekt abgeholt und dürfen mit dem Gerät verschwinden:
-
-- SOC und SOH kommen als Bruchteil (0..1) → Prozent.
-- Der Akkustrom hat ein anderes Vorzeichen als die Akkuleistung. Das wird über
-  `P = U·I` entschieden, nicht über eine geratene Negation — das hält für beide
-  Firmware-Konventionen.
-- `prim_sm.island_flag` ist ein Bitfeld; nur Bit 0 ist Inselbetrieb. Gemessen:
-  `0x02` im normalen Netzbetrieb, ein Register-Ganzzahl-Boolean liest das als
-  „Insel".
-- Die S0-Energie wird zusätzlich integriert (Trapezregel, Schrittdeckel), als
-  unabhängige Gegenrechnung zum eigenen Zähler des Geräts.
-
-## Zielbild
+Vier neue Bausteine, ein verschobener. Namen: englisch wie im übrigen Code,
+das Wort „Gerät" ist im Panel ohnehin der Wechselrichter (Seite „Gerät").
 
 ```
-  GUI  ·  Web  ·  Relay  ·  CSV  ·  Verlauf
-                    ▲
-                    │  plantState (PlantState + PlantCaps)
-   ┌────────────────┴─────────────────┐
-   │  src/plant/   Regeln, Vorzeichen, │
-   │               Perioden, Ableitungen│
-   ├──────────────────────────────────┤
-   │  src/device/   DeviceDriver.h +   │
-   │                Transport.h        │
-   ├───────────┬──────────────────────┤
-   │ RctDriver │  <zweiter Treiber>   │
-   │ +TcpTrans-│  + <sein Transport>  │
-   │  port     │                      │
-   └───────────┴──────────────────────┘
+  GUI · Web · Relay · CSV · Verlauf
+              ▲   deviceState(), devicePoll(), deviceLoadW(), …
+  ┌───────────┴────────────────────────────────────────────┐
+  │ src/device/    DeviceState.h   die neutralen Werte      │
+  │                DeviceDriver.h  die Fahrerschnittstelle  │
+  │                DeviceTransport.h die Transportschnittst. │
+  │                Device.cpp      Fabrik, poll, Präfix     │
+  ├─────────────────────────────────────────────────────────┤
+  │ src/rct/       RctDriver.{h,cpp}, RctCrc.h              │
+  └─────────────────────────────────────────────────────────┘
 ```
-
-Vier neue bzw. geänderte Bausteine, mehr nicht:
 
 | Datei | Inhalt |
 |---|---|
-| `src/plant/PlantState.h` | der heutige `RctSnapshot` mit geräteneutralen Namen (`gridImportW`, `loadW`, `generatorW[2]`, `externalW`, …), dazu `PlantCaps` |
-| `src/plant/Rules.h` | die eine Regelfassung: Vorzeichen, Summen, Perioden, Selbstverbrauch — **header-only, host-testbar**, im Stil von `DataStatus.h` |
-| `src/device/DeviceDriver.h` | die Schnittstelle: `begin()`, `poll()`, Transport-Zugriff, Yield-Hook |
-| `src/device/Transport.h` | `open/read/write/close/connected` mit Zeitgrenzen — TCP heute, RS485/Modbus morgen |
+| `src/device/DeviceState.h` | der heutige `RctSnapshot` mit geräteneutralen Namen, als `deviceState()` erreichbar |
+| `src/device/DeviceDriver.h` | die Fahrerschnittstelle (rein virtuell) |
+| `src/device/DeviceTransport.h` | die Transportschnittstelle (rein virtuell) |
+| `src/device/Device.cpp` | Fabrik, `devicePoll()`, `deviceTypePrefix()`, die Regelfunktionen |
+| `src/rct/RctDriver.{h,cpp}` | die heutige `RctClient.cpp`, als Treiber gegen die Transportschnittstelle |
 
-Umbenannt wird nichts, was eine Kompatibilitätszusage hat: die NVS-Schlüssel
-`rct_host`/`rct_port` bleiben lesbar (ein Release lang), die Web-Routen und die
-JSON-Form bleiben unangetastet.
+### `DeviceState`: die neutralen Namen
 
-## Der Treibervertrag
+Die Feldnamen sind der eigentliche Inhalt der Abstraktion — sie sagen, *was*
+gemessen wird, nicht welches Register es liefert. Die Einheit steckt im Namen,
+weil sie zwischen den Feldern wechselt (ein Zähler in Wh, eine Leistung in W)
+und weil die API von mehreren Bauarten benutzt wird.
 
-Der entscheidende Punkt ist nicht die Anzahl der Methoden, sondern das
-Timing-Verhalten. `rctParse()` läuft **im LVGL-Task** und blockiert dort bis zu
-4 s; gerettet wird das über `rctSetYieldHook()`, den `main.cpp` mit
-`displayLooper()+lv_tick_inc` belegt. Diese Eigenschaft muss der Vertrag
-ausdrücklich fordern, sonst baut der zweite Treiber eine Task und die
-`rctState`-Absicherung („nur ein Kontext") bricht:
+| heute (`RctSnapshot`) | neu (`DeviceState`) | Einheit |
+|---|---|---|
+| `gridPower[3]`, `gridPowerSum` | `gridW[3]`, `gridExchangeW` (+ = Bezug) | W |
+| `gridVoltage[3]`, `gridFrequency[3]` | `gridV[3]`, `gridHz[3]` | V, Hz |
+| `loadPower[3]` | `houseW[3]` | W |
+| `pvPower[2]` | `genW[2]` (A, B) | W |
+| `s0Power` | `extW` (externer Ertrag, der RCT liest ihn am S0) | W |
+| `batteryPower`, `batteryVoltage`, `batteryCurrent`, `batterySoc` | `batW`, `batV`, `batA`, `socPct` | W, V, A, % |
+| `dayPvWh`, `monthPvWh`, … 14 Zähler | `dayGenWh`, `monthGenWh`, … | Wh |
+| `feedInEnergyWh`, `gridDrawTotalWh` | `feedInTotalWh`, `gridDrawTotalWh` | Wh |
+| `dayExtWh`, … und die `Plain`-Variante | `dayExtWh`, … | Wh |
+| `batteryStatus`, `faultBits[4]` | unverändert | Bitfeld |
+| `deviceName`, `firmwareVersion` | unverändert | Text |
+| `coreTemp`, `batteryTemp`, `heatSinkTemp`, `nextCalibTs`, `batteryCycles`, `batterySoh` | unverändert | °C, s, Zyklen, % |
+| `islandMode`, `islandKnown`, `haveData`, `haveBattery`, `connected`, `lastUpdateMs` | unverändert | — |
+
+`haveBattery` und `islandKnown` bleiben Flaggen statt Fähigkeiten: sie sagen
+„das Gerät hat noch nicht geantwortet", nicht „das Gerät kann das nicht". Das
+unterscheidet einen zweiten Treiber von einer zweiten Geräteart.
+
+### Die Regeln gehören in die API
+
+Weil sie an fünf Stellen stehen, werden sie Funktionen der Abstraktion und
+landen in `src/device/Rules.h` — header-only und ohne Arduino, im Stil von
+`DataStatus.h`, damit sie der Host-Test prüfen kann:
 
 ```cpp
-struct DeviceDriver {
-  // Einmalig: Verbindungsparameter, eigene Puffer. Kein Heap, keine Tasks.
-  virtual bool begin(const DeviceConfig &cfg) = 0;
-  // Genau ein Abruf. Blockiert höchstens budgetMs, ruft in dieser Zeit den
-  // Yield-Hook auf, hält alte Werte, wenn ein Register fehlt.
-  virtual void poll(PlantState &out, uint32_t budgetMs) = 0;
+float deviceGridExchangeW();   // Netz, + = Bezug
+float deviceGenerationW();     // genW[0] + genW[1] + extW
+float deviceHouseW();          // houseW[0..2] + extW
+float deviceBatteryW();        // + = Entladung
+```
+
+Der Verlauf behält seine eigene Rechnung (`toSample`: Erzeugung ohne S0, S0 als
+eigene Reihe), denn das ist eine bewusste Ausnahme und keine vergessene
+Stelle.
+
+### `DeviceDriver`
+
+```cpp
+class DeviceDriver {
+public:
+  virtual ~DeviceDriver() = default;
+  // Einmalig. Eigene Puffer, kein Heap, keine Task.
+  virtual void begin(const DeviceConfig &cfg) = 0;
+  // Genau ein Abruf, höchstens budgetMs lang. Muss alte Werte halten, wenn
+  // ein Register fehlt, und in dieser Zeit den Yield-Hook aufrufen.
+  virtual void poll(uint32_t budgetMs) = 0;
   virtual bool connected() const = 0;
-  virtual const PlantCaps &caps() const = 0;
+  virtual const char *typeName() const = 0;   // "RCT" - auch der Dateiname
 };
 ```
 
-`PlantState` bleibt eine flache Struktur, kein `variant`, keine dynamische
-Zuweisung: die Verbraucher kopieren heute Array-Blöcke mit `memcpy`, und das
-soll so bleiben. Fehlende Werte werden über `PlantCaps` und ein
-Gültigkeitsbit je Gruppe beschrieben, nicht über `haveData` pro Einzelwert.
+Die Zeitbedingung ist der Teil, der nicht verhandelbar ist: `rctParse()` läuft
+im LVGL-Task und blockiert dort bis zu 4 s; gerettet wird das über
+`rctSetYieldHook()`, den `main.cpp` mit `displayLooper()+lv_tick_inc` belegt.
+Ein zweiter Fahrer, der das nicht tut, friert das Panel ein — deshalb steht es
+im Vertrag und nicht in einer Kopfzeile.
 
-## Fähigkeiten statt Annahmen
+### `DeviceTransport`
 
-Der Treiber meldet, was er kann. Das ist der Teil, der einen zweiten Gerätetyp
-billig macht — heute trägt der Code Annahmen über *dieses* Gerät:
+```cpp
+class DeviceTransport {
+public:
+  virtual ~DeviceTransport() = default;
+  // Millisekunden-Zeitbasis für alle Wartezeiten: eine serielle Schnittstelle
+  // rechnet ihre Frame-Pausen aus der Baudrate, nicht aus einem Socket.
+  virtual bool open(const char *host, const char *port, uint32_t timeoutMs) = 0;
+  virtual size_t write(const uint8_t *buf, size_t n) = 0;
+  virtual int available() = 0;
+  virtual int read() = 0;
+  virtual bool peerOpen() = 0;   // TCP: Socket lebt; RS485: immer true
+  virtual void close() = 0;
+};
+```
 
-| Fähigkeit | Wo sie ohne das Gerät hineinragt | Was ohne sie passiert |
+Der Schnittstelle folgen vier Eigenschaften, damit eine RS485-Variante später
+nichts an der Fahrerseite ändern muss:
+
+- **Bytes, keine Frames.** Rahmen, CRC, Adressierung und Antwortsammlung
+  gehören dem Fahrer, nicht dem Transport. Ein Modbus-RTU-Rahmen (Adresse,
+  Funktionscode, Register, CRC16, 3,5 Zeichen Pause) ist eine andere
+  Rahmensprache als der RCT-Bus mit Escaping — die muss nebeneinander bestehen
+  können.
+- **`peerOpen()` statt `connected()`.** Beim TCP ist „die Verbindung ist
+  zu" eine Meldung des Sockets und ein eigener Fehlerfall (`RctClient` stoppt
+  den Socket darauf). Bei RS485 gibt es das nicht.
+- **Millisekunden statt eigener Zeitbasis** in der Schnittstelle, damit der
+  Fahrer seine Wartefenster selbst rechnen kann.
+- **DE/RE gehört in den Transport**, nicht in den Fahrer: das Umschalten der
+  Senderichtung ist eine Eigenschaft des elektrischen Anschlusses. Diese
+  Schnittstelle hat dafür bewusst keine Methode — sie kommt mit der
+  Implementierung dazu, nicht als Leerstelle.
+
+### Konfiguration
+
+`DeviceConfig { char type[12]; char host[41]; char port[6]; }`, aus NVS:
+
+| Schlüssel | Bedeutung | Rückfall |
 |---|---|---|
-| `Battery` | `haveBattery`, SOC-Kachel, Verlaufsreihe 6 | Akku-Zeile und -reihe aus, Werte „–" |
-| `Insel` | `islandKnown`, Relaisregel `Island` | Regel meldet „unbekannt", schaltet aus |
-| `Fehlerbits` | `faultBits[4]`, CSV-Spalte `status`, Service | Spalte 0, Text „keine Angabe" |
-| `Phasenzahl` | `gridPower[3]`, `loadPower[3]` | einphasig: L2/L3 = 0, Summe stimmt |
-| `Externer Ertrag` (S0) | `s0Power`, `e_ext_*`, CSV-Spalte `s0` | Spalte 0, Karte „Eigenverbrauch" unverändert |
-| `Temperaturen` | 3 CSV-Spalten, Service-Seite | Spalten 0, Zeilen ausgeblendet |
-| `Zwei-Strings-PV` | `pvPower[2]`, `pv_a`/`pv_b`, `totalPvA/BWh` | String B = 0 |
+| `device` | Gerätetyp, heute immer `RCT` | `RCT` |
+| `device_host` | Adresse des Geräts | `rct_host` |
+| `device_port` | Port | `rct_port` |
 
-Der Preis ist ehrlich zu benennen: die Fähigkeiten verdoppeln die Anzahl der
-Zustände, die die Oberfläche zeigen kann (Wert da, Wert nicht vorhanden). Der
-Gegenwert ist, dass ein Wechselrichter ohne Batterie *nicht kaputt* wirkt.
+Der Rückfall ist Pflicht, nicht Kosmetik: ein Panel, das beim Update seine
+Adresse verliert, hat danach keinen Wechselrichter mehr, und das fällt
+unangenehm auf. Die alten Schlüssel werden ein Release lang gelesen, nicht
+mehr geschrieben.
 
-## Der Testbau: aufzeichnen und zurückspielen
+## Der Dateiname als Gerätenachweis
 
-Der teuerste Teil des Vorhabens ist nicht der zweite Treiber, sondern die
-Prüfbarkeit des ersten. Heute lässt sich der Decoder nur auf echter Hardware
-prüfen: `crc_test` prüft die Prüfsumme, aber kein Host-Test prüft, was der
-Decoder aus einem echten Antworthaufen macht. Das vorhandene Hilfsmittel ist ein
-Simulator, der `rctclient` (GPL-3.0) einbindet und deshalb *außerhalb* des
-Repositorys liegt — eine Abhängigkeit, die sich mit jedem Wechselrichter neu
-stellt.
+`deviceTypePrefix()` liefert `"RCT"`, aus `RctDriver::typeName()`. Der Logger
+baut daraus den Pfad, an zwei Stellen statt an einer mit hartem Text:
 
-Vorgeschlagen ist deshalb eine Aufzeichnung im Projekt:
+```cpp
+snprintf(path, sizeof(path), "/hist/%s-%s.csv", deviceTypePrefix(), key);
+```
 
-- `tools/fixtures/rct-session.bin` — ein echter Antwortstrom vom Gerät (ein
-  vollständiger Poll, gerne ein zweiter mit S0 und Inselbit gesetzt), roh
-  gespeichert.
-- `tools/fixtures/rct-session.expected.h` — der `PlantState`, den dieser Strom
-  ergeben muss, als Festwert-Vektor.
-- `tools/plant_test/` — Host-Test: Strom durch den Decoder, Vergleich gegen den
-  Vektor, zusätzlich die Regeln aus `Rules.h` gegen Grenzfälle.
-- `tools/rct_replay.py` — ein ~150 Zeilen großer Replayserver mit *eigenem*
-  Frame-Kodierer (ein READ ist 8 Byte, die Antwortform steht in `RctClient.cpp`)
-  und ohne Fremdpaket. Damit fällt die GPL-Abhängigkeit weg und der Simulator
-  wird unabhängig vom Repository benutzbar.
+Damit liegen die Logs zweier Gerätetypen nebeneinander und die Zuordnung
+steckt im Namen. Eine Spalte im CSV wäre dafür nicht nötig — und wäre
+schädlich, weil sie das Format änderte, das die alte Historie noch lesen muss.
 
-Ergebnis: jede spätere Regeländerung ist ohne Wechselrichter prüfbar, und ein
-künftiger zweiter Treiber hat dasselbe Gerüst (Aufzeichnung → Test).
+Ein Nebeneffekt, den man kennen muss: der Verlaufssucher liest
+`<Typ>-<Monat>.csv` und `<Typ>-<Monat davor>.csv`. Nach einem Wechsel des
+Gerätetyps findet er die alten Dateien nicht, und der 24-Stunden-Verlauf hat
+eine Lücke am Umstelltag. Das ist richtig so: die Zeilen zweier Geräte in
+einem Diagramm wären falsch, und der Dateiname ist genau das, woran man es
+sehen kann. Der Uptime-Name ohne Uhr (`UPT-<tage>.csv`) bleibt wie er ist, ohne
+Präfix — solange die Uhr nicht gültig ist, ist der Typ im Namen noch nicht
+wahr.
 
-## Stufen
+## Schrittfolge
 
-Jede Stufe ist einzeln lieferbar und einzeln nachweisbar. Die Reihenfolge ist
-nach Aufwand sortiert, nicht nach Wunschdenken.
+Jeder Schritt ist einzeln baubar, einzeln testbar und einzeln vorzeigbar. Kein
+Schritt verändert, was auf dem Display steht.
 
-| Stufe | Inhalt | Risiko | Nachweis |
-|---|---|---|---|
-| **1. Regeln bündeln** | `src/plant/Rules.h`: die S0-Summe, die Erzeugungssumme, die Periodenrechnung, die Selbstverbrauchsformel, die Vorzeichen als Tabelle. Web, GUI und `CsvRow` rufen dort auf statt selbst zu rechnen. | niedrig — der Compiler findet jede Stelle, und die Zahl ändert sich nicht | `tools/plant_test` mit den Referenzwerten vom Gerät (PV 5,75 kW / Haus 832 W / Netz +4 W / Akku +810 W als fester Vektor) plus Vergleich Panel ↔ Web auf einer Seite |
-| **2. Aufzeichnung + Replay** | `tools/fixtures/`, `plant_test`, `rct_replay.py` | niedrig, berührt keine Firmware | `run_host_tests.sh` läuft grün, `rct_replay.py` beantwortet einen echten Poll |
-| **3. Fähigkeiten** | `PlantCaps` einführen; GUI, Relay und CSV fragen sie, statt Annahmen zu treffen; bei RCT alle Bits gesetzt (also: erst einmal nur die Struktur, noch kein sichtbares Fehlen) | mittel — die Oberfläche bekommt Zustände, die sie vorher nicht kannte | Host-Test auf die Fähigkeitsmatrix, manueller Durchgang auf dem Panel |
-| **4. Treiberrahmen** | `DeviceDriver.h`, `Transport.h`, `rctParse()` → `devicePoll()`, Fabrik nach Konfiguration; `RctClient` wird `RctDriver` (Datei behält ihren Namen, das erspart Ärger im Build) | mittel — berührt `main.cpp`, aber nur den Aufruf | Gerät unverändert erreichbar; `crc_test` und `plant_test` decken den Treiber ab |
-| **5. Zweiter Treiber** | hängt an Stufe 4, Inhalt nicht vorhersehbar | hoch | eigener Testpfad + Gerät in der Hand |
+| Schritt | Inhalt | Nachweis |
+|---|---|---|
+| **1. Namen** | `DeviceState.h` mit neutralen Feldern, `deviceState()` als Zugriff; alle fünf Verbraucher umgestellt. Reines Umbenennen, kein Verhalten. | beide Builds grün, Host-Tests grün, Panel: eine Kachel-Zeile auf der Webseite |
+| **2. Regeln** | `Rules.h` mit den vier Zugriffsfunktionen plus Vorzeichentabelle; `loadSum()` und die drei Doppelungen im GUI sterben, der Verlauf behält seine. `tools/device_test` prüft die Regeln gegen die gemessenen Werte (PV 5,75 kW / Haus 832 W / Netz +4 W / Akku +810 W). | Host-Test, Webseite und Panel nennen dieselbe Zahl |
+| **3. Transport** | `DeviceTransport` + `TcpTransport`; die `WiFiClient`-Belange wandern aus `RctClient.cpp` in den Transport. Rein mechanisch, das Byte-Protokoll bleibt unangetastet. | `crc_test` grün, Gerät unverändert erreichbar |
+| **4. Fahrer** | `DeviceDriver` + Fabrik; `RctClient.cpp` wird `RctDriver.cpp`; `main.cpp` ruft `devicePoll()` statt `rctParse()`. | beide Builds, Panel: dieselben Werte, Screenshot-Vergleich |
+| **5. Typ im Namen** | `deviceTypePrefix()` im Logger (zwei Stellen), NVS-Schlüssel `device`/`device_host`/`device_port` mit Rückfall. `docs/sd-history.md` und die Portal-Beschriftung folgen. | neue Datei heißt `RCT-202610.csv`, die alten bleiben lesbar, ein Panel ohne gesetzte Adresse findet sein Gerät |
 
-**Empfehlung, und das ist der eigentliche Punkt des Dokuments:** Stufe 5 ist
-der Grund für alles andere, also gehört der zweite Treiber *zuerst* in Arbeit —
-nicht die Abstraktion. Eine Schnittstelle, die man vor dem zweiten
-Anwendungsfall baut, ist zu 80 % geraten. Was ich sofort machen würde, sind
-Stufe 1 und Stufe 2: beide kosten überschaubar, beide zahlen sich auch ohne
-zweiten Wechselrichter aus (Stufe 1 verhindert die nächste Kopie derselben
-Regel, Stufe 2 macht jeden künftigen Umbau ohne Wanduhr prüfbar). Stufen 3 und
-4 ohne einen konkreten zweiten Treiber anzufangen wäre Arbeit, die man
-zurückbauen kann.
+Schritt 1 ist der große Diff (Feldnamen in `GuiApp.cpp`, `WebServer.cpp`,
+`sdlog.cpp`) und trotzdem der unkritischste: der Compiler findet jede Stelle,
+und es ändert sich keine Zahl.
 
-## Was nicht zu tun ist
+## Was ausdrücklich nicht gebaut wird
 
-- **Kein Heap im 10-Sekunden-Takt.** Der Snapshot bleibt eine flache Struktur.
-- **Keine eigene Task pro Treiber.** LVGL teilt den Task mit dem Client; eine
-  zweite Task bedeutet Sperren für `plantState`. Falls ein künftiges Gerät
-  selbst schiebt (MQTT, Push), ist das die *eine* Stelle, an der sich die
-  Architektur wirklich ändern muss — und dann ist `RowQueue` aus der
-  SD-Historie das vorhandene Muster für die Übergabe.
-- **Keine Umbenennung von NVS-Schlüsseln jetzt.** `rct_host`/`rct_port` bleiben
-  ein Release lang gelesen, sonst verliert ein Gerät beim Update seinen
-  Wechselrichter.
-- **Keine Änderung an `/api/*.json`.** Das ist die Zusage nach außen.
-- **Keine Zusammenführung der Perioden-Arithmetik mit dem Browser.** Zwei
-  Sprachen, zwei Rechenwege, eine dokumentierte Regel.
+- **Kein zweiter Treiber.** Eine Schnittstelle, die man vor dem zweiten
+  Anwendungsfall ausbaut, ist zu einem guten Teil geraten. Der Rahmen wird
+  trotzdem jetzt gebaut, weil er billig ist und die Ausarbeitung des
+  Fahrers dann nicht mehr aufhält.
+- **Kein Fähigkeitsverhandeln.** `haveBattery` und `islandKnown` bleiben das,
+  was sie sind. Ein Gerät ohne Akku ist eine spätere Entscheidung.
+- **Keine neue CSV-Spalte, keine Änderung an `/api/*.json`.** Beides ist eine
+  Zusage nach außen.
+- **Kein Heap und keine eigene Task** im 10-Sekunden-Takt. LVGL teilt den
+  Task mit dem Fahrer; dieselbe Absicherung wie heute gilt. Fällt ein Gerät
+  später wirklich mit Push, ist das die eine Stelle, an der sich etwas ändert
+  — und dann ist `RowQueue` aus der SD-Historie das vorhandene Muster.
 - **Keine Umbenennung der 23 CSV-Spalten.** Die Legacy-Regel erlaubt nur
-  Anhängen. Ob eine zweite Spalte „Quelle" (24) nötig wird, entscheidet sich
-  spätestens mit dem zweiten Gerät — dann ist sie genau eine angehängte Spalte.
+  Anhängen.
 
 ## Offene Entscheidungen
 
-Vier Fragen. Die erste ist die teuerste und blockiert Stufe 5:
-
-1. **Welcher zweite Wechselrichter?** Ohne Namen kein Register-Set und keine
-   Fehlerbilder. Kandidaten, die sich strukturell unterscheiden und deshalb je
-   eine eigene Architektur-Spitze zeigen: ein Modbus-RTU-Wechselrichter über
-   RS485 (anderer *Transport*), ein Gerät mit Wachstumsschnittstelle Modbus TCP
-   (anderes *Antwortverhalten*), ein Gerät ohne Akku (andere *Fähigkeiten*).
-2. **Transport.** TCP wie heute, RS485/Modbus, oder beides? Davon hängt ab, ob
-   `Transport.h` eine Schnittstelle oder eine Familie sein muss, und ob die
-   freien GPIOs des 4848S040 reichen (im Rückblick: 3,3 V, UART vorhanden).
-3. **Wie streng ist der Treiber?** Ein Gerät, das ein Register nicht kennt,
-   antwortet heute gar nicht — der Client hält den alten Wert und wartet die
-   Ruhepause ab. Für ein anderes Gerät ist „Antwortet nicht" versus „0,0 A"
-   eine echte Frage, und die Antwort gehört in `Rules.h`, nicht in den
+1. **Portal-Beschriftung.** Heute steht dort „RCT host/port". Nach der
+   Umstellung entweder neutral („Gerät: Typ, Adresse, Port") oder mit dem
+   eingestellten Typ als Vorschlag. Kostet zwei Zeilen, aber es ist eine
+   sichtbare Entscheidung.
+2. **Wie streng ist der Fahrer?** Ein Register, das der RCT nicht kennt,
+   antwortet gar nicht; der Fahrer hält den alten Wert und beendet die Runde
+   nach der Ruhepause. Für ein anderes Gerät ist „keine Antwort" gegen „0,0 A"
+   eine echte Frage, und die Antwort gehört in den Fahrer, nicht in den
    Bildschirm.
-4. **Darf der Log das Gerät nennen?** Wenn ja, eine angehängte CSV-Spalte mit
-   der Geräte-ID; wenn nein, bleibt der CSV heute Gerät-los und die Herkunft
-   steht nur im Dateinamen.
+3. **Ob die Geräteart im Portal überhaupt wählbar sein soll.** Wenn ja, ist das
+   eine Liste mit einem Eintrag je implementiertem Fahrer — heute also genau
+   einer. Sobald ein zweiter existiert, ist es eine Zeile in der Fabrik.
 
-## Aufwand, grob
+## Aufwand
 
-| Stufe | Größenordnung |
+| Schritt | Größenordnung |
 |---|---|
-| 1. Regeln bündeln | klein — ein Tag, plus Test |
-| 2. Aufzeichnung/Replay | klein bis mittel — Aufnahme ist ein Halbtag, der Replayserver ein Nachmittag |
-| 3. Fähigkeiten | mittel — Struktur klein, Durchgang durch GUI/Relay/CSV ist der Aufwand |
-| 4. Treiberrahmen | mittel |
-| 5. Zweiter Treiber | hängt vollständig am Zielgerät; erfahrungsgemäß die größte Einzelpostie |
+| 1. Namen | mittel, rein mechanisch |
+| 2. Regeln | klein, plus Test |
+| 3. Transport | klein, rein mechanisch |
+| 4. Fahrer | klein bis mittel |
+| 5. Typ im Namen | klein |
 
-## Literatur zur Schnittstelle
+## Literatur
 
-- Registerübersicht: `https://rctclient.readthedocs.io/en/latest/` (die
-  OID-Tabelle in `RctClient.cpp` stammt von dort; die RCP-App liest dieselben
-  OIDs).
-- `src/rct/RctClient.cpp` ist ein Port des `RctParser` aus
-  Energy2Shelly_ESP (Apache 2.0). Diese Herkunft gehört zum Treiber und bleibt
-  mit ihm zusammen in `NOTICE`, wenn der Treiber in ein eigenes Verzeichnis
-  wandert.
-- Das externe Projekt `rct-panel-simulator` (GPL-3.0 wegen `rctclient`) ist
-  heute die einzige Möglichkeit, das Panel ohne Wechselrichter zu sehen. Stufe 2
-  ersetzt es durch etwas, das im Repository liegen darf.
+- Registerübersicht des RCT: `https://rctclient.readthedocs.io/en/latest/`
+  (die OID-Tabelle in `RctDriver.cpp` stammt von dort).
+- `src/rct/RctClient.cpp` ist ein Port des `RctParser` aus Energy2Shelly_ESP
+  (Apache 2.0). Diese Herkunft gehört zum Fahrer und wandert mit ihm in
+  `NOTICE`, wenn die Datei umzieht.
+- `docs/sd-history.md` beschreibt das Format, das die Namensänderung nicht
+  anfassen darf.
