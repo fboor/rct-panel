@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Render docs/benutzerhandbuch.md -> PDF via python-markdown + chromium."""
+import re
 import subprocess
 import sys
 import pathlib
@@ -18,9 +19,16 @@ with open(MD, "r", encoding="utf-8") as f:
         output_format="html5",
     )
 
-# Make relative image references absolute so the temp HTML can load them.
-doc_dir = (ROOT / "docs").as_uri()
-body = body.replace('src="img/', f'src="{doc_dir}/img/')
+# Make relative image references absolute so the temp HTML can load them. Not
+# only docs/img: the photos of the display pages are referenced from
+# ../screenshots rather than copied into docs/img, so that a picture exists
+# once and there is one place to replace it when a page changes.
+docs_dir = ROOT / "docs"
+body = re.sub(
+    r'src="(?!https?:|data:)([^"]+)"',
+    lambda m: 'src="%s"' % (docs_dir / m.group(1)).resolve().as_uri(),
+    body,
+)
 
 css = """
 :root { color-scheme: light; }
@@ -86,6 +94,15 @@ figure.web-shot { margin: 8pt 0 10pt 0; page-break-inside: avoid;
 figure.web-shot img { width: 74%; border: 0.7pt solid #c5cdd5;
   border-radius: 3pt; }
 figure.web-shot figcaption { font-size: 9pt; color: #5a6672;
+  margin-top: 4pt; }
+/* Foto einer Displayseite: quadratisch. 60 mm, damit die Beschriftung im Bild
+   lesbar bleibt und zwei Bilder nebeneinander (Uebersicht dunkel und hell)
+   mit je 4 mm Abstand trotzdem auf die 180 mm Textbreite passen. */
+figure.display-shot { margin: 8pt 0 10pt 0; page-break-inside: avoid;
+  text-align: center; }
+figure.display-shot img { width: 60mm; border: 0.7pt solid #c5cdd5;
+  border-radius: 3pt; }
+figure.display-shot figcaption { font-size: 9pt; color: #5a6672;
   margin-top: 4pt; }
 """
 

@@ -8,7 +8,7 @@ wall display (480 × 480, capacitive touch). Live values read over TCP, the
 energy flow, 24 hours of history on an SD card, and a web interface in the local
 network — in German or English, one per build.
 
-![The overview page: household in the middle, PV, battery and grid around it](docs/img/panel-uebersicht.png)
+![The overview page: household in the middle, PV, battery and grid around it, three pills below](screenshots/screenshot-s1-d.png)
 
 - **Seven pages**, reached with the three buttons at the bottom: energy flow,
   daily/monthly/yearly totals, the 24 h graph, device information, the

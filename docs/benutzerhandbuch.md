@@ -179,7 +179,12 @@ lesbar war (etwa das „AN“ des Ausgangs). Ein eigener, dunklerer Grünton fü
 den hellen Modus ist vorbereitet, aber noch nicht gesetzt — die Entscheidung
 gehört nebeneinander auf den Bildschirm, nicht in eine Datei.
 
-### Licht und Ruhe
+Die Bilder in diesem Handbuch sind je nach Aufnahme im hellen oder im
+dunklen Theme entstanden; welche, steht bei jedem Bild. Die Felder mit
+eigenem Hintergrund sehen in beiden gleich aus, deshalb fällt der Unterschied
+an ihnen nicht auf.
+
+### Energiesparmodus
 
 Lässt man das Panel in Ruhe, geht das Licht von selbst aus:
 
@@ -231,6 +236,12 @@ Gerät um null, und das Vorzeichen ist dann Rauschen. Für „Erzeugung“ gilt
 derselbe Hausverbrauch wie im Diagramm, also mit dem S0-Zähler; ein Haus,
 das aus S0 versorgt wird, erscheint deshalb nicht als orange.
 
+<figure class="display-shot">
+  <img src="../screenshots/screenshot-s1-d.png" alt="Übersicht im dunklen Theme: links der PV-Knoten mit der Sonne, in der Mitte der größere Hausknoten, rechts der Netz-Knoten mit dem Mast, unten der Akku-Knoten, und darunter drei grüne, grüne und graue Felder mit Erzeugung, Unabhängig und Standby">
+  <img src="../screenshots/screenshot-s1-l.png" alt="Dieselbe Übersicht im hellen Theme: weißer Seitenhintergrund, schwarze Beschriftungen, die Felder unten bleiben grün, grün und grau">
+  <figcaption>Bild 4: Die Übersicht, links im dunklen und rechts im hellen Theme. Der Wechsel betrifft nur den Seitenhintergrund und die Beschriftung darauf — die Felder unten und die Knoten behalten ihre Farben.</figcaption>
+</figure>
+
 ### 3.2 Energie (Balken pro Zeitraum)
 
 Akkumulierte Energien als Balken — wählbar über die Tasten
@@ -247,6 +258,11 @@ Tag | Monat | Jahr | Gesamt:
 Die Balken sind zum größten Wert des gewählten Zeitraums normiert; die
 Werte stehen rechtsbündig über dem jeweiligen Balken (kWh bzw. MWh mit
 Dezimalkomma).
+
+<figure class="display-shot">
+  <img src="../screenshots/screenshot-s2.png" alt="Seite Energie: vier Knöpfe Tag, Monat, Jahr und Gesamt, darunter fünf Zeilen mit Name, Wert und Balken für PV Erzeugung, Eigenverbrauch, Netzeinspeisung, Netzbezug und Verbrauch">
+  <figcaption>Bild 5: Die Energieseite für den Tag — die fünf Zeilen sind zugleich die Legende: der Name trägt die Farbe des Balkens darunter.</figcaption>
+</figure>
 
 ### 3.3 Heute (Tagesübersicht)
 
@@ -284,6 +300,11 @@ Liniendiagramm der letzten 24 Stunden (ein Punkt alle 5 Minuten, 288 Punkte):
 - Der Verlauf übersteht einen Neustart: Beim Hochfahren lädt das Panel
   die letzten bis zu 24 Stunden von der SD-Karte zurück.
 
+<figure class="display-shot">
+  <img src="../screenshots/screenshot-s4.png" alt="Seite 24 h Verlauf: sechs Linien in der Legung Netz, Verbrauch, PV, EXT, Batterie und SOC über 24 Stunden, darunter die Angabe der Datenlücken">
+  <figcaption>Bild 6: Der 24-Stunden-Verlauf. Die Legende oben nennt die sechs Reihen in der Reihenfolge ihrer Farben; das Diagramm selbst behält in beiden Themes seinen dunklen Grund.</figcaption>
+</figure>
+
 ### 3.5 Info
 
 Technische und Verbindungsdaten (Reihenfolge wie angezeigt):
@@ -304,6 +325,11 @@ Alles zur Batterie:
 - Batterie-Temp · Kalibrierung (nächster Kalibriertermin als Datum +
   Tages-Countdown, sobald die Uhrzeit synchronisiert ist) · Zyklen ·
   SOH (State of Health) · Inselbetrieb.
+
+<figure class="display-shot">
+  <img src="../screenshots/screenshot-s6-b.png" alt="Akku-Seite im hellen Theme: Karten mit Ladezustand, Leistung, Strom und Spannung sowie Temperatur, Kalibrierung, Zyklen und Zustand">
+  <figcaption>Bild 7: Die Akku-Seite im hellen Theme. „Batterie“ meint hier den Akku, und die Werte sind batteriezentrisch — das Vorzeichen gilt gegenüber der Batterie, nicht gegenüber dem Haus.</figcaption>
+</figure>
 
 ### 3.7 Service
 
@@ -342,6 +368,11 @@ Die einzige Seite mit Aktionen:
   wechselt die Funktion. Darunter steht, was gerade passiert (`AN · 512 W
   jetzt`). Der Knopf daneben prüft für 20 Sekunden, ob am Port überhaupt
   etwas schaltet. Siehe Kapitel 6.
+
+<figure class="display-shot">
+  <img src="../screenshots/screenshot-s7.png" alt="Service-Seite im hellen Theme: links Setup starten und Screenshot, Batterie-Status, Störungen und SD-Log, rechts der vierstellige Code und der Schalter für den Hintergrund, unten der Schaltausgang mit Testknopf">
+  <figcaption>Bild 8: Die Service-Seite im hellen Theme. Sie ist die einzige Seite mit Knöpfen, und der Schalter für den Hintergrund steht rechts unten unter dem Testknopf.</figcaption>
+</figure>
 
 ---
 
@@ -562,7 +593,7 @@ diesem Moment hatte — auf der Linie also rund 50 %, oben 100 %, unten 0 %.
 
 <figure class="web-shot">
   <img src="img/web-verlauf.png" alt="Verlaufsseite des Panels: oben der Bereichswähler 24 Stunden, Tag, Woche, Monat, darunter das Datum mit den Pfeilen zum Blättern, dann ein Liniendiagramm eines ganzen Tages mit sechs Linien und die Achsenbeschriftungen kW links und Prozent rechts, darunter die Farblegende und die Angabe des Zeitpunkts der jüngsten Messung">
-  <figcaption>Bild 5: Der Verlauf für einen einzelnen Tag (hier der 2. Oktober 2026) — die sechs Linien wie auf dem Panel, mit den Einheiten an den Achsen und der Legende darunter</figcaption>
+  <figcaption>Bild 9: Der Verlauf für einen einzelnen Tag (hier der 2. Oktober 2026) — die sechs Linien wie auf dem Panel, mit den Einheiten an den Achsen und der Legende darunter</figcaption>
 </figure>
 
 > **Hinweis zu Aufzeichnungen von vor dem Firmware-Update:** Enthält eine
@@ -577,7 +608,7 @@ diesem Moment hatte — auf der Linie also rund 50 %, oben 100 %, unten 0 %.
 
 <figure class="web-shot">
   <img src="img/web-uebersicht.png" alt="Weboberfläche des Panels: oben vier Wertekarten für Netz, PV, Akku und Verbrauch, darunter der Zeitraumwechsel Tag, Monat, Jahr, Gesamt mit fünf Energiebalken und den beiden Quoten Autarkie und Eigenverbrauchsquote">
-  <figcaption>Bild 4: Die Übersichtseite — oben die aktuellen Werte, darunter die Energiebalken für den gewählten Zeitraum (hier Monat) mit Autarkie und Eigenverbrauchsquote, weiter unten die Geräteangaben und die Adresse, unter der das Panel erreichbar ist</figcaption>
+  <figcaption>Bild 10: Die Übersichtseite — oben die aktuellen Werte, darunter die Energiebalken für den gewählten Zeitraum (hier Monat) mit Autarkie und Eigenverbrauchsquote, weiter unten die Geräteangaben und die Adresse, unter der das Panel erreichbar ist</figcaption>
 </figure>
 
 ### Daten abrufen
