@@ -125,15 +125,29 @@ dimensioned in mm, the second one at 1:1 for printing:
 |---|---|
 | `img/frontplatte.svg` | front view with dimensions, section A–A, legend, colour variants |
 | `img/frontplatte-1zu1.svg` | front view at 1:1, with the glue ring and the cut edge filled in |
-| `img/frontplatte.dxf` | DXF R12 in mm for the laser cutter: outer contour and the 81 mm window, layers `SCHNITT` and `MARKIERUNG` |
-| `img/frontplatte-lage.dxf` | the optional 0.45 mm front layer with the 84.3 mm pocket, for gluing the recess on instead of milling it |
+| `img/frontplatte.dxf` | DXF R12 in mm for the laser cutter, three layers: `SCHNITT`, `GRAVIEREN`, `MARKIERUNG` |
 
 Visicut imports DXF (and the 1:1 SVG, but that one has filled shapes and the
 DXF is unambiguous). The geometry is nominal, so let Visicut compensate the
-kerf. A laser cutter cannot make the 0.45 mm recess itself — that is what
-`frontplatte-lage.dxf` is for: cut the pocket as a 0.45 mm sheet and glue it on.
+kerf. The three layers are three operations:
+
+| Layer | Geometry | Operation |
+|---|---|---|
+| `SCHNITT` | outer contour 120 × 200 (r 8) and the 81 mm window (r 2) | cut through |
+| `GRAVIEREN` | 84.3 mm outer (r 2.2) and the 81 mm window, as two closed contours | fill the ring between them and engrave it **0.45 mm deep** — this is the glue surface, 1.65 mm wide |
+| `MARKIERING` | four crosses at the window corners | align on the bed |
+
+Two things to know about the `GRAVIEREN` layer. The depth is not in the file —
+DXF R12 has no depth for an entity, so 0.45 mm goes into the machine's job
+parameters. And the machine has to *fill* the area between the two contours
+rather than follow them: a laser that only traces a path would burn two lines
+where the pocket should be. If it cannot fill, the ring is given as two loops
+anyway so the contour is unambiguous, and the alternative is to mill the recess
+or print the plate in PETG.
+
 Without the recess the panel sits 0.3 mm proud of the front and the glue seam
-becomes a visible hairline at 42 mm from the centre.
+becomes a visible hairline at 42 mm from the centre — which is why the recess is
+a separate object rather than a fourth contour in the cut layer.
 
 The numbers that come from the device, not from a datasheet:
 
