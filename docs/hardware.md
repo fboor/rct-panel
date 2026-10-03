@@ -114,6 +114,49 @@ appears and the GUI keeps rendering while the portal stays available at
   network; the Service page links back to the portal.
 - The flow lines show direction and colour, not moving dashes like the portal.
 
+## The front plate (planned)
+
+The module as sold is a bare display module in its own plastic case. The plan
+is to stop using that case: a **front plate** takes the touch panel and nothing
+else, and the board gets its own housing behind it. Two drawings, both
+dimensioned in mm, the second one at 1:1 for printing:
+
+| File | What |
+|---|---|
+| `img/frontplatte.svg` | front view with dimensions, section A–A, legend, colour variants |
+| `img/frontplatte-1zu1.svg` | front view at 1:1, for a printout or as a background for the layout |
+
+The numbers that come from the device, not from a datasheet:
+
+| Measured | Value |
+|---|---|
+| Touch panel | 84 × 84 × 0.3 mm, laminated to the LCD |
+| Active area (vendor) | 71.8 × 70.2 mm, centred in the panel |
+| Plastic frame around it (vendor) | 86.5 × 86.5 mm, 13.6 mm visible lip |
+
+The plate: 120 × 200 × 6 mm with the display at one end (18 mm margin on three
+sides, 98 mm at the other end, which is still free). The panel sits in a
+0.45 mm deep recess 84.3 mm square, its front face flush with the plate's front;
+the 0.15 mm gap between panel and recess floor is filled with two-component
+epoxy, which leaves a 1.65 mm ring to glue on and hides the seam under the
+black border. The 81 × 81 mm window is cut behind that ring, so no plate
+material ends up between the panel and the LCD — a full-width recess would
+leave 6 mm of air in the optical stack.
+
+The plate carries no mounting of its own: the housing hangs on the wall and the
+plate is only the fascia in front of it. That frees the thickness as well — 6 mm
+is what the recess and the stiffness want, not what the load needs. What the
+plate does need is something the housing can grip, in the free area, that is
+not a through-hole and never touches the panel: blind pockets for clips, or a
+small rim on the back edge. The colour variants are drawn the way the front
+reads: the display area stays whatever the panel is, the glue ring gets the
+epoxy's colour, the outer 3 mm get a colour of their own.
+
+Open for the housing: the depth behind the panel (the module is 37.8 mm deep
+with its case), the glass corner radius (r 2 assumed), what the 98 × 108 mm of
+free plate below the display is for, how the housing holds the plate without
+touching the panel, and where the cables leave towards the wall.
+
 ## Source layout
 
 ```
