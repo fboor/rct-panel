@@ -425,6 +425,12 @@ void handleRoot() {
     inverterText = tr(T_ROW_INVERTER_OK);
   }
   row(T_ROW_INVERTER, inverterText);
+  // What the device calls itself, second row: whether the panel is talking to
+  // the inverter at all is the first question, which one it is the second -
+  // and on a bench with a simulator in the mix the name is what tells them
+  // apart. The device page of the panel shows the same value.
+  escape(s.deviceName, escName, sizeof(escName));
+  row(T_ROW_INVERTER_NAME, escName[0] ? escName : "--");
   escape(s.firmwareVersion, escName, sizeof(escName));
   row(T_ROW_CONTROLLER, escName[0] ? escName : "--");
   row(T_ROW_FW_PANEL, kPanelVersion);

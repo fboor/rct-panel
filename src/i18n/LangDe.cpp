@@ -44,7 +44,8 @@ const char *const kLang[T_COUNT] = {
     "verbunden",                        // T_ROW_INVERTER_OK
     "nicht erreichbar",                 // T_ROW_INVERTER_NO
     "wartet",                           // T_ROW_INVERTER_WAIT
-    "Steuerger&auml;t",                 // T_ROW_CONTROLLER
+    "Name",                             // T_ROW_INVERTER_NAME
+    "Firmware Steuerger&auml;t",        // T_ROW_CONTROLLER
     "Firmware Panel",                   // T_ROW_FW_PANEL
     "Laufzeit",                         // T_ROW_UPTIME
     "Speicher frei",                    // T_ROW_FREEMEM

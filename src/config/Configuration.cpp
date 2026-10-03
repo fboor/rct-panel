@@ -250,7 +250,7 @@ static void finishWifiUp() {
   }
   ready = true;
   phase = WIFI_READY;
-  Serial.printf("WiFi: connected, RSSI %d dBm, RCT host '%s' port '%s'\n",
+  Serial.printf("WiFi: connected, RSSI %d dBm, Geraet '%s' port '%s'\n",
                 WiFi.RSSI(), device_host, device_port);
   Serial.printf("WiFi: ip %s, gw %s, dns %s\n",
                 WiFi.localIP().toString().c_str(),

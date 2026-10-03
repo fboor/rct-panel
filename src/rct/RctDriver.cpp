@@ -509,8 +509,8 @@ static void rctPoll(uint32_t budgetMs) {
     semanticsSet = true;
     const DeviceSemantics rct = {false, false, true};
     deviceSetSemantics(rct);
-    Serial.printf("RCT: Zaehlerregeln - Lastzaehler%s extern, Erzeugungszaehler%s "
-                  "extern, Einspeisezahler%s negativ\n",
+    Serial.printf("RCT: Zaehlerregeln - Lastzaehler %s extern, "
+                  "Erzeugungszaehler %s extern, Einspeisezahler %s negativ\n",
                   rct.loadMeterSeesExternal ? "sieht" : "sieht nicht",
                   rct.genCounterSeesExternal ? "sieht" : "sieht nicht",
                   rct.feedCounterNegative ? "kommen" : "kommen nicht");

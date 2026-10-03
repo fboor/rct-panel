@@ -80,6 +80,7 @@ enum LangId : int {
   T_ROW_INVERTER_OK,
   T_ROW_INVERTER_NO,
   T_ROW_INVERTER_WAIT, // link up, had data, but nothing new for a while
+  T_ROW_INVERTER_NAME, // what the device calls itself
   T_ROW_CONTROLLER,
   T_ROW_FW_PANEL,
   T_ROW_UPTIME,

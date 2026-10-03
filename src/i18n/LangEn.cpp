@@ -44,7 +44,8 @@ const char *const kLang[T_COUNT] = {
     "connected",                        // T_ROW_INVERTER_OK
     "not reachable",                    // T_ROW_INVERTER_NO
     "waiting",                          // T_ROW_INVERTER_WAIT
-    "Controller",                       // T_ROW_CONTROLLER
+    "Name",                             // T_ROW_INVERTER_NAME
+    "Controller firmware",              // T_ROW_CONTROLLER
     "Panel firmware",                   // T_ROW_FW_PANEL
     "Uptime",                           // T_ROW_UPTIME
     "Free memory",                      // T_ROW_FREEMEM
