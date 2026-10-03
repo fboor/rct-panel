@@ -50,7 +50,7 @@ void webUpdate();
 
 // Keep the display alive while something holds the loop task, used between the
 // chunks of a download. Installed once from main.cpp, the same way as
-// rctSetYieldHook; the web module itself knows nothing about the display.
+// deviceSetYieldHook; the web module itself knows nothing about the display.
 void webSetYieldHook(void (*fn)());
 
 // The 4-digit code that gates everything that changes the panel (firmware

@@ -223,20 +223,34 @@ wahr.
 
 ## Schrittfolge
 
-Jeder Schritt ist einzeln baubar, einzeln testbar und einzeln vorzeigbar. Kein
-Schritt verändert, was auf dem Display steht.
+Alle fünf Schritte sind gebaut (Commits `2be46e5`, `cfc1d42` und der Fahrer-
+und Transport-Commit). Kein Schritt hat verändert, was auf dem Display steht;
+geprüft wurde das über beide Builds und die Host-Tests, nicht über ein Foto vom
+Panel.
 
 | Schritt | Inhalt | Nachweis |
 |---|---|---|
-| **1. Namen** | `DeviceState.h` mit neutralen Feldern, `deviceState()` als Zugriff; alle fünf Verbraucher umgestellt. Reines Umbenennen, kein Verhalten. | beide Builds grün, Host-Tests grün, Panel: eine Kachel-Zeile auf der Webseite |
-| **2. Regeln** | `Rules.h` mit den vier Zugriffsfunktionen plus Vorzeichentabelle; `loadSum()` und die drei Doppelungen im GUI sterben, der Verlauf behält seine. `tools/device_test` prüft die Regeln gegen die gemessenen Werte (PV 5,75 kW / Haus 832 W / Netz +4 W / Akku +810 W). | Host-Test, Webseite und Panel nennen dieselbe Zahl |
+| **1. Namen** | `DeviceState.h` mit neutralen Feldern, `deviceState()` als Zugriff; alle fünf Verbraucher umgestellt. Reines Umbenennen, kein Verhalten. | beide Builds grün, Host-Tests grün |
+| **2. Regeln** | `Rules.h` mit den Zugriffsfunktionen plus Vorzeichentabelle; `loadSum()` und die fünf Doppelungen sterben, der Verlauf behält seine Ausnahme. `tools/device_test` prüft beide Gerätearten. | 42 Prüfungen grün |
 | **3. Transport** | `DeviceTransport` + `TcpTransport`; die `WiFiClient`-Belange wandern aus `RctClient.cpp` in den Transport. Rein mechanisch, das Byte-Protokoll bleibt unangetastet. | `crc_test` grün, Gerät unverändert erreichbar |
-| **4. Fahrer** | `DeviceDriver` + Fabrik; `RctClient.cpp` wird `RctDriver.cpp`; `main.cpp` ruft `devicePoll()` statt `rctParse()`. | beide Builds, Panel: dieselben Werte, Screenshot-Vergleich |
-| **5. Typ im Namen** | `deviceTypePrefix()` im Logger (zwei Stellen), NVS-Schlüssel `device`/`device_host`/`device_port` mit Rückfall. `docs/sd-history.md` und die Portal-Beschriftung folgen. | neue Datei heißt `RCT-202610.csv`, die alten bleiben lesbar, ein Panel ohne gesetzte Adresse findet sein Gerät |
+| **4. Fahrer** | `DeviceDriver` + Fabrik; `RctClient.cpp` wird `RctDriver.cpp`; `main.cpp` ruft `devicePoll()`. | beide Builds grün |
+| **5. Typ im Namen** | `deviceTypeName()` im Logger (zwei Stellen), NVS `device_type`/`device_host`/`device_port` mit Rückfall auf `rct_host`/`rct_port`. | neue Datei heißt weiter `RCT-202610.csv` |
 
-Schritt 1 ist der große Diff (Feldnamen in `GuiApp.cpp`, `WebServer.cpp`,
+Schritt 1 war der große Diff (Feldnamen in `GuiApp.cpp`, `WebServer.cpp`,
 `sdlog.cpp`) und trotzdem der unkritischste: der Compiler findet jede Stelle,
 und es ändert sich keine Zahl.
+
+Ein Punkt aus der Liste hat sich beim Bauen als größer erwiesen als gedacht:
+die doppelte Periodenrechnung. `energyPeriodValues()` in C++ und `rpEnergy()`
+im Browser machen dasselbe aus unterschiedlichen Quellen, und beide mussten an
+die Regel angehängt werden — der C++-Teil über `rulePeriod()`, der
+Browser-Teil über die Zeilen, die er aus dem CSV liest. Die Regel steht jetzt
+an beiden Stellen einmal statt zweimal.
+
+Ein Detail, das erst beim Bauen auffiel: die sechste Kopie der Hausregel war
+nicht im Flussdiagramm, sondern in den „Heute"-Karten, die ihre Tageszähler
+selbst addierten. Sie war nur deshalb unauffällig, weil sie in derselben Datei
+stand wie die anderen.
 
 ## Was ausdrücklich nicht gebaut wird
 
@@ -257,10 +271,10 @@ und es ändert sich keine Zahl.
 
 ## Offene Entscheidungen
 
-1. **Portal-Beschriftung.** Heute steht dort „RCT host/port". Nach der
-   Umstellung entweder neutral („Gerät: Typ, Adresse, Port") oder mit dem
-   eingestellten Typ als Vorschlag. Kostet zwei Zeilen, aber es ist eine
-   sichtbare Entscheidung.
+1. **Auswahl des Gerätetyps.** Umgesetzt ist die neutrale Beschriftung
+   („Address", „Port", Abschnitt „Inverter options"); ein Feld für den Typ gibt
+   es noch nicht, weil es eine Liste mit einem Eintrag wäre. Es wird eine, sobald
+   es zwei Treiber gibt — und dann ist es eine Zeile in der Fabrik.
 2. **Wie streng ist der Fahrer?** Ein Register, das der RCT nicht kennt,
    antwortet gar nicht; der Fahrer hält den alten Wert und beendet die Runde
    nach der Ruhepause. Für ein anderes Gerät ist „keine Antwort" gegen „0,0 A"

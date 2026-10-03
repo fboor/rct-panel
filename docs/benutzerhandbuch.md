@@ -36,7 +36,7 @@ So geht's:
 3. Portal öffnen — im Browser `http://192.168.4.1` aufrufen (die
    Konfigurationsseite öffnet sich meist von selbst).
 4. Zwei Felder ausfüllen und speichern — WLAN-Name/-Passwort sowie die
-   RCT-IP-Adresse (der Port ist bereits voreingestellt).
+   IP-Adresse des Wechselrichters (der Port ist bereits voreingestellt).
 5. Fertig. Das Panel verbindet sich mit Ihrem WLAN und zeigt die
    Live-Daten. Der Zugangspunkt „RCT-Panel“ verschwindet dabei von selbst.
 
@@ -96,8 +96,12 @@ Tragen Sie im Portal ein:
 | Feld | Bedeutung | Vorgabe |
 |---|---|---|
 | WLAN-Name / Passwort | Ihr Heimnetzwerk | — |
-| `rct_host` | IP-Adresse oder Hostname des RCT-Wechselrichters | `192.168.0.1` |
-| `rct_port` | TCP-Port für das RCT-Protokoll | `8899` |
+| `device_host` | IP-Adresse oder Hostname des Wechselrichters | `192.168.0.1` |
+| `device_port` | TCP-Port für das Protokoll des Wechselrichters | `8899` |
+
+Die Felder hießen früher `rct_host` und `rct_port`. Ihr Wert wird beim Start
+einmalig übernommen, wenn die neuen Felder leer sind — ein Update löscht die
+Adresse Ihres Wechselrichters also nicht.
 
 Bestätigen Sie das Formular. Das Panel speichert die Angaben dauerhaft
 (NVS) und wechselt dann ins konfigurierte Netzwerk — der Zugangspunkt
@@ -384,7 +388,8 @@ Die einzige Seite mit Aktionen:
 Das Panel schreibt automatisch alle 5 Minuten einen Datensatz in eine
 CSV-Datei (nur bei verbundenem Wechselrichter, keine Nullzeilen):
 
-- Datei: `/hist/RCT-<Jahr><Monat>.csv` (z. B. `RCT-202609.csv`),
+- Datei: `/hist/<Gerätetyp>-<Jahr><Monat>.csv` (beim RCT-Power z. B.
+  `RCT-202609.csv`),
   eine Datei pro Kalendermonat. Läuft die Uhr (SNTP) beim Start noch nicht,
   schreibt das Panel zunächst in eine Uptime-Datei und wechselt nach der
   Zeitsynchronisation automatisch auf die Monatsdatei.
@@ -850,7 +855,7 @@ sich prüfen, ob am Port überhaupt etwas passiert.
 
 | Symptom | Ursache / Lösung |
 |---|---|
-| Badge `keine Daten` (rot) | WLAN steht, der Wechselrichter antwortet nicht. Prüfen Sie `rct_host`/`rct_port` im Setup-Portal und ob der Wechselrichter erreichbar ist. |
+| Badge `keine Daten` (rot) | WLAN steht, der Wechselrichter antwortet nicht. Prüfen Sie `device_host`/`device_port` im Setup-Portal und ob der Wechselrichter erreichbar ist. |
 | Badge `verbinde` bleibt | WLAN-Verbindung wird aufgebaut; wenn es nicht weitergeht, prüfen Sie das WLAN-Passwort (Portal öffnet sich nach ~15 s erneut). |
 | Badge `verbinde neu` | Datenstrom abgerissen; das Panel versucht automatisch neu zu verbinden. |
 | Kein Konfigurationsportal auffindbar | Panel ist bereits in einem Netzwerk — nutzen Sie „Setup starten“ auf der Service-Seite. |

@@ -2418,8 +2418,8 @@ static void refreshCb(lv_timer_t *t) {
             s.deviceName[0] ? s.deviceName : dash);
     setText(inf.labels[INF_SW], "%s",
             s.firmwareVersion[0] ? s.firmwareVersion : dash);
-    setText(inf.labels[INF_HOST], "%s", rct_host);
-    setText(inf.labels[INF_PORT], "%s", rct_port);
+    setText(inf.labels[INF_HOST], "%s", device_host);
+    setText(inf.labels[INF_PORT], "%s", device_port);
     setText(inf.labels[INF_LINK], "%s",
             s.connected ? tr(T_D_LINK_UP) : tr(T_D_LINK_DOWN));
     setText(inf.labels[INF_LAST], tr(T_D_LASTDATA_AGO),

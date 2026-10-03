@@ -58,7 +58,7 @@ pins appears as `/dev/ttyUSB0` and flashes just as well.
 First boot: 
 While the panel has no network yet, it serves the access point
 **RCT-Panel**. Connect to it and open `http://192.168.4.1` to enter the Wi-Fi
-credentials and the address of the RCT device (`rct_host`, `rct_port`,
+credentials and the address of the inverter (`device_host`, `device_port`,
 default `192.168.0.1:8899`). Everything after that is in the panel's own web
 interface; `docs/hardware.md` has the pin map, the boot log and the quirks of
 the board.

@@ -15,7 +15,7 @@
 #include "gui/GuiApp.h"
 #include "output/Relay.h"
 #include "device/Device.h"
-#include "rct/RctClient.h"
+#include "device/Device.h"
 #include "storage/sdlog.h"
 #include "web/WebServer.h"
 
@@ -122,15 +122,20 @@ void loop() {
   diagPhase("lvgl");
   displayLooper(); // lv_timer_handler() -> flush -> esp_lcd
 
-  // rctParse() has to wait for the device's answers, and a file download from the
-  // web interface is pumped out of its handler. Both block this task, which is
-  // also LVGL's, so they hand rendering back to us through a hook - otherwise the
+  // The device poll has to wait for answers, and a file download from the web
+  // interface is pumped out of its handler. Both block this task, which is also
+  // LVGL's, so they hand rendering back to us through a hook - otherwise the
   // panel stands still for as long as the wait lasts.
   static bool hookInstalled = false;
   if (!hookInstalled) {
     hookInstalled = true;
-    rctSetYieldHook(panelYield);
+    deviceSetYieldHook(panelYield);
     webSetYieldHook(panelYield);
+    // The driver comes from the settings, its meter semantics with it. Once the
+    // hook is in place, because a poll may block from here on.
+    DeviceConfig cfg;
+    deviceConfig(cfg);
+    deviceBegin(cfg);
   }
 
   // Pump the Wi-Fi state machine on every loop. This runs the captive portal's
@@ -168,10 +173,10 @@ void loop() {
   static uint32_t lastRct = 0;
   if (now - lastRct >= RCT_POLL_MS) {
     lastRct = now;
-    rctParse(); // marks its own phases: rct.connect / rct.poll
+    devicePoll(); // marks its own phases: rct.connect / rct.poll
   }
 
-  // Switched output: evaluates its rule at 1 Hz on the values rctParse() just
+  // Switched output: evaluates its rule at 1 Hz on the values devicePoll() just
   // refreshed. Costs a few comparisons; the timings it waits for (20 s on-delay,
   // 60 s minimum hold) are far longer than a poll interval.
   diagPhase("relay.update");

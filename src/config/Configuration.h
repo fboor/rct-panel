@@ -13,9 +13,19 @@
 
 #include <Arduino.h>
 
-// RCT Power device settings (entered in the WiFiManager portal).
-extern char rct_host[41]; // IP address or hostname of the RCT Power device
-extern char rct_port[6];  // TCP port (8899 is the RCT Power standard port)
+#include "device/DeviceConfig.h"
+
+// Device settings (entered in the WiFiManager portal). These are the settings
+// of the abstraction, not of one driver: type picks the family, host/port are
+// what that family is reached at.
+extern char device_type[12]; // driver to use, e.g. "RCT"
+extern char device_host[41]; // IP address or hostname of the device
+extern char device_port[6];  // port (8899 is the RCT Power standard port)
+
+// The three as one struct, for deviceBegin(). Filled from the values above,
+// which readConfig() has already resolved - including the fallback to the
+// rct_host/rct_port keys of the firmware that had no abstraction yet.
+void deviceConfig(DeviceConfig &out);
 
 // Time zone used for SNTP, as a POSIX TZ string. It is also handed to the web
 // interface, because the browser has to group the CSV rows into the same days

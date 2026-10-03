@@ -24,8 +24,9 @@
 #include <Preferences.h>
 #include <WiFiManager.h>
 
-char rct_host[41] = "192.168.0.1"; // defaults match the Energy2Shelly_ESP project
-char rct_port[6] = "8899";
+char device_type[12] = "RCT"; // the driver to use; also the log file prefix
+char device_host[41] = "192.168.0.1"; // defaults match the Energy2Shelly_ESP project
+char device_port[6] = "8899";
 
 static Preferences prefs;
 static WiFiManager wm; // must outlive setup(): non-blocking portal is pumped from loop()
@@ -63,14 +64,18 @@ static void saveConfigCallback() {
   portalSaved = true;      // networkUpdate() hands off to the background connect
 }
 
-static WiFiManagerParameter section_rct("<hr><h3>RCT Power options</h3>");
-static WiFiManagerParameter p_rct_host("rct_host",
-                                       "<b>RCT host</b><br>IP address or hostname "
-                                       "of the RCT Power device",
-                                       rct_host, 41);
-static WiFiManagerParameter p_rct_port("rct_port",
-                                       "<b>RCT port</b><br><code>8899</code> default",
-                                       rct_port, 6);
+static WiFiManagerParameter section_rct("<hr><h3>Inverter options</h3>");
+// The type is not a field yet: there is one implemented driver, and a list of
+// one is noise. It becomes a list the day a second family exists, and the saved
+// value is the prefix of the log files.
+static WiFiManagerParameter p_device_host("device_host",
+                                       "<b>Address</b><br>IP address or hostname "
+                                       "of the inverter",
+                                       device_host, 41);
+static WiFiManagerParameter p_device_port("device_port",
+                                       "<b>Port</b><br><code>8899</code> for an "
+                                       "RCT Power",
+                                       device_port, 6);
 
 // The switched output, as two number fields. A <select> is not reachable here:
 // WiFiManagerParameter renders an <input> from the ID it is given (see
@@ -93,12 +98,33 @@ static WiFiManagerParameter p_relay_w(
 
 void readConfig() {
   prefs.begin("config", false);
-  strncpy(rct_host, prefs.getString("rct_host", rct_host).c_str(),
-          sizeof(rct_host) - 1);
-  rct_host[sizeof(rct_host) - 1] = '\0';
-  strncpy(rct_port, prefs.getString("rct_port", rct_port).c_str(),
-          sizeof(rct_port) - 1);
-  rct_port[sizeof(rct_port) - 1] = '\0';
+  // device_* are the settings of the abstraction; rct_* is what the firmware
+  // wrote before there was one. They are read once more as a fallback, so an
+  // update does not leave a panel without its inverter - the failure would only
+  // show up as "no data" on the wall.
+  strncpy(device_host, prefs.getString("device_host", "").c_str(),
+          sizeof(device_host) - 1);
+  device_host[sizeof(device_host) - 1] = '\0';
+  if (device_host[0] == '\0') {
+    strncpy(device_host, prefs.getString("rct_host", device_host).c_str(),
+            sizeof(device_host) - 1);
+    device_host[sizeof(device_host) - 1] = '\0';
+  }
+  strncpy(device_port, prefs.getString("device_port", "").c_str(),
+          sizeof(device_port) - 1);
+  device_port[sizeof(device_port) - 1] = '\0';
+  if (device_port[0] == '\0') {
+    strncpy(device_port, prefs.getString("rct_port", device_port).c_str(),
+            sizeof(device_port) - 1);
+    device_port[sizeof(device_port) - 1] = '\0';
+  }
+  strncpy(device_type, prefs.getString("device_type", device_type).c_str(),
+          sizeof(device_type) - 1);
+  device_type[sizeof(device_type) - 1] = '\0';
+  strncpy(device_host, device_host, sizeof(device_host) - 1);
+  device_host[sizeof(device_host) - 1] = '\0';
+  strncpy(device_port, device_port, sizeof(device_port) - 1);
+  device_port[sizeof(device_port) - 1] = '\0';
   strncpy(wifi_ssid, prefs.getString("wifi_ssid", "").c_str(),
           sizeof(wifi_ssid) - 1);
   wifi_ssid[sizeof(wifi_ssid) - 1] = '\0';
@@ -108,10 +134,20 @@ void readConfig() {
   prefs.end();
 }
 
+void deviceConfig(DeviceConfig &out) {
+  strncpy(out.type, device_type, sizeof(out.type) - 1);
+  out.type[sizeof(out.type) - 1] = '\0';
+  strncpy(out.host, device_host, sizeof(out.host) - 1);
+  out.host[sizeof(out.host) - 1] = '\0';
+  strncpy(out.port, device_port, sizeof(out.port) - 1);
+  out.port[sizeof(out.port) - 1] = '\0';
+}
+
 void saveConfig() {
   prefs.begin("config", false);
-  prefs.putString("rct_host", rct_host);
-  prefs.putString("rct_port", rct_port);
+  prefs.putString("device_type", device_type);
+  prefs.putString("device_host", device_host);
+  prefs.putString("device_port", device_port);
   prefs.putString("wifi_ssid", wifi_ssid);
   prefs.putString("wifi_pass", wifi_pass);
   prefs.end();
@@ -130,8 +166,8 @@ static void startProvisioningAp() {
   // actually in use. The WiFiManagerParameter defaults are captured at file
   // scope - before readConfig() and any dev override run - so without this a
   // save would re-submit the stale compile-time host and clobber NVS.
-  p_rct_host.setValue(rct_host, sizeof(rct_host) - 1);
-  p_rct_port.setValue(rct_port, sizeof(rct_port) - 1);
+  p_device_host.setValue(device_host, sizeof(device_host) - 1);
+  p_device_port.setValue(device_port, sizeof(device_port) - 1);
   // Same reason for the output fields: their defaults are also compile-time
   // constants, and a portal save submits whatever the form holds.
   char relayModeStr[4];
@@ -184,8 +220,8 @@ static void finishWifiUp() {
   if (shouldSaveConfig) {
     // Portal save: the form edited the WiFiManager parameter buffers in
     // place, so adopt the submitted RCT settings and persist everything.
-    strcpy(rct_host, p_rct_host.getValue());
-    strcpy(rct_port, p_rct_port.getValue());
+    strcpy(device_host, p_device_host.getValue());
+    strcpy(device_port, p_device_port.getValue());
     saveConfig();
     // The switched output goes with it - this is the only way to reach these
     // settings when the panel is not in the home network and its own web
@@ -215,7 +251,7 @@ static void finishWifiUp() {
   ready = true;
   phase = WIFI_READY;
   Serial.printf("WiFi: connected, RSSI %d dBm, RCT host '%s' port '%s'\n",
-                WiFi.RSSI(), rct_host, rct_port);
+                WiFi.RSSI(), device_host, device_port);
   Serial.printf("WiFi: ip %s, gw %s, dns %s\n",
                 WiFi.localIP().toString().c_str(),
                 WiFi.gatewayIP().toString().c_str(),
@@ -237,11 +273,11 @@ void networkSetup() {
   //     -DRCT_SIM_HOST=\"192.168.1.83\"' pio run -e esp32-s3 -t upload \
   //     --upload-port /dev/ttyACM0
 #ifdef RCT_SIM_HOST
-  strncpy(rct_host, RCT_SIM_HOST, sizeof(rct_host) - 1);
-  rct_host[sizeof(rct_host) - 1] = '\0';
-  strcpy(rct_port, "8899");
-  Serial.printf("RCT: Simulator-Host %s:%s (Build-Flag RCT_SIM_HOST)\n", rct_host,
-                rct_port);
+  strncpy(device_host, RCT_SIM_HOST, sizeof(device_host) - 1);
+  device_host[sizeof(device_host) - 1] = '\0';
+  strcpy(device_port, "8899");
+  Serial.printf("RCT: Simulator-Host %s:%s (Build-Flag RCT_SIM_HOST)\n", device_host,
+                device_port);
 #endif
   // Real device, read-only. The panel sends exactly two kinds of frame:
   // READ requests (type 0x01, one per OID) and the 0x3c poll request, which
@@ -252,8 +288,8 @@ void networkSetup() {
   wm.setTitle("RCT Panel");
   wm.setSaveConfigCallback(saveConfigCallback);
   wm.addParameter(&section_rct);
-  wm.addParameter(&p_rct_host);
-  wm.addParameter(&p_rct_port);
+  wm.addParameter(&p_device_host);
+  wm.addParameter(&p_device_port);
   wm.addParameter(&p_relay_mode);
   wm.addParameter(&p_relay_w);
   // Portals must stay cooperative with the GUI loop instead of running

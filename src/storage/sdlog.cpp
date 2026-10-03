@@ -29,6 +29,7 @@
 #include <SD.h>
 
 #include "../Diag.h"
+#include "../device/Device.h"
 #include "../NumFmt.h"
 #include "../i18n/Lang.h"
 #include <SPI.h>
@@ -189,6 +190,18 @@ const char *uptimeKey() {
   return key;
 }
 
+// The type of the device in use as the file name prefix: RCT-202610.csv for an
+// RCT Power, and whatever the second family will call itself when it exists.
+// The provenance of a row is in its name, not in a column - the CSV format is
+// 23 columns and stays that way, and two device families' rows in one chart
+// would be wrong anyway.
+//
+// One place, because the writer and the history reader have to look for the
+// same name: after a device was changed, the reader does not find the old
+// family's files, which is the honest result and shows as a gap in the 24 h
+// view rather than as a plausible number from another inverter.
+static const char *sdLogPrefix() { return deviceTypeName(); }
+
 // Pick the file for this moment and remember its rotation key. Returns false
 // when nothing changed or the card is gone.
 bool updatePath() {
@@ -203,7 +216,7 @@ bool updatePath() {
   const bool hadPath = s_pathValid;
   // Paths must be absolute: the VFS layer rejects anything not starting with
   // "/" (the volume is mounted at /sd).
-  snprintf(s_path, sizeof(s_path), "/hist/RCT-%s.csv", key);
+  snprintf(s_path, sizeof(s_path), "/hist/%s-%s.csv", sdLogPrefix(), key);
   if (!s_pathValid && !haveClock) {
     // First sample before the clock synced: keep the plain name without the
     // misleading "RCT-" prefix.
@@ -1029,7 +1042,7 @@ void sdWorkerReadHistory(int maxRows, bool waitForClock) {
       const char *prevKey = nullptr;
       static char prevKeyBuf[16];
       if (key != nullptr) {
-        snprintf(path, sizeof(path), "/hist/RCT-%s.csv", key);
+        snprintf(path, sizeof(path), "/hist/%s-%s.csv", sdLogPrefix(), key);
         prevKey = prevMonthKey(prevKeyBuf, sizeof(prevKeyBuf));
       } else {
         snprintf(path, sizeof(path), "/hist/%s.csv", uptimeKey());
@@ -1038,7 +1051,8 @@ void sdWorkerReadHistory(int maxRows, bool waitForClock) {
       char prevPath[40];
       prevPath[0] = '\0';
       if (prevKey != nullptr) {
-        snprintf(prevPath, sizeof(prevPath), "/hist/RCT-%s.csv", prevKey);
+        snprintf(prevPath, sizeof(prevPath), "/hist/%s-%s.csv", sdLogPrefix(),
+                 prevKey);
       }
 
       const int cur = scanFile(path, ring, maxRows);

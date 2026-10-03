@@ -17,18 +17,17 @@
 //      still feeds the panel instead of dropping it to zero.
 //
 // SPDX-License-Identifier: Apache-2.0
-#include "RctClient.h"
+#include "RctDriver.h"
 
 #include <WiFi.h>
 
-#include "../config/Configuration.h"
 #include "../Diag.h"
-#include "RctCrc.h"
 #include "../device/Device.h"
+#include "../device/DeviceDriver.h"
 #include "../device/Rules.h"
+#include "RctCrc.h"
 
-#define RCT_RX_TIMEOUT_MS 2000    // per-frame receive window
-#define RCT_CYCLE_TIMEOUT_MS 4000 // total per-poll collection budget
+#define RCT_RX_TIMEOUT_MS 2000 // per-frame receive window
 // How long a device that has already answered may stay silent before the cycle is
 // called done. The device answers a burst of reads and then nothing, so this is
 // the pause that ends a poll - not a deadline it has to meet.
@@ -45,7 +44,10 @@
 // across such a gap would credit the generator with energy nobody measured.
 #define RCT_S0_MAX_STEP_MS 30000
 
-static WiFiClient rctClient;
+// The link, handed over by Device.cpp. Set in begin(); a poll without one would
+// be a wiring bug rather than a runtime condition.
+static DeviceTransport *s_link = nullptr;
+static DeviceConfig s_cfg;
 
 // ---------------------------------------------------------------------------
 // Protocol helpers
@@ -80,7 +82,7 @@ static bool rctSendRead(uint32_t oid) {
     }
     out[oi++] = frame[i];
   }
-  return rctClient.write(out, oi) == oi;
+  return s_link->write(out, oi) == oi;
 }
 
 // Incremental receive state machine. De-escaped bytes accumulate in rctRxBuf
@@ -140,15 +142,14 @@ static void rctProcessByte(uint8_t c) {
 // only safe place: it is the same task, so dev is still only ever touched
 // from one context.
 static void (*rctYieldHook)() = nullptr;
-void rctSetYieldHook(void (*fn)()) { rctYieldHook = fn; }
 
 enum RCT_RX : int { RCT_RX_OK = 0, RCT_RX_TIMEOUT, RCT_RX_CRC };
 
 // Wait for and validate one response frame. Returns RCT_RX_OK on success,
 // RCT_RX_TIMEOUT when no frame arrived within the receive window (the caller
-// can check rctClient.connected() to see whether the peer closed the
-// connection) and RCT_RX_CRC when a frame arrived but its checksum does not
-// match. Resets the receive state in all cases.
+// can ask the transport whether the peer is still there to see whether it
+// closed the connection) and RCT_RX_CRC when a frame arrived but its
+// checksum does not match. Resets the receive state in all cases.
 //
 // quietMs is the shorter window that applies once the device has answered
 // something in this cycle and then stopped sending; 0 disables it. The device
@@ -164,8 +165,8 @@ static int rctReceiveFrame(uint8_t &command, uint32_t &oid, uint8_t *payload,
   unsigned long lastByteMs = startMillisHere;
   bool gotAny = false;
   while (millis() - startMillisHere < RCT_RX_TIMEOUT_MS) {
-    while (rctClient.available()) {
-      rctProcessByte(rctClient.read());
+    while (s_link->available()) {
+      rctProcessByte((uint8_t)s_link->read());
       gotAny = true;
       lastByteMs = millis();
       if (rctRxComplete) {
@@ -175,7 +176,7 @@ static int rctReceiveFrame(uint8_t &command, uint32_t &oid, uint8_t *payload,
     if (rctRxComplete) {
       break;
     }
-    if (!rctClient.connected()) {
+    if (!s_link->peerOpen()) {
       rctRxLen = 0;
       rctRxEscaping = false;
       rctRxComplete = false;
@@ -191,7 +192,7 @@ static int rctReceiveFrame(uint8_t &command, uint32_t &oid, uint8_t *payload,
       return RCT_RX_TIMEOUT;
     }
     if (rctYieldHook) {
-      rctYieldHook(); // keep the panel rendering while we wait for the frame
+      deviceYieldHook(); // keep the panel rendering while we wait for the frame
     } else {
       delay(1);
     }
@@ -464,20 +465,17 @@ static void rctDrain(uint32_t ms) {
   const unsigned long startMillisHere = millis();
   diagPhase("rct.drain");
   while (millis() - startMillisHere < ms) {
-    while (rctClient.available()) {
-      rctClient.read();
+    while (s_link->available()) {
+      s_link->read();
     }
-    if (rctYieldHook) {
-      rctYieldHook();
-    } else {
-      delay(1);
-    }
+    deviceYieldHook(); // see rctReceiveFrame(): the panel must keep drawing
+    delay(1);
   }
 }
 
 static void rctSendExtension() {
   static const uint8_t ext[] = {0x2b, 0x3c, 0xe1};
-  rctClient.write(ext, sizeof(ext));
+  s_link->write(ext, sizeof(ext));
   rctDrain(300);
 }
 
@@ -490,8 +488,10 @@ static DeviceState &dev = deviceStateMutable();
 // is visible in the log instead of being a silent guess.
 static bool rctCurrentFlipLogged = false;
 
-// Public poll entry point (mirrors parseRCT in the ported project).
-void rctParse() {
+// One collection run (mirrors parseRCT in the ported project). Called through
+// DeviceDriver::poll(); the file-static state stays file-static, because there
+// is exactly one RCT per panel.
+static void rctPoll(uint32_t budgetMs) {
   // Once per boot: how this device's meters read, which is what makes the rules
   // in src/device/Rules.h right here. All three are false-then-true for the
   // RCT, and each of them was a correction that used to be written into the
@@ -516,7 +516,7 @@ void rctParse() {
                   rct.feedCounterNegative ? "kommen" : "kommen nicht");
   }
 
-  if (!rctClient.connected()) {
+  if (!s_link->peerOpen()) {
     // No link: skip the attempt so the UI (same task) is never frozen by a
     // blocking connect. "not connected" is signaled through dev.
     if (WiFi.status() != WL_CONNECTED) {
@@ -534,31 +534,28 @@ void rctParse() {
     const uint32_t nowAtt = millis();
     if ((int32_t)(nowAtt - lastAtt) >= (int32_t)RCT_CONNECT_RETRY_MS) {
       lastAtt = nowAtt;
-      int port = atol(rct_port);
+      int port = atol(s_cfg.port);
       if (port <= 0) {
-        port = 8899;
+        port = 8899; // the RCT Power's standard port, if the field is empty
       }
-      Serial.printf("RCT: connecting to %s:%d ...\n", rct_host, port);
+      Serial.printf("RCT: connecting to %s:%d ...\n", s_cfg.host, port);
       // connect() is the one blocking lwIP call the yield hook cannot get into,
       // so it gets its own phase name: a panel that wedges on a connect is a
       // different fault than one that wedges on a poll, and the two need
       // different fixes.
       diagPhase("rct.connect");
-      if (!rctClient.connect(rct_host, port, RCT_CONNECT_TIMEOUT_MS)) {
+      if (!s_link->open(s_cfg.host, s_cfg.port, RCT_CONNECT_TIMEOUT_MS)) {
         // A failed connect can leave the socket half-open; the observation on
         // the panel was 21 of them stacked up, which eventually exhausted the
         // peer's listen backlog and made every later connect fail too.
-        rctClient.stop();
+        s_link->close();
         Serial.println("RCT: connect failed");
         dev.connected = false;
         return;
       }
       dev.connected = true;
-      if (rctYieldHook) {
-        rctYieldHook();
-      } else {
-        delay(20);
-      }
+      deviceYieldHook();
+      delay(20);
       rctSendExtension();
     } else {
       dev.connected = false;
@@ -609,7 +606,7 @@ void rctParse() {
   const uint64_t energySlotsMask =
       ((1ull << (RCT_SLOT_EXTTOTAL - RCT_SLOT_DCMONTH0 + 1)) - 1ull)
       << RCT_SLOT_DCMONTH0;
-  unsigned long deadline = millis() + RCT_CYCLE_TIMEOUT_MS;
+  unsigned long deadline = millis() + budgetMs;
   bool streamQuiet = false;
   bool gotFrame = false;
   while (freshMask != allFast && !streamQuiet &&
@@ -627,8 +624,8 @@ void rctParse() {
       gotFrame = true;
     }
     if (rc == RCT_RX_TIMEOUT) {
-      if (!rctClient.connected()) {
-        rctClient.stop();
+      if (!s_link->peerOpen()) {
+        s_link->close();
         dev.connected = false;
       }
       streamQuiet = true;
@@ -901,4 +898,33 @@ void rctParse() {
                 // the device: it must track the day counter's rise. A growing
                 // gap means the counter is not what its name says.
                 dev.extEnergyWh / 1000.0f, freshCount, RCT_NUM_SLOTS);
+}
+
+// ---------------------------------------------------------------------------
+// DeviceDriver
+// ---------------------------------------------------------------------------
+
+void RctDriver::setTransport(DeviceTransport *link) { s_link = link; }
+
+void RctDriver::begin(const DeviceConfig &cfg) {
+  s_cfg = cfg;
+}
+
+void RctDriver::poll(uint32_t budgetMs) { rctPoll(budgetMs); }
+
+bool RctDriver::connected() const { return dev.connected; }
+
+// ---------------------------------------------------------------------------
+// The factory
+// ---------------------------------------------------------------------------
+
+// One entry per implemented family. A type nobody implements returns nullptr
+// and the panel says so - it does not fall back to a device that is not the one
+// that was configured, because "the panel shows data from another inverter" is
+// worse than "the panel shows no data".
+DeviceDriver *makeDriver(const DeviceConfig &cfg) {
+  if (strcmp(cfg.type, "RCT") == 0) {
+    return new RctDriver();
+  }
+  return nullptr;
 }

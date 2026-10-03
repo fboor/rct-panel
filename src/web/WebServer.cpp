@@ -143,7 +143,7 @@ uint32_t s_otaStartMs = 0;
 char s_code[5] = {0};
 
 // Hands the display back to the panel while a download is being pumped out of a
-// handler. Installed by main.cpp, the same way rctSetYieldHook is - the web
+// handler. Installed by main.cpp, the same way deviceSetYieldHook is - the web
 // module stays free of LVGL, and the hook is guaranteed to run in the task that
 // called the handler.
 static void (*s_yieldHook)() = nullptr;
