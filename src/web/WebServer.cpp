@@ -99,10 +99,14 @@ const char *relayModeNameLong(RelayMode mode) {
 
 namespace {
 
-// Household load over the three phases - the panel's own meter, summed here so
-// the overview shows one number instead of three.
+// Household load over the three phases, plus the S0 meter - the same sum the
+// panel's flow diagram and its history sampler use, and for the same reason: the
+// inverter's load meter reads the demand already minus the S0 generator, so the
+// external power has to be added back (see the sign conventions in
+// GuiApp.cpp). Without it the tile reads the generator instead of the house and
+// goes negative whenever the S0 input produces more than the meter sees.
 float loadSum(const RctSnapshot &s) {
-  return s.loadPower[0] + s.loadPower[1] + s.loadPower[2];
+  return s.loadPower[0] + s.loadPower[1] + s.loadPower[2] + s.s0Power;
 }
 
 WebServer s_server(80);
