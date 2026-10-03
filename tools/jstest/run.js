@@ -427,5 +427,104 @@ check(api.rpFmtDate('2026-10-02', '{D}.{M}.{Y}') === '02.10.2026', 'German date'
 check(api.rpFmtDate('2026-10-02', '{Y}-{M}-{D}') === '2026-10-02', 'English date',
       api.rpFmtDate('2026-10-02', '{Y}-{M}-{D}'), '2026-10-02');
 
-console.log('== ' + checks + ' checks, ' + failed + ' failed ==');
-process.exit(failed === 0 ? 0 : 1);
+// --- the drawing block in a stubbed browser ---------------------------------
+// The parts of web::kScript that need a DOM: the first attempt fails, and the
+// page has to ask again by itself. Without that, a page open while the panel
+// restarts keeps its error note for good - the five-second poll only starts
+// after a success. rpRetryMs is shortened here instead of waiting.
+{
+  const code = blockOf('kScript');
+  let rufe = 0;
+  let interval = null;
+  const el = {
+    attributes: {
+      'data-col': 'ca0c0f,a45ee5,3ec97a,2e93e5,f0a202,ffea00',
+      'data-lab': 'Netz|Verbrauch|PV|EXT|Akku|SOC',
+      'data-dfmt': '{D}.{M}.{Y}',
+      'data-sfmt': '{D}.{M}.',
+      'data-stampfmt': 'Stand %s.',
+      'data-live': 'live',
+      'data-load': 'laedt',
+      'data-old': 'alt',
+      'data-none': 'keine Messwerte',
+      'data-nofile': 'keine Datei',
+      'data-gap1': '1 Lücke',
+      'data-gapn': '%d Lücken',
+      'data-err': 'Daten konnten nicht geladen werden.',
+      'data-sep': ',',
+      'data-key': 'pv|own|feed|draw|load',
+      'data-r': 'Autarkie|Eigenverbrauchsquote',
+      'data-lab-balken': 'x',
+      'data-cols': NAMES.join(','),
+    },
+    innerHTML: '',
+    setAttribute(k, v) { this.attributes[k] = v; },
+    getAttribute(k) { return this.attributes[k] !== undefined ? this.attributes[k] : null; },
+    set textContent(v) { this._t = v; },
+    get textContent() { return this._t; },
+    addEventListener() {},
+    getElementsByTagName() { return []; },
+    querySelector() { return null; },
+    querySelectorAll() { return []; },
+    style: {},
+    disabled: false,
+  };
+  const dokumente = {'verlauf': el, 'range': null, 'nav': null,
+                     'rangetext': null, 'periode': null, 'hinweis': null,
+                     'luecken': null};
+  const ring = {
+    tz: 'CET-1CEST,M3.5.0,M10.5.0/3', points: 3,
+    series: ['grid', 'load', 'pv', 'ext', 'battery', 'soc'],
+    unit: ['W', 'W', 'W', 'W', 'W', '%'],
+    data: [{t: 1790894400, v: [10, 200, 300, 0, -50, 60]},
+           null,
+           {t: 1790895000, v: [20, 210, 310, 0, -55, 61]}],
+    from: 1790894400, to: 1790895000,
+  };
+  const sandbox2 = {
+    console: console,
+    document: {
+      readyState: 'complete',
+      getElementById: (id) => (id in dokumente ? dokumente[id] : null),
+      addEventListener: () => {},
+    },
+    setInterval: (fn, ms) => { interval = {fn: fn, ms: ms}; return 1; },
+    clearInterval: () => { interval = null; },
+    setTimeout: (fn, ms) => { setTimeout(fn, ms); },
+    fetch: (url) => {
+      rufe++;
+      if (rufe === 1) {
+        return Promise.reject(new Error('simulierter Ausfall'));
+      }
+      return Promise.resolve({ok: true, json: () => Promise.resolve(ring)});
+    },
+  };
+  vm.createContext(sandbox2);
+  // Der Fuss des Script-Blocks ruft rpBoot() selbst, readyState ist 'complete'.
+  vm.runInContext(blockOf('kLogic') + '\n' + code.replace(
+    'var rpRetryMs=5000;', 'var rpRetryMs=300;'), sandbox2);
+  // Der Rueckruf der Fehlschlaege laeuft als Mikrotask, die Wiederholung ueber
+  // einen Timer: beides braucht Zeit, deshalb in zwei Schritten warten. Die
+  // Wartezeiten sind grosszuegig, weil der Test auf einem belasteten Rechner
+  // sonst an der eigenen Planung scheitert und nicht am Code.
+  check(rufe === 1, 'the first attempt went out', rufe, 1);
+  check(interval === null, 'no poll runs before the first success',
+        interval === null, true);
+
+  new Promise((r) => setTimeout(r, 25)).then(() => {
+    check(el.innerHTML.indexOf('note bad') >= 0, 'the failure is shown',
+          el.innerHTML.indexOf('note bad') >= 0, true);
+    check(interval === null, 'and still no poll', interval === null, true);
+    return new Promise((r) => setTimeout(r, 500));
+  }).then(() => {
+    check(rufe >= 2, 'the page asked again by itself', rufe >= 2, true);
+    check(el.innerHTML.indexOf('<svg') >= 0, 'and drew the chart',
+          el.innerHTML.indexOf('<svg') >= 0, true);
+    check(el.innerHTML.indexOf('note bad') < 0, 'the error note is gone',
+          el.innerHTML.indexOf('note bad') < 0, true);
+    check(interval !== null && interval.ms === 300, 'the poll waits rpRetryMs',
+          String(interval && interval.ms), '300');
+    console.log('== ' + checks + ' checks, ' + failed + ' failed ==');
+    process.exit(failed === 0 ? 0 : 1);
+  });
+}

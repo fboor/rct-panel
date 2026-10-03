@@ -310,12 +310,13 @@ gezählt - dieselbe Zahl, die das Panel unter seinem Diagramm zeigt.
   Datumsformat (`{D}.{M}.{Y}` oder `{Y}-{M}-{D}`), die Trennfarbe und die
   sechs Reihenfarben.
 * **Einheiten an den Achsen, weil hier Platz ist.** Jede Skalenmarke links
-  trägt die Einheit hinter der Zahl (`10,0 kW`), und rechts am Rand steht die
-  Skalierung des Ladezustands von `0 %` unten bis `100 %` oben - geschrieben,
-  wie man es auch im Text schreiben würde. Auf dem 480-Pixel-Display fehlt dafür
-  der Platz; die Marken stehen dort ohne Einheit, die Legende nennt die Reihen.
-  Die Einheit des Ladezustands kommt aus der Antwort des Panels, ist also die,
-  die er geschickt hat.
+  trägt die Einheit hinter der Zahl (`10,0 kW`), und rechts steht auf **gleicher
+  Höhe** der Ladezustand - geschrieben, wie man es auch im Text schreiben
+  würde. Der Ladezustand läuft über die volle Höhe von 0 % bis 100 %, deshalb
+  steht neben der Null-Linie der Stand des Akku in diesem Moment (hier rund
+  50 %), oben 100 %, unten 0 %. Die Einheit kommt aus der Antwort des Panels,
+  ist also die, die er geschickt hat. Auf dem 480-Pixel-Display fehlt dafür der
+  Platz; die Marken stehen dort ohne Einheit, die Legende nennt die Reihen.
 * **Die Oberfläche steht während eines Dateizugs.** Bei der gemessenen Rate von
   ~470 kB/s sind die ~1,2 MB einer Monatsdatei rund 2,6 s Lesezeit, in denen die
   Bedienung des Panels wartet - dieselbe Arbeit, an der die Oberfläche beim

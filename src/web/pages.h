@@ -545,7 +545,10 @@ function rpChart(el,j){
   // panel sent.
   var socUnit=(j.unit&&j.unit[5])?j.unit[5]:'%';
   // The three scale markers, inside the plot on the left, like on the panel -
-  // with the unit behind the number, the way it would be written in text.
+  // with the unit behind the number, the way it would be written in text. On the
+  // right, at the same heights, what the state of charge was there: its scale
+  // runs 0 to 100 % over the full height, so the line of 0 W on the left says how
+  // full the battery was at that moment.
   var marks=[mhi,0,mlo];
   for(i=0;i<marks.length;i++){
     var ym=yOf(marks[i]);
@@ -553,10 +556,9 @@ function rpChart(el,j){
        '" stroke="#e3e7eb" stroke-width="1"/>';
     h+='<text x="'+(rpVX0-5)+'" y="'+(ym+3).toFixed(1)+'" text-anchor="end" font-size="11" fill="#5a6672">'+
        rpEsc(rpNum(marks[i]/1000,1,sep)+' kW')+'</text>';
+    h+='<text x="'+(rpVX0+rpVW+6)+'" y="'+(ym+3).toFixed(1)+'" font-size="11" fill="#5a6672">'+
+       rpEsc(Math.round(100*(1-(ym-rpVY0)/rpVH))+' '+socUnit)+'</text>';
   }
-  // The scale of the state of charge at the right edge, where its series runs.
-  h+='<text x="'+(rpVX0+rpVW+6)+'" y="'+(rpVY0+7)+'" font-size="11" fill="#5a6672">100 '+rpEsc(socUnit)+'</text>';
-  h+='<text x="'+(rpVX0+rpVW+6)+'" y="'+(rpVY0+rpVH)+'" font-size="11" fill="#5a6672">0 '+rpEsc(socUnit)+'</text>';
   if(band){
     // The days along the bottom, thinned out so the labels cannot collide. The
     // short pattern drops the year: a row of days either all share one or none
@@ -762,8 +764,17 @@ function rpVerlauf(){
   function stopLive(){
     if(live){clearInterval(live);live=null}
   }
-  // The time zone rule comes with every answer; one is enough, and it is needed
+  // How long to wait before asking again: once after a failed attempt, and
+// between two drawings of the live chart. A variable and not a literal in two
+// places, because tools/jstest runs this block in node with a short one.
+var rpRetryMs=5000;
+// The time zone rule comes with every answer; one is enough, and it is needed
   // before a day can be named at all.
+  //
+  // A failed first attempt is repeated: without that, a page that happened to be
+  // open while the panel was restarting kept its error note for good, because
+  // the five-second poll is only started after a success. The panel was being
+  // restarted here often enough to be worth the five lines.
   function needRule(cb){
     if(rule){cb();return}
     fetch('/api/verlauf.json').then(function(r){return r.json()}).then(function(j){
@@ -771,6 +782,7 @@ function rpVerlauf(){
       cb();
     }).catch(function(){
       rpFail(el);
+      setTimeout(function(){needRule(cb);},rpRetryMs);
     });
   }
   function rday(){
@@ -790,7 +802,7 @@ function rpVerlauf(){
   // drawing that never refreshes would be stale almost by definition.
   function liveView(){
     rpLoadChart(el);
-    live=setInterval(function(){rpLoadChart(el);},5000);
+    live=setInterval(function(){rpLoadChart(el);},rpRetryMs);
     if(lab){lab.textContent=el.getAttribute('data-live')}
     if(nav){nav.style.display='none'}
     if(per){per.innerHTML=''}

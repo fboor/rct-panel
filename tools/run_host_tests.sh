@@ -31,6 +31,8 @@
 #                  hours of 2026 and every hour around both switch-over dates.
 #                  A rule read half right costs an hour for half the year, and
 #                  the day boundaries of the whole history move with it.
+#                  The drawing block comes along in a stubbed browser: a first
+#                  answer that fails has to be asked for again by itself.
 #
 # The RCT simulator test used to be here. It imports rctclient (GPL-3.0), so the
 # simulator lives outside this repository now - see its own README. It is run

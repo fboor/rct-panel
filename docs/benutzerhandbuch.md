@@ -513,8 +513,10 @@ Panel, etwa „9 Lücken, 110 min ohne Messwerte" — damit eine Aufzeichnungspa
 nicht wie ein Einbruch aussieht.
 
 Die Achsen tragen ihre Einheit so, wie man sie auch im Text schreiben würde:
-links neben jeder Marke die Leistung mit **kW** dahinter, rechts am Rand die
-Skalierung des Ladezustands von **0 %** unten bis **100 %** oben.
+links neben jeder Marke die Leistung mit **kW** dahinter, rechts auf **gleicher
+Höhe** der Ladezustand. Weil die Ladezustandslinie über die volle Höhe von 0 %
+bis 100 % läuft, steht rechts neben der Null-Linie der Stand, den der Akku in
+diesem Moment hatte — auf der Linie also rund 50 %, oben 100 %, unten 0 %.
 
 <figure class="web-shot">
   <img src="img/web-verlauf.png" alt="Verlaufsseite des Panels: oben der Bereichswähler 24 Stunden, Tag, Woche, Monat, darunter das Datum mit den Pfeilen zum Blättern, dann ein Liniendiagramm eines ganzen Tages mit sechs Linien und die Achsenbeschriftungen kW links und Prozent rechts, darunter die Farblegende und die Angabe des Zeitpunkts der jüngsten Messung">
