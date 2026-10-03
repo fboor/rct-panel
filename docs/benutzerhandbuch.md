@@ -153,6 +153,32 @@ eingetroffen (z. B. weil der Wechselrichter keine Batterie meldet oder die
 Verbindung fehlt). Es sind keine Werte ausgefallen — das Panel zeigt keinen
 erfundenen Nullwert an.
 
+### Hintergrund hell oder dunkel
+
+Das Display ist dunkel (schwarzer Hintergrund, helle Schrift). Wer es heller
+mag, stellt auf der **Service-Seite** ganz unten rechts auf **„Helles
+Theme“**: Der Seitenhintergrund wird weiß, die Texte darauf werden schwarz.
+Ein erneutes Tippen („Dunkles Theme“) bringst die dunkle Darstellung zurück.
+Das Panel merkt sich die Wahl und startet danach sofort in ihr — kein
+Neustart nötig, und beim Einschalten gibt es keinen kurzen Moment in der
+anderen Darstellung.
+
+Unverändert bleiben in beiden Darstellungen:
+
+- alle Felder mit eigenem Hintergrund — die Karten der Seiten *Heute* und
+  *Info*, das Diagramm der Seite *24 h Verlauf*, die Zeilen *Code* und
+  *Ausgang*, die Knöpfe sowie die Status- und die Navigationsleiste. Sie
+  behalten ihren dunklen Grund und ihre helle Schrift; der helle Modus ist
+  also eine helle Seite mit dunkeln Feldern darauf, keine umgefärbte
+  Oberfläche.
+- die farbigen Texte (grün, gelb, rot, grau) in beiden Modi.
+
+Ein Hinweis zum Grün: `#3EC97A` auf Weiß hat nur etwa 1,9:1 Kontrast und
+fällt im hellen Modus an Stellen auf, an denen das Grün auf Schwarz gut
+lesbar war (etwa das „AN“ des Ausgangs). Ein eigener, dunklerer Grünton für
+den hellen Modus ist vorbereitet, aber noch nicht gesetzt — die Entscheidung
+gehört nebeneinander auf den Bildschirm, nicht in eine Datei.
+
 ### Licht und Ruhe
 
 Lässt man das Panel in Ruhe, geht das Licht von selbst aus:
@@ -191,8 +217,19 @@ Das Flussdiagramm bildet die „Energiefluss“-Ansicht des RCT-Portals ab:
   Leistung unter dem Knoten.
 
 Die Pfeile zwischen den Knoten leuchten rot in Richtung des aktuellen
-Energieflusses. Unten zeigt eine Tabelle den Stand von Erzeugung /
-Verbrauch / Netz / Batterie.
+Energieflusses. Darunter stehen drei Felder mit Symbol, Text und Farbe, die
+je einen von drei Zuständen zeigen:
+
+| Feld | grün | orange | grau |
+|---|---|---|---|
+| Erzeugung (Sonne mit Panel) | deckt den Hausverbrauch | deckt ihn nicht | PV liefert nichts, Feld zeigt `–` |
+| Verbrauch (Stecker) | Unabhängig (kein Netzbezug) | Netzbezug | unter 10 W: „kein Verbrauch“ |
+| Akku (halbvoller Akku) | Laden | Entladen | kein Strom, oder gar kein Akku |
+
+Der Netzbezug zählt erst ab 20 W als solcher — unterhalb davon regelt das
+Gerät um null, und das Vorzeichen ist dann Rauschen. Für „Erzeugung“ gilt
+derselbe Hausverbrauch wie im Diagramm, also mit dem S0-Zähler; ein Haus,
+das aus S0 versorgt wird, erscheint deshalb nicht als orange.
 
 ### 3.2 Energie (Balken pro Zeitraum)
 
@@ -295,6 +332,11 @@ Die einzige Seite mit Aktionen:
   den diese Seiten für Änderungen verlangen. Er ist nur belegt, solange das
   Panel im Netz ist. Tippen Sie auf den Code, zieht das Panel sofort einen
   neuen — nützlich, wenn jemand über Ihre Schulter mitgelesen hat.
+- Hintergrund (rechts unten, unter dem Testknopf): stellt die Darstellung
+  der Display-Seiten um zwischen „Helles Theme“ (weißer Hintergrund, schwarze
+  Texte) und „Dunkles Theme“. Die Zeile nennt die Darstellung, die das
+  Antippen einstellt. Die Einstellung bleibt nach einem Neustart erhalten
+  (siehe Abschnitt 2).
 - Ausgang (unten): der Schaltkontakt. `Ausgang` nennt die
   eingestellte Funktion mit ihrer Schwelle in Watt; Tippen Sie darauf,
   wechselt die Funktion. Darunter steht, was gerade passiert (`AN · 512 W
@@ -534,7 +576,7 @@ diesem Moment hatte — auf der Linie also rund 50 %, oben 100 %, unten 0 %.
 > Geräte, deren Karte schon vor dem Update beschrieben wurde.
 
 <figure class="web-shot">
-  <img src="img/web-uebersicht.png" alt="Weboberfläche des Panels: oben vier Wertekarten für Netz, PV, Batterie und Verbrauch, darunter der Zeitraumwechsel Tag, Monat, Jahr, Gesamt mit fünf Energiebalken und den beiden Quoten Autarkie und Eigenverbrauchsquote">
+  <img src="img/web-uebersicht.png" alt="Weboberfläche des Panels: oben vier Wertekarten für Netz, PV, Akku und Verbrauch, darunter der Zeitraumwechsel Tag, Monat, Jahr, Gesamt mit fünf Energiebalken und den beiden Quoten Autarkie und Eigenverbrauchsquote">
   <figcaption>Bild 4: Die Übersichtseite — oben die aktuellen Werte, darunter die Energiebalken für den gewählten Zeitraum (hier Monat) mit Autarkie und Eigenverbrauchsquote, weiter unten die Geräteangaben und die Adresse, unter der das Panel erreichbar ist</figcaption>
 </figure>
 
