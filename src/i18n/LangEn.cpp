@@ -29,6 +29,9 @@ const char *const kLang[T_COUNT] = {
     "Home page",                        // T_MSG_TO_HOME
     "lang=\"en\"",                       // T_HTML_LANG
 
+    // --- web: the heading over the four value cards -------------------------
+    "Current",                         // T_H_CURRENT
+
     // --- web: the four value cards on the overview -------------------------
     "Grid",                              // T_CARD_GRID
     "PV",                               // T_CARD_PV
@@ -453,6 +456,10 @@ const char *const kLang[T_COUNT] = {
     "class", // T_FAULT_125
     "Island mode detected",     // T_FAULT_126
     "Neutral conductor fault",  // T_FAULT_127
+
+    // --- Display: the background -------------------------------
+    "Light theme",  // T_D_BTN_THEME_LIGHT
+    "Dark theme",   // T_D_BTN_THEME_DARK
 };
 
 #endif // RCT_LANG_EN

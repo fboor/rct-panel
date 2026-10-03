@@ -65,6 +65,9 @@ enum LangId : int {
   // The complete <html lang> attribute, including the attribute itself.
   T_HTML_LANG,
 
+  // --- web: the heading over the four value cards -------------------------
+  T_H_CURRENT,
+
   // --- web: the four value cards on the overview ---------------------------
   T_CARD_GRID,
   T_CARD_PV,
@@ -466,6 +469,13 @@ enum LangId : int {
   T_FAULT_125,
   T_FAULT_126,
   T_FAULT_127,
+
+  // --- Anzeige: der Wechsel zwischen dunklem und hellem Hintergrund --------
+  // Beide sagen, was das Antippen bewirkt, nicht was gerade da ist - so wie
+  // die Zeile mit dem Code darueber.
+  T_D_BTN_THEME_LIGHT,
+  T_D_BTN_THEME_DARK,
+
   T_COUNT
 };
 

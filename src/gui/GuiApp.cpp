@@ -39,6 +39,7 @@
 #include <string.h>
 #include <time.h>
 
+#include <Preferences.h>
 #include <WiFi.h>
 
 #include "GuiApp.h"
@@ -82,16 +83,109 @@
 // ---------------------------------------------------------------------------
 // Palette (from the RCT Portal Energiefluss: white nodes, red active flows)
 // ---------------------------------------------------------------------------
-static const lv_color_t COL_BG = lv_color_hex(0x101418);
+// The page background and the text on it are the two colours that follow the
+// theme; everything else is one fixed value. Which two depends on s_hell, and
+// that is the whole mechanism of the switch - see uiBg() and themeWechseln().
+static const lv_color_t COL_BG_DUNKEL = lv_color_hex(0x101418);
+static const lv_color_t COL_BG_HELL = lv_color_hex(0xFFFFFF);
+static const lv_color_t COL_TEXT_DUNKEL = lv_color_hex(0xE8ECF1);
+// Not pure black: the dark theme's background serves well as the light theme's
+// text, and it is easier on the eyes at night without costing any contrast.
+static const lv_color_t COL_TEXT_HELL = lv_color_hex(0x101418);
+static bool s_hell = false; // from NVS, read before the first colour is used
 static const lv_color_t COL_CARD = lv_color_hex(0x1C222A);
 static const lv_color_t COL_BAR = lv_color_hex(0x3A4550); // top / bottom bars (clearly brighter than cards)
 static const lv_color_t COL_ACCENT = lv_color_hex(0x2E93E5);
-static const lv_color_t COL_TEXT = lv_color_hex(0xE8ECF1);
 static const lv_color_t COL_MUTED = lv_color_hex(0x8A94A0);
+// Green for "on" and "no faults". Ready to follow the theme like the two
+// colours above - the walk compares and swaps it like them - but deliberately
+// the same value in both modes for now: #3EC97A on white is the one weak spot
+// of the light theme (about 1.9:1 contrast), and a darker green for it is a
+// decision to make with the colours side by side, not one to guess here.
 static const lv_color_t COL_OK = lv_color_hex(0x3EC97A);
 static const lv_color_t COL_ERR = lv_color_hex(0xE5484D);
 static const lv_color_t COL_WARN = lv_color_hex(0xEBD300); // waiting, not broken
 static const lv_color_t COL_BORDER = lv_color_hex(0x2A3038); // stat card ring
+
+// The page background, and the text that sits directly on it. Everything with a
+// background of its own - cards, the code row, the mode row, the buttons, the
+// status and navigation bars - keeps its colour in both modes.
+static inline lv_color_t uiBg() {
+  return s_hell ? COL_BG_HELL : COL_BG_DUNKEL;
+}
+static inline lv_color_t uiText() {
+  return s_hell ? COL_TEXT_HELL : COL_TEXT_DUNKEL;
+}
+// Green, ready to differ between the themes. One function, so the switch has
+// nothing to know about it later: the day the light mode gets its own green, it
+// is a second constant and a ternary here, and nothing else in the file moves.
+static inline lv_color_t uiOk() { return COL_OK; }
+
+// ---------------------------------------------------------------------------
+// The switch: what it writes, and the walk that writes it
+// ---------------------------------------------------------------------------
+// The pages are built once at boot, so a change at runtime has to go over the
+// objects that already exist. What is written and what is compared against,
+// kept as pairs - the walk then needs no knowledge of which colour is which.
+static lv_color_t s_altBg = COL_BG_DUNKEL, s_neuBg = COL_BG_DUNKEL;
+static lv_color_t s_altText = COL_TEXT_DUNKEL, s_neuText = COL_TEXT_DUNKEL;
+static lv_color_t s_altOk = COL_OK, s_neuOk = COL_OK;
+
+// One object and everything below it.
+//
+// `aufBg` says that nothing between here and the page has a background of its
+// own - which is what "this text sits on the background" means. It falls out of
+// the same colour test as the swap, because both are the same question: a card,
+// a row and a bar are exactly the objects whose background is not the page
+// background.
+//
+// Two details of LVGL make that test necessary in this form. The getters return
+// the *resolved* value, inheritance included, so a label inside a card reports
+// the card's colour and is correctly treated as being on it. And an object
+// without a background of its own reports the default colour (white, which in
+// the light theme even collides with the new background) - so opacity has to
+// be asked as well, otherwise the first plain label on a page would end the
+// chain and leave everything below it untouched.
+static void themeDurchlaufen(lv_obj_t *o, bool aufBg) {
+  const bool undurchsichtig =
+      lv_obj_get_style_bg_opa(o, LV_PART_MAIN) != LV_OPA_TRANSP;
+  const bool eigeneFlaeche =
+      undurchsichtig &&
+      !lv_color_eq(lv_obj_get_style_bg_color(o, LV_PART_MAIN), s_altBg);
+  if (aufBg && !eigeneFlaeche && undurchsichtig) {
+    lv_obj_set_style_bg_color(o, s_neuBg, LV_PART_MAIN);
+  } else if (eigeneFlaeche) {
+    aufBg = false; // a panel of its own: nothing below it is on the background
+  }
+  const lv_color_t txt = lv_obj_get_style_text_color(o, LV_PART_MAIN);
+  if (aufBg && lv_color_eq(txt, s_altText)) {
+    lv_obj_set_style_text_color(o, s_neuText, LV_PART_MAIN);
+  } else if (lv_color_eq(txt, s_altOk)) {
+    // The green follows the theme wherever it stands - on the background and on
+    // the cards - so it is swapped by colour and not by place.
+    lv_obj_set_style_text_color(o, s_neuOk, LV_PART_MAIN);
+  }
+  const uint32_t n = lv_obj_get_child_count(o);
+  for (uint32_t i = 0; i < n; i++) {
+    themeDurchlaufen(lv_obj_get_child(o, i), aufBg);
+  }
+}
+
+// The theme is the only thing of ours in this namespace, which keeps the question
+// "what does the panel remember" answerable by looking at two places.
+static Preferences prefs;
+
+static void themeLaden() {
+  prefs.begin("gui", false);
+  s_hell = prefs.getUChar("theme", 0) != 0;
+  prefs.end();
+}
+
+static void themeSpeichern() {
+  prefs.begin("gui", true);
+  prefs.putUChar("theme", s_hell ? 1 : 0);
+  prefs.end();
+}
 
 // Energiefluss palette (reference values)
 static const lv_color_t FLOW_RED = lv_color_hex(0xCA0C0F);   // active flow / value
@@ -419,7 +513,7 @@ static lv_obj_t *makeButton(lv_obj_t *parent, const char *symbol,
   lv_obj_t *l = lv_label_create(btn);
   lv_label_set_text(l, symbol);
   lv_obj_set_style_text_font(l, &lv_font_montserrat_28_uml, 0);
-  lv_obj_set_style_text_color(l, COL_TEXT, 0);
+  lv_obj_set_style_text_color(l, uiText(), 0);
   lv_obj_center(l);
   return btn;
 }
@@ -603,6 +697,15 @@ void guiEnergyPeriod(int period, float wh[5], float *autarky,
 }
 
 // Highlight the active period button (portal dashboard style).
+//
+// The text of the active button is one fixed colour, not the page background:
+// the button has a background of its own, and the theme walk deliberately leaves
+// the text on such objects alone - a themed colour here would keep whatever the
+// theme was when the pages were built and disagree with the rest of the page
+// after a switch. Dark on the blue is also the better of the two (about 5.4:1
+// against white on it).
+static const lv_color_t COL_ON_ACCENT = lv_color_hex(0x101418);
+
 static void energySelectStyle() {
   for (int i = 0; i < ENERGY_PERIODS; i++) {
     if (!s_ebarBtn[i]) {
@@ -611,7 +714,8 @@ static void energySelectStyle() {
     lv_obj_set_style_bg_color(s_ebarBtn[i],
                               i == s_energyPeriod ? COL_ACCENT : COL_CARD, 0);
     lv_obj_set_style_text_color(lv_obj_get_child(s_ebarBtn[i], 0),
-                                i == s_energyPeriod ? COL_BG : COL_MUTED, 0);
+                                i == s_energyPeriod ? COL_ON_ACCENT : COL_MUTED,
+                                0);
   }
 }
 
@@ -778,10 +882,10 @@ static void pageBuildEnergy(AppPage *p) {
     // Label white: the bar underneath already carries the series color, a
     // colored name on top of a colored bar was just noise.
     lv_obj_t *name =
-        makeLabel(root, tr(kEnergyId[i]), &lv_font_montserrat_16_uml, COL_TEXT);
+        makeLabel(root, tr(kEnergyId[i]), &lv_font_montserrat_16_uml, uiText());
     lv_obj_set_pos(name, EB_BAR_X, y);
 
-    p->labels[i] = makeLabel(root, "--", &lv_font_montserrat_16_uml, COL_TEXT);
+    p->labels[i] = makeLabel(root, "--", &lv_font_montserrat_16_uml, uiText());
     lv_obj_set_width(p->labels[i], 120);
     lv_obj_set_style_text_align(p->labels[i], LV_TEXT_ALIGN_RIGHT, 0);
     lv_obj_set_pos(p->labels[i], 340, y);
@@ -850,9 +954,9 @@ static const int ROW_VAL_X = 156;
 // names never change.
 static void makeRow(AppPage *p, lv_obj_t *root, int i, const char *name,
                     const char *value) {
-  lv_obj_t *n = makeLabel(root, name, &lv_font_montserrat_16_uml, COL_TEXT);
+  lv_obj_t *n = makeLabel(root, name, &lv_font_montserrat_16_uml, uiText());
   lv_obj_align(n, LV_ALIGN_TOP_LEFT, 24, ROW_Y0 + i * ROW_PITCH);
-  p->labels[i] = makeLabel(root, value, &lv_font_montserrat_16_uml, COL_TEXT);
+  p->labels[i] = makeLabel(root, value, &lv_font_montserrat_16_uml, uiText());
   lv_obj_align(p->labels[i], LV_ALIGN_TOP_LEFT, ROW_VAL_X, ROW_Y0 + i * ROW_PITCH);
 }
 
@@ -1035,6 +1139,7 @@ static void relayModeCb(lv_event_t *e) {
 // to, the update function further down where it can be read on its own.
 static void serviceRelayState();
 
+
 // "Test 5 s an / 5 s aus": the check that this really is the right pin and the
 // right polarity, without a browser and without data from the inverter. Pressed
 // again while it runs, it does nothing.
@@ -1081,7 +1186,7 @@ static void serviceRelayState() {
     // While the test runs, what it is doing is the point: "AN" and "AUS" every
     // 5 s, not the mode it is temporarily overriding.
     setText(st, tr(T_D_OUT_TEST), relayIsOn() ? on : off);
-    lv_obj_set_style_text_color(st, relayIsOn() ? COL_OK : COL_MUTED, 0);
+    lv_obj_set_style_text_color(st, relayIsOn() ? uiOk() : COL_MUTED, 0);
     return;
   }
   // Only the two threshold modes show a number, and only they can say how old
@@ -1101,7 +1206,7 @@ static void serviceRelayState() {
   // (DATA_MAX_AGE_MS in Relay.cpp), so saying so is not decoration.
   lv_obj_set_style_text_color(st,
                               stale ? COL_MUTED
-                                    : (relayIsOn() ? COL_OK : COL_MUTED),
+                                    : (relayIsOn() ? uiOk() : COL_MUTED),
                               0);
 }
 
@@ -1269,6 +1374,42 @@ bool guiRequestShot() {
   return true;
 }
 
+// The row on the Service page. A label with a background and a click flag, like
+// the code row above it - not a button, because a button would bring its own
+// states and the row is the same thing the other two are.
+static lv_obj_t *s_themeBtn = nullptr;
+
+// Change the theme and go over what exists. One pass over the object tree, once,
+// on a tap - and not a rebuild: the pages carry state (the ring, the selected
+// period, the code, the values that only change when the device answers), and a
+// rebuild would throw all of that away to change two colours.
+static void themeWechseln() {
+  s_hell = !s_hell;
+  themeSpeichern();
+  // What the walk compares against is what is on screen now, which after the
+  // flag has flipped is the theme we are leaving.
+  if (s_hell) {
+    s_altBg = COL_BG_DUNKEL;   s_neuBg = COL_BG_HELL;
+    s_altText = COL_TEXT_DUNKEL; s_neuText = COL_TEXT_HELL;
+  } else {
+    s_altBg = COL_BG_HELL;     s_neuBg = COL_BG_DUNKEL;
+    s_altText = COL_TEXT_HELL;   s_neuText = COL_TEXT_DUNKEL;
+  }
+  s_altOk = uiOk();
+  s_neuOk = s_altOk; // one value in both modes today; see uiOk()
+  themeDurchlaufen(lv_screen_active(), true);
+  if (s_themeBtn != nullptr) {
+    lv_label_set_text(s_themeBtn,
+                      tr(s_hell ? T_D_BTN_THEME_DARK : T_D_BTN_THEME_LIGHT));
+  }
+  lv_obj_invalidate(lv_screen_active());
+}
+
+static void themeCb(lv_event_t *e) {
+  (void)e;
+  themeWechseln();
+}
+
 static void pageBuildService(AppPage *p) {
   lv_obj_t *root = p->root;
 
@@ -1314,14 +1455,14 @@ static void pageBuildService(AppPage *p) {
   // Full page width, because the longest state plus the hex still fits
   // (40 characters, ~290 px) and a wrap would push everything below down.
   p->labels[SV_BAT_STATUS] =
-      makeLabel(root, "--", &lv_font_montserrat_14_uml, COL_TEXT);
+      makeLabel(root, "--", &lv_font_montserrat_14_uml, uiText());
   lv_obj_set_pos(p->labels[SV_BAT_STATUS], 20, 58);
   lv_obj_set_width(p->labels[SV_BAT_STATUS], 440);
   // The panel's own address on the second line: it is the one thing needed to
   // open the web interface, and the top left is where the eye starts. Without a
   // network it says so - a bare dash looks like an idle reading.
   p->labels[SV_WEB] =
-      makeLabel(root, "-", &lv_font_montserrat_14_uml, COL_TEXT);
+      makeLabel(root, "-", &lv_font_montserrat_14_uml, uiText());
   lv_obj_set_pos(p->labels[SV_WEB], 20, 88);
   lv_obj_set_width(p->labels[SV_WEB], 200);
 
@@ -1332,14 +1473,14 @@ static void pageBuildService(AppPage *p) {
   // card working", "is something wrong") above the detail.
   (void)sectionHead(tr(T_D_SV_HEAD_SD), 116);
   p->labels[SV_SD] =
-      makeLabel(root, sdStatusText(), &lv_font_montserrat_16_uml, COL_TEXT);
+      makeLabel(root, sdStatusText(), &lv_font_montserrat_16_uml, uiText());
   lv_obj_set_pos(p->labels[SV_SD], 20, 138);
   lv_obj_set_width(p->labels[SV_SD], 440);
 
   // --- Faults (decoded, multi-line; several can be active at once) ---
   sectionHead(tr(T_D_SV_HEAD_FAULTS), 184);
   p->labels[SV_FLT_LIST] =
-      makeLabel(root, "--", &lv_font_montserrat_14_uml, COL_TEXT);
+      makeLabel(root, "--", &lv_font_montserrat_14_uml, uiText());
   lv_obj_set_pos(p->labels[SV_FLT_LIST], 20, 208);
   // 280 px, not the full 440: the right column carries the web and output
   // blocks down to the bottom, and a fault text running under them is worse than
@@ -1407,7 +1548,7 @@ static void pageBuildService(AppPage *p) {
   // field that does not work.
   (void)sectionHead(tr(T_D_SV_HEAD_WEB), 118, 300);
   p->labels[SV_CODE] = makeLabel(root, tr(T_D_CODE_EMPTY),
-                                 &lv_font_montserrat_14_uml, COL_TEXT);
+                                 &lv_font_montserrat_14_uml, uiText());
   lv_obj_set_pos(p->labels[SV_CODE], 300, 140);
   lv_obj_set_width(p->labels[SV_CODE], 160);
   lv_obj_set_style_text_align(p->labels[SV_CODE], LV_TEXT_ALIGN_CENTER, 0);
@@ -1436,12 +1577,12 @@ static void pageBuildService(AppPage *p) {
   // row that runs down into the navigation bar. Function and threshold share one
   // tappable row for the same reason they sit side by side on the web page:
   // the threshold belongs to the function.
-  (void)sectionHead(tr(T_D_SV_HEAD_OUTPUT), 204, 300);
+  (void)sectionHead(tr(T_D_SV_HEAD_OUTPUT), 198, 300);
   // "Aus" ist nur, was die Zeile vor dem ersten Durchlauf zeigt, in dem die
   // gespeicherte Funktion gelesen wurde; danach traegt sie die Funktion selbst.
   p->labels[SV_RELAY] = makeLabel(root, relayModeName(RelayMode::Off),
-                                   &lv_font_montserrat_14_uml, COL_TEXT);
-  lv_obj_set_pos(p->labels[SV_RELAY], 300, 226);
+                                   &lv_font_montserrat_14_uml, uiText());
+  lv_obj_set_pos(p->labels[SV_RELAY], 300, 220);
   lv_obj_set_width(p->labels[SV_RELAY], 160);
   lv_obj_set_style_text_align(p->labels[SV_RELAY], LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_style_pad_ver(p->labels[SV_RELAY], 4, 0);
@@ -1456,7 +1597,7 @@ static void pageBuildService(AppPage *p) {
   // without that number a threshold in watts is a number nobody can set sensibly.
   p->labels[SV_RELAY_ST] =
       makeLabel(root, "", &lv_font_montserrat_14_uml, COL_MUTED);
-  lv_obj_set_pos(p->labels[SV_RELAY_ST], 300, 278);
+  lv_obj_set_pos(p->labels[SV_RELAY_ST], 300, 272);
   lv_obj_set_width(p->labels[SV_RELAY_ST], 160);
 
   // Test button, on its own line under the state it overrules. 5 s on, 5 s off,
@@ -1464,10 +1605,11 @@ static void pageBuildService(AppPage *p) {
   // if nobody is watching. It ignores the rule, which is the point - the rule
   // needs data from the inverter, the test must work without it.
   //
-  // 26 px tall, and it ends at 328: the content area reaches 364, so the last
-  // row keeps 36 px of air above the navigation bar instead of sitting on it.
+  // 26 px tall, and it ends at 322: the content area reaches 364, so the theme
+  // row below it still keeps 12 px of air above the navigation bar. Every step
+  // of that is taken out of the block above, which had 36 px at the end.
   lv_obj_t *test = lv_button_create(root);
-  lv_obj_set_pos(test, 300, 302);
+  lv_obj_set_pos(test, 300, 296);
   lv_obj_set_size(test, 160, 26);
   lv_obj_set_style_bg_color(test, COL_BAR, 0);
   lv_obj_set_style_bg_color(test, COL_ACCENT, LV_STATE_PRESSED);
@@ -1481,6 +1623,29 @@ static void pageBuildService(AppPage *p) {
   lv_obj_set_style_text_font(tl, &lv_font_montserrat_14_uml, 0);
   lv_obj_set_style_text_color(tl, FLOW_WHITE, 0);
   lv_obj_center(tl);
+
+  // --- Background: dark or light ---
+  // Under the output block, at the right, because it is the one setting on this
+  // page that belongs to the panel itself and not to the device: everything
+  // above it is either read from the inverter or stored as a setting of the
+  // output. It says the theme it switches TO, like the code row above says what
+  // tapping it gets you ("ein neuer Code"), so the wording is the action.
+  //
+  // Its own text stays white in both themes - the row has a background, and the
+  // theme walk leaves everything with a background alone on purpose.
+  s_themeBtn =
+      makeLabel(root, tr(s_hell ? T_D_BTN_THEME_DARK : T_D_BTN_THEME_LIGHT),
+                &lv_font_montserrat_14_uml, FLOW_WHITE);
+  lv_obj_set_pos(s_themeBtn, 300, 326);
+  lv_obj_set_width(s_themeBtn, 160);
+  lv_obj_set_style_text_align(s_themeBtn, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_pad_ver(s_themeBtn, 4, 0);
+  lv_obj_set_style_bg_color(s_themeBtn, COL_BAR, 0);
+  lv_obj_set_style_bg_opa(s_themeBtn, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_color(s_themeBtn, COL_ACCENT, LV_STATE_PRESSED);
+  lv_obj_set_style_radius(s_themeBtn, 6, 0);
+  lv_obj_add_flag(s_themeBtn, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(s_themeBtn, themeCb, LV_EVENT_CLICKED, nullptr);
 }
 
 // Format one scale marker value: "0" or kW with comma decimal ("2,5",
@@ -1595,7 +1760,7 @@ static void pageBuildGraph(AppPage *p) {
     lv_obj_set_style_border_width(dot, 0, 0);
     lv_obj_set_style_shadow_width(dot, 0, 0);
     lv_obj_t *nm =
-        makeLabel(root, tr(kHistId[i]), &lv_font_montserrat_14_uml, COL_TEXT);
+        makeLabel(root, tr(kHistId[i]), &lv_font_montserrat_14_uml, uiText());
     lv_obj_set_pos(nm, lx + 14, 29);
     lv_obj_update_layout(nm);
     lx += 14 + lv_obj_get_width(nm) + LEGEND_GAP;
@@ -1715,7 +1880,7 @@ static void buildApOverlay() {
   s_apOverlay = lv_obj_create(scr);
   lv_obj_set_size(s_apOverlay, 480, 480);
   lv_obj_set_pos(s_apOverlay, 0, 0);
-  lv_obj_set_style_bg_color(s_apOverlay, COL_BG, 0);
+  lv_obj_set_style_bg_color(s_apOverlay, uiBg(), 0);
   lv_obj_set_style_radius(s_apOverlay, 0, 0);
   lv_obj_set_style_border_width(s_apOverlay, 0, 0);
   lv_obj_set_style_pad_all(s_apOverlay, 0, 0);
@@ -1728,7 +1893,7 @@ static void buildApOverlay() {
   lv_obj_t *title = lv_label_create(s_apOverlay);
   lv_label_set_text(title, tr(T_D_AP_TITLE));
   lv_obj_set_style_text_font(title, &lv_font_montserrat_20_uml, 0);
-  lv_obj_set_style_text_color(title, COL_TEXT, 0);
+  lv_obj_set_style_text_color(title, uiText(), 0);
 
   // LVGL 9 QR widget (MIT, qrcodegen inside LVGL): 220 px canvas, white
   // background with black modules so it scans cleanly off the dark panel.
@@ -1833,7 +1998,7 @@ static void refreshCb(lv_timer_t *t) {
     break;
   default:
     badge = tr(T_D_BADGE_LIVE);
-    badgeCol = COL_OK;
+    badgeCol = uiOk();
     break;
   }
   lv_label_set_text(s_statusLabel, badge);
@@ -2203,7 +2368,7 @@ static void refreshCb(lv_timer_t *t) {
       lv_label_set_text(sv.labels[SV_FLT_LIST],
                         nFlt > 0 ? tmp : tr(T_D_NO_FAULTS));
       lv_obj_set_style_text_color(sv.labels[SV_FLT_LIST],
-                                  nFlt > 0 ? COL_TEXT : COL_OK, 0);
+                                  nFlt > 0 ? uiText() : uiOk(), 0);
     }
   }
 
@@ -2432,8 +2597,12 @@ static void histPush(const float v[HIST_SERIES], uint32_t ts) {
 // Public API
 // ---------------------------------------------------------------------------
 void guiSetup() {
+  // Before the first colour is used: the theme is a property of the stored
+  // settings, and the panel should come up in the theme it was left in rather
+  // than flash the other one on the way.
+  themeLaden();
   lv_obj_t *scr = lv_screen_active();
-  lv_obj_set_style_bg_color(scr, COL_BG, 0);
+  lv_obj_set_style_bg_color(scr, uiBg(), 0);
 
   // Status bar.
   lv_obj_t *bar = lv_obj_create(scr);
@@ -2451,7 +2620,7 @@ void guiSetup() {
   lv_obj_t *title = lv_label_create(bar);
   lv_label_set_text(title, "RCT Power Panel");
   lv_obj_set_style_text_font(title, &lv_font_montserrat_16_uml, 0);
-  lv_obj_set_style_text_color(title, COL_TEXT, 0);
+  lv_obj_set_style_text_color(title, uiText(), 0);
   lv_obj_align(title, LV_ALIGN_LEFT_MID, 12, 0);
   s_statusLabel = lv_label_create(bar);
   lv_label_set_text(s_statusLabel, "boot");
@@ -2462,7 +2631,7 @@ void guiSetup() {
   s_splashLabel = lv_label_create(scr);
   lv_label_set_text(s_splashLabel, "Starting ...");
   lv_obj_set_style_text_font(s_splashLabel, &lv_font_montserrat_20_uml, 0);
-  lv_obj_set_style_text_color(s_splashLabel, COL_TEXT, 0);
+  lv_obj_set_style_text_color(s_splashLabel, uiText(), 0);
   lv_obj_center(s_splashLabel);
 }
 
@@ -2484,7 +2653,7 @@ void guiStartApp() {
   lv_obj_t *content = lv_obj_create(lv_screen_active());
   lv_obj_set_size(content, 480, CONTENT_H);
   lv_obj_align(content, LV_ALIGN_TOP_MID, 0, STATUS_H);
-  lv_obj_set_style_bg_color(content, COL_BG, 0);
+  lv_obj_set_style_bg_color(content, uiBg(), 0);
   lv_obj_set_style_border_width(content, 0, 0);
   lv_obj_set_style_pad_left(content, 0, 0);
   lv_obj_set_style_pad_right(content, 0, 0);
@@ -2503,7 +2672,7 @@ void guiStartApp() {
     s_pages[i].labelCount = 0;
     s_pages[i].root = lv_obj_create(content);
     lv_obj_set_size(s_pages[i].root, 480, CONTENT_H);
-    lv_obj_set_style_bg_color(s_pages[i].root, COL_BG, 0);
+    lv_obj_set_style_bg_color(s_pages[i].root, uiBg(), 0);
     lv_obj_set_style_border_width(s_pages[i].root, 0, 0);
     lv_obj_set_style_pad_all(s_pages[i].root, 0, 0);
     s_pages[i].build = builders[i];
@@ -2514,7 +2683,7 @@ void guiStartApp() {
     // white and font as the "RCT Power Panel" text in the title bar. Created
     // here rather than per page so the seven pages cannot drift apart again.
     lv_obj_t *head = makeLabel(s_pages[i].root, s_pages[i].title,
-                              &lv_font_montserrat_16_uml, COL_TEXT);
+                              &lv_font_montserrat_16_uml, uiText());
     lv_obj_set_pos(head, 20, HEAD_Y);
     builders[i](&s_pages[i]);
   }

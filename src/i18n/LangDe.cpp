@@ -29,6 +29,9 @@ const char *const kLang[T_COUNT] = {
     "Zur Startseite",                   // T_MSG_TO_HOME
     "lang=\"de\"",                       // T_HTML_LANG
 
+    // --- web: die Ueberschrift ueber den vier Kacheln ----------------------
+    "Aktuell",                         // T_H_CURRENT
+
     // --- web: the four value cards on the overview -------------------------
     "Netz",                             // T_CARD_GRID
     "PV",                               // T_CARD_PV
@@ -453,6 +456,10 @@ const char *const kLang[T_COUNT] = {
     "Einphasenmodus aktiv, für Geräteklasse nicht erlaubt",  // T_FAULT_125
     "Inselbetrieb erkannt",                                  // T_FAULT_126
     "Neutralleiterfehler",                                   // T_FAULT_127
+
+    // --- Anzeige: der Hintergrund -----------------------------
+    "Helles Theme",      // T_D_BTN_THEME_LIGHT
+    "Dunkles Theme",     // T_D_BTN_THEME_DARK
 };
 
 #endif // !RCT_LANG_EN
