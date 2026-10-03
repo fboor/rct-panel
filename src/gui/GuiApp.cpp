@@ -501,12 +501,19 @@ static lv_obj_t *makeLabel(lv_obj_t *parent, const char *text,
   return l;
 }
 
+// Corner radius of everything that can be pressed. One value for the whole
+// interface: it was 8 for the buttons and 6 for the three rows on the Service
+// page, and next to each other the two radii read as two different kinds of
+// control rather than as one. 8 px is what the buttons already had, and it still
+// looks right on a 26 px row (half the height would be 13).
+#define ROW_RADIUS 8
+
 static lv_obj_t *makeButton(lv_obj_t *parent, const char *symbol,
                             lv_event_cb_t cb, void *userData) {
   lv_obj_t *btn = lv_button_create(parent);
   lv_obj_set_style_bg_color(btn, COL_BAR, 0);
   lv_obj_set_style_bg_color(btn, COL_ACCENT, LV_STATE_PRESSED);
-  lv_obj_set_style_radius(btn, 8, 0);
+  lv_obj_set_style_radius(btn, ROW_RADIUS, 0);
   lv_obj_set_style_border_width(btn, 1, 0);
   lv_obj_set_style_border_color(btn, COL_MUTED, 0);
   lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, userData);
@@ -925,9 +932,14 @@ static void pageBuildHeute(AppPage *p) {
     LangId caption;
     int valIdx, capIdx;
   } cards[] = {
-      {16, 36, 144, 96, T_D_CARD_PRODUCED, EN_GEN_VAL, EN_GEN_LBL},
-      {164, 36, 144, 96, T_D_CARD_SELFUSE, EN_SELF_VAL, EN_SELF_LBL},
-      {312, 36, 144, 96, T_D_CARD_FEDIN, EN_FEED_VAL, EN_FEED_LBL},
+      // Top row: three cards over the same 16..464 span as the two rows below.
+      // 448 px for three cards leaves 5 px between them (three times 4 would ask
+      // for 440, which no integer width divides) - and the third card used to be
+      // 144 px wide, which left the row 8 px short on the right and made this
+      // card look off-centre against the two below it.
+      {16, 36, 146, 96, T_D_CARD_PRODUCED, EN_GEN_VAL, EN_GEN_LBL},
+      {167, 36, 146, 96, T_D_CARD_SELFUSE, EN_SELF_VAL, EN_SELF_LBL},
+      {318, 36, 146, 96, T_D_CARD_FEDIN, EN_FEED_VAL, EN_FEED_LBL},
       // Lower rows: two cards with the same 4 px gap as the first row, so
       // 222 px wide starting at 16 and 242.
       {16, 146, 222, 88, T_D_CARD_CONSUMED, EN_VERB_VAL, EN_VERB_LBL},
@@ -1139,6 +1151,36 @@ static void relayModeCb(lv_event_t *e) {
 // to, the update function further down where it can be read on its own.
 static void serviceRelayState();
 
+// The test button, so the layout below can move it with the line above it.
+static lv_obj_t *s_testBtn = nullptr;
+
+// Air between the function row and the state line, and between that line and the
+// test button under it.
+#define RELAY_ROW_GAP 11
+#define RELAY_BTN_GAP 21
+
+// Put the state line and the test button under the function row, whatever height
+// that row has at the moment. At 160 px wide the row needs two lines for
+// "Inselbetrieb > 5000 W" and for "Island mode > 5000 W" and one line for
+// everything else, so a fixed pair of positions either overlaps the longer ones
+// or leaves a hole under the shorter ones - and the hole is what a page looks
+// like when something is sitting 30 px too low without anything being wrong with
+// it. Called after the row's text is set, so the height is the current one.
+static void serviceRelayLayout() {
+  AppPage &sv = s_pages[PAGE_SERVICE];
+  lv_obj_t *row = sv.labels[SV_RELAY];
+  lv_obj_t *st = sv.labels[SV_RELAY_ST];
+  if (row == nullptr || st == nullptr) {
+    return;
+  }
+  lv_obj_update_layout(row); // the new text has to be measured before it is used
+  const int ySt = (int)lv_obj_get_y(row) + (int)lv_obj_get_height(row) +
+                  RELAY_ROW_GAP;
+  lv_obj_set_y(st, ySt);
+  if (s_testBtn != nullptr) {
+    lv_obj_set_y(s_testBtn, ySt + RELAY_BTN_GAP);
+  }
+}
 
 // "Test 5 s an / 5 s aus": the check that this really is the right pin and the
 // right polarity, without a browser and without data from the inverter. Pressed
@@ -1505,7 +1547,7 @@ static void pageBuildService(AppPage *p) {
   lv_obj_set_style_bg_color(shot, COL_ACCENT, 0);
   lv_obj_set_style_bg_color(shot, lv_color_darken(COL_ACCENT, 40),
                             LV_STATE_PRESSED);
-  lv_obj_set_style_radius(shot, 8, 0);
+  lv_obj_set_style_radius(shot, ROW_RADIUS, 0);
   lv_obj_set_style_border_width(shot, 0, 0);
   lv_obj_set_style_shadow_width(shot, 0, 0);
   lv_obj_set_style_pad_hor(shot, 8, 0);
@@ -1558,7 +1600,7 @@ static void pageBuildService(AppPage *p) {
   lv_obj_set_style_bg_color(p->labels[SV_CODE], COL_BAR, 0);
   lv_obj_set_style_bg_opa(p->labels[SV_CODE], LV_OPA_COVER, 0);
   lv_obj_set_style_bg_color(p->labels[SV_CODE], COL_ACCENT, LV_STATE_PRESSED);
-  lv_obj_set_style_radius(p->labels[SV_CODE], 6, 0);
+  lv_obj_set_style_radius(p->labels[SV_CODE], ROW_RADIUS, 0);
   lv_obj_add_flag(p->labels[SV_CODE], LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(p->labels[SV_CODE], webCodeNewCb, LV_EVENT_CLICKED,
                       nullptr);
@@ -1589,7 +1631,7 @@ static void pageBuildService(AppPage *p) {
   lv_obj_set_style_bg_color(p->labels[SV_RELAY], COL_BAR, 0);
   lv_obj_set_style_bg_opa(p->labels[SV_RELAY], LV_OPA_COVER, 0);
   lv_obj_set_style_bg_color(p->labels[SV_RELAY], COL_ACCENT, LV_STATE_PRESSED);
-  lv_obj_set_style_radius(p->labels[SV_RELAY], 6, 0);
+  lv_obj_set_style_radius(p->labels[SV_RELAY], ROW_RADIUS, 0);
   lv_obj_add_flag(p->labels[SV_RELAY], LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(p->labels[SV_RELAY], relayModeCb, LV_EVENT_CLICKED,
                       nullptr);
@@ -1597,7 +1639,7 @@ static void pageBuildService(AppPage *p) {
   // without that number a threshold in watts is a number nobody can set sensibly.
   p->labels[SV_RELAY_ST] =
       makeLabel(root, "", &lv_font_montserrat_14_uml, COL_MUTED);
-  lv_obj_set_pos(p->labels[SV_RELAY_ST], 300, 272);
+  lv_obj_set_pos(p->labels[SV_RELAY_ST], 300, 257);
   lv_obj_set_width(p->labels[SV_RELAY_ST], 160);
 
   // Test button, on its own line under the state it overrules. 5 s on, 5 s off,
@@ -1605,15 +1647,18 @@ static void pageBuildService(AppPage *p) {
   // if nobody is watching. It ignores the rule, which is the point - the rule
   // needs data from the inverter, the test must work without it.
   //
-  // 26 px tall, and it ends at 322: the content area reaches 364, so the theme
-  // row below it still keeps 12 px of air above the navigation bar. Every step
-  // of that is taken out of the block above, which had 36 px at the end.
-  lv_obj_t *test = lv_button_create(root);
-  lv_obj_set_pos(test, 300, 296);
+  // 26 px tall. Its position is not fixed here: serviceRelayLayout() puts it
+  // under the state line, whose place depends on the height of the function row
+  // above it. It ends at 304 with the usual one-line name, and the content area
+  // reaches 364 - so the theme row below it keeps its air, and a two-line name
+  // still ends 4 px above it.
+  s_testBtn = lv_button_create(root);
+  lv_obj_t *test = s_testBtn;
+  lv_obj_set_pos(test, 300, 278);
   lv_obj_set_size(test, 160, 26);
   lv_obj_set_style_bg_color(test, COL_BAR, 0);
   lv_obj_set_style_bg_color(test, COL_ACCENT, LV_STATE_PRESSED);
-  lv_obj_set_style_radius(test, 8, 0);
+  lv_obj_set_style_radius(test, ROW_RADIUS, 0);
   lv_obj_set_style_border_width(test, 0, 0);
   lv_obj_set_style_shadow_width(test, 0, 0);
   lv_obj_set_style_pad_hor(test, 8, 0);
@@ -1643,9 +1688,13 @@ static void pageBuildService(AppPage *p) {
   lv_obj_set_style_bg_color(s_themeBtn, COL_BAR, 0);
   lv_obj_set_style_bg_opa(s_themeBtn, LV_OPA_COVER, 0);
   lv_obj_set_style_bg_color(s_themeBtn, COL_ACCENT, LV_STATE_PRESSED);
-  lv_obj_set_style_radius(s_themeBtn, 6, 0);
+  lv_obj_set_style_radius(s_themeBtn, ROW_RADIUS, 0);
   lv_obj_add_flag(s_themeBtn, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(s_themeBtn, themeCb, LV_EVENT_CLICKED, nullptr);
+
+  // Once here so the first frame is already right, and then on every 1 s tick
+  // that rewrites the function row (see serviceRelayLayout).
+  serviceRelayLayout();
 }
 
 // Format one scale marker value: "0" or kW with comma decimal ("2,5",
@@ -2416,6 +2465,7 @@ static void refreshCb(lv_timer_t *t) {
     char mode[48];
     relayModeText(mode, sizeof(mode));
     setText(sv.labels[SV_RELAY], "%s", mode);
+    serviceRelayLayout();
     serviceRelayState();
   }
 
