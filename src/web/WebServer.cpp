@@ -338,6 +338,12 @@ void handleRoot() {
   String b;
   b.reserve(4800);
 
+  // The four values at the top get a heading like the sections below them. They
+  // were the one block on the page without one, and above "Energie" they read as
+  // a header of the whole page rather than as the first section of it.
+  b += F("<h2>");
+  b += tr(T_H_CURRENT);
+  b += F("</h2>");
   b += F("<div class=\"big\">");
   auto card = [&b, &v](LangId label, const char *value) {
     b += F("<div class=\"card\"><div class=\"l\">");
