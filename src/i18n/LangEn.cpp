@@ -54,8 +54,9 @@ const char *const kLang[T_COUNT] = {
     // --- web: the switched output ------------------------------------------
     "Output",                           // T_H_OUTPUT
     "The output switches on when the value stays above the threshold for "
-    "20 s, and stays on for at least 60 s after switching. Surplus means PV "
-    "minus household load (including S0). If the inverter is unreachable for "
+    "20 s, and stays on for at least 60 s after switching. Surplus means "
+    "energy is being fed into the grid (the grid power is below zero). If the "
+    "inverter is unreachable for "
     "ten minutes, the output switches off; until then it works with the last "
     "value received.",                                  // T_NOTE_OUTPUT
     "Function",                         // T_ROW_FUNCTION
@@ -69,7 +70,7 @@ const char *const kLang[T_COUNT] = {
     "Test: 5 s on, 5 s off",             // T_BTN_TEST
     "Off (never switches)",             // T_RELAY_LONG_OFF
     "Grid draw above threshold",        // T_RELAY_LONG_GRID
-    "PV surplus above threshold",       // T_RELAY_LONG_SURPLUS
+    "Surplus above threshold",          // T_RELAY_LONG_SURPLUS
     "Inverter fault",                   // T_RELAY_LONG_FAULT
     "Island mode (grid disconnected)",  // T_RELAY_LONG_ISLAND
     "Off",                              // T_RELAY_SHORT_OFF

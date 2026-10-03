@@ -141,19 +141,29 @@ bool relayIsOn() { return s_on; }
 
 // --- The rule ---------------------------------------------------------------
 
-// PV surplus: what is generated minus what the house uses.
+// Surplus: what is being fed into the grid, as a positive number.
 //
-// The S0 meter sits on the consumption side only, and that asymmetry is the
-// whole point. The inverter's load meter does not see external generation
-// (loadPower is already "house consumption minus S0 feed-in"), so the house is
-// loadPower + s0Power. Putting s0Power on the *generation* side as well would
-// cancel it out and call someone else's solar our surplus - with a 2 kW S0
-// plant and a 1 kW house the panel would then switch a load on while we have
-// none of our own. Own generation, own surplus: PV A+B minus the house.
-static float pvSurplusW() {
-  const float house = rctState.loadPower[0] + rctState.loadPower[1] +
-                      rctState.loadPower[2] + rctState.s0Power;
-  return rctState.pvPower[0] + rctState.pvPower[1] - house;
+// Changed on 3 October 2026 from "PV A+B minus the house" to "we are exporting".
+// The old rule answered the question "do we generate more than we use right now",
+// which switches the output off again while the battery is charging - the house
+// is not short, the battery is, and nothing goes out. The new rule asks the
+// question that actually fits a switch: is energy leaving the house? The grid
+// meter is the one quantity that answers it, because it counts everything -
+// own generation, the battery and the S0 meter - and it is measured, not
+// computed from two other meters.
+//
+// The sign convention is the one used everywhere else in this project: the grid
+// power is negative while energy is fed in (see the overview page), so the
+// export is its negated value. A threshold of 500 W now means "500 W and more go
+// into the grid".
+//
+// What that changes besides the battery: external generation counts as ours
+// here, because whatever the grid sees leaving the house is available for the
+// consumer. That is the point of this mode - it is the only rule on this panel
+// that follows the meter at the grid instead of the two meters at the PV
+// strings.
+static float einspeisungW() {
+  return -rctState.gridPowerSum;
 }
 
 static bool faultActive() {
@@ -164,7 +174,7 @@ static bool faultActive() {
 float relayTriggerValue() {
   switch (s_mode) {
   case RelayMode::GridDraw: return rctState.gridPowerSum; // + = import
-  case RelayMode::PvSurplus: return pvSurplusW();
+  case RelayMode::PvSurplus: return einspeisungW();
   default: return 0.0f;
   }
 }
@@ -195,7 +205,7 @@ static bool ruleWantsOn() {
   }
   switch (s_mode) {
   case RelayMode::GridDraw: return thresholdWants(s_on, rctState.gridPowerSum);
-  case RelayMode::PvSurplus: return thresholdWants(s_on, pvSurplusW());
+  case RelayMode::PvSurplus: return thresholdWants(s_on, einspeisungW());
   case RelayMode::Fault: return faultActive();
   case RelayMode::Island: return rctState.islandKnown && rctState.islandMode;
   default: return false;

@@ -678,14 +678,19 @@ geschützt ist.
 |---|---|---|
 | 0 | **Aus** (Vorgabe) | nie |
 | 1 | **Netzbezug** | der Bezug aus dem Netz über der Schwelle liegt |
-| 2 | **Überschuss** | der PV-Überschuss über der Schwelle liegt |
+| 2 | **Überschuss** | die Einspeisung über der Schwelle liegt |
 | 3 | **Störung** | der Wechselrichter eine Störung meldet |
 | 4 | **Inselbetrieb** | das Netz getrennt ist (die Anlage läuft im Inselbetrieb weiter) |
 
-> **Hinweis:** *Überschuss* heißt hier: was die beiden PV-Stränge und die
-> anderen Generatoren erzeugen, minus den Hausverbrauch. Energie von einem
-> fremden S0-Zähler zählt nicht als Ihr Überschuss — sonst würde das Panel eine
-> Last einschalten, die von einem anderen Generator bezahlt wird.
+> **Hinweis:** *Überschuss* heißt seit dem 3.10.2026: **es wird eingespeist**.
+> Das Panel misst das am Netz — alles, was aus dem Haus herausgeht, zählt, ob es
+> von den PV-Strängen, vom Akku oder von einem S0-Zähler kommt. Die Schwelle
+> steht in Watt Einspeisung; 500 W heißt „500 W und mehr gehen ins Netz“.
+>
+> Zuvor hieß es: PV-Erzeugung minus Hausverbrauch. Der Unterschied im Alltag:
+> Lädt der Akku gerade und geht nichts ins Netz, bleibt der Ausgang jetzt aus,
+> wo er vorher eingeschaltet hätte. Und speist eine fremde S0-Anlage ein,
+> schaltet er jetzt ein, wo er aus geblieben wäre.
 
 ### Einstellen
 

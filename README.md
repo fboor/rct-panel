@@ -27,8 +27,9 @@ network — in German or English, one per build.
   internet.
 - **The switching output** (1-Way port) puts 3.3 V on one header pin and drives
   the coil of an external relay from it; the relay's contact then switches the
-  consumer. It can follow grid draw, PV surplus, a fault word or island mode,
-  never runs on data older than ten minutes and says so (`docs/relay.md`).
+  consumer. It can follow grid draw, surplus (energy being fed into the grid), a
+  fault word or island mode, never runs on data older than ten minutes and says
+  so (`docs/relay.md`).
 - **The backlight** dims after three minutes without a touch and switches off
   after five.
 

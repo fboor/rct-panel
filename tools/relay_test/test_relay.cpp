@@ -221,36 +221,65 @@ static void testHysteresisBand() {
   check(!on(), "off below the band");
 }
 
-// PV surplus: own generation minus the house, with S0 on the consumption side
-// only.
+// Surplus: what is fed into the grid, as a positive number.
+//
+// Changed on 3 October 2026 - see einspeisungW(). The rule reads the grid meter
+// instead of subtracting the house from the two PV strings, and the test cases
+// below say what that changes.
 static void testPvSurplus() {
-  printf("test: PV surplus\n");
+  printf("test: surplus (feed-in)\n");
   resetWorld();
   relaySetMode(RelayMode::PvSurplus);
   relaySetThreshold(500);
 
-  // 3000 W PV, house 1000 W -> surplus 2000.
+  // 2000 W into the grid: 3000 W generated, a 1000 W house, the rest out.
   feed(-2000, 1500, 1500, 1000, 0);
-  check(lroundf(relayTriggerValue()) == 2000, "surplus 2000 W");
+  check(lroundf(relayTriggerValue()) == 2000, "feed-in 2000 W");
   runFor(25 * 1000);
-  check(on(), "switches on at 2000 W surplus");
+  check(on(), "switches on at 2000 W feed-in");
 
-  // Now the S0 meter delivers 2000 W into a 1000 W house. Own generation is
-  // unchanged, so the surplus must be unchanged - and the relay must not be
-  // switched on by somebody else's solar.
+  // The case the old rule got wrong: 3000 W of own generation, a 1000 W house
+  // and 2000 W into the battery. The grid sees nothing - the surplus stays in
+  // the house - so the output stays off. Under the old rule (generation minus
+  // house = 2000 W) it would have switched on and pulled another load out of a
+  // battery that was already charging.
   relaySetMode(RelayMode::Off);
   runFor(2 * 60 * 1000);
-  check(!on(), "off again after mode change");
-  feed(-2000, 1500, 1500, 1000, 2000); // house total 3000 W
-  check(lroundf(relayTriggerValue()) == 0, "S0 counts as consumption, surplus 0");
+  check(!on(), "off again after the mode change");
+  feed(0, 1500, 1500, 1000, 0);
+  check(lroundf(relayTriggerValue()) == 0, "nothing goes out: feed-in 0 W");
   relaySetMode(RelayMode::PvSurplus);
   runFor(30 * 1000);
-  check(!on(), "no switch with a 0 W surplus");
+  check(!on(), "no switch while the surplus goes into the battery");
 
-  // And down to a negative surplus.
-  feed(2000, 500, 500, 2000, 0);
+  // Less than the threshold.
+  feed(-300, 1500, 1500, 1200, 0);
   runFor(30 * 1000);
-  check(!on(), "no switch with a negative surplus");
+  check(!on(), "no switch below the threshold");
+
+  // A draw: 2000 W in, nothing out.
+  feed(2000, 0, 0, 2000, 0);
+  runFor(30 * 1000);
+  check(!on(), "no switch while drawing from the grid");
+
+  // The band, 20 % of 500 W: on above the threshold, on inside it, off below.
+  feed(-600, 1500, 1500, 1100, 0);
+  runFor(25 * 1000);
+  check(on(), "on at 600 W feed-in");
+  feed(-450, 1500, 1500, 1050, 0);
+  runFor(30 * 1000);
+  check(on(), "stays on inside the band (450 of 500 W)");
+  feed(-380, 1500, 1500, 1120, 0);
+  runFor(30 * 1000);
+  check(!on(), "off below the band (380 of 500 W)");
+
+  // External generation counts here, because whatever the grid sees leaving the
+  // house is what the output can use. Under the old rule this case was the
+  // opposite: somebody else's solar switched our output off.
+  feed(-800, 0, 0, 0, 2000);
+  check(lroundf(relayTriggerValue()) == 800, "feed-in 800 W from the S0 meter");
+  runFor(25 * 1000);
+  check(on(), "switches on when the S0 meter feeds in");
 }
 
 // No data means off - including when the output is already on.

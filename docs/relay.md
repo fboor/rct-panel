@@ -15,7 +15,7 @@ Umsetzung: `src/output/Relay.{h,cpp}`, Pins und Polarität in
 |---|----------|--------------------|
 | 0 | Aus (Vorgabe) | nie |
 | 1 | Netzbezug > Schwelle | `gridPowerSum` (positiv = Bezug) über der Schwelle |
-| 2 | Überschuss > Schwelle | PV A+B minus Hausverbrauch über der Schwelle |
+| 2 | Überschuss > Schwelle | eingespeiste Leistung (`−gridPowerSum`) über der Schwelle |
 | 3 | Störung | eines der 128 Fehlerbits gesetzt |
 | 4 | Inselbetrieb | `islandKnown && islandMode` |
 
@@ -32,26 +32,39 @@ für die man das Gerät kauft. Störung und Inselbetrieb stehen hinten: sie sind
 speziell, aber sie sind genau die Fälle, in denen ein Ausgang als Alarm
 sinnvoll ist, und niemand richtet sie versehentlich ein.
 
-### Der S0-Zähler
+### Der S0-Zähler und die neue Regel
 
-Der S0-Wert steht **nur** auf der Verbrauchsseite:
+**Geändert am 3.10.2026.** Überschuss heißt jetzt **Einspeisung**, nicht mehr
+„eigene Erzeugung minus Hausverbrauch":
 
 ```
-Haus        = loadPower[0..2] + s0Power
-Überschuss  = pvPower[0] + pvPower[1] − Haus
+Einspeisung = −gridPowerSum          // positiv, während Energie ins Netz geht
 ```
 
-Die Lastmessung des Wechselrichters sieht externe Einspeisung nicht
-(`loadPower` ist bereits „Hausverbrauch minus S0-Einspeisung"), deshalb gehört
-`S0` in den Hausverbrauch. Würde man es zusätzlich auf die Erzeugungsseite
-nehmen, fiele es heraus — und bei einer 2-kW-S0-Anlage mit 1 kW Haus meldete
-das Panel 1 kW *eigenen* Überschuss und schaltete eine Last ein, die von
-fremdem Strom bezahlt wird. Eigene Erzeugung, eigener Überschuss.
+Der Zähler am Netz ist die einzige Größe, die die Frage beantwortet, auf die es
+ankommt: **Geht Energie aus dem Haus heraus?** Alles, was das Haus verlässt, ist
+für den Verbraucher da — die eigene Erzeugung, der Akku und der S0-Zähler. Das
+Panel muss dafür nichts zusammenzählen, es liest einen Messwert.
 
-Alternativ gerechnet wird nirgends: `gridPowerSum + batteryPower` ergäbe
-dieselbe Zahl, ist aber eine Größe, die sich mit der LadeStrategie des
-Wechselrichters ändert, und die liest man als „der Akku ist voll" nicht
-„wir haben Überschuss".
+Die alte Regel hatte zwei Fehler, die im Alltag auffielen:
+
+* **Der Akku.** 3000 W Erzeugung, 1000 W Haus, 2000 W ins Laden des Akkus: nach
+  der alten Regel 2000 W „Überschuss" und der Ausgang schaltet ein, obwohl
+  nichts ins Netz geht. Nach der neuen Regel 0 W und der Ausgang bleibt aus —
+  der Überschuss steckt im Akku, nicht im Netz.
+* **Fremder Strom.** Eine 2-kW-S0-Anlage speist bei 1 kW Haus 1 kW ein. Nach der
+  alten Regel war das *eigener* Überschuss nur bei eigener Erzeugung, der S0
+  zählte als Verbrauch — der Ausgang blieb aus, obwohl 1 kW im Netz lagen. Nach
+  der neuen Regel zählt es, denn es ist Energie, die zur Verfügung steht.
+
+Vorzeichen und Anzeige: Die Netzleistung ist negativ, während eingespeist wird
+(so wie überall im Projekt), die Anzeige im Web zeigt deshalb den **Betrag** der
+Einspeisung in Watt — „ein · 640 W jetzt" heißt 640 W ins Netz.
+
+Rückrechnen lässt sich die alte Zahl nicht mehr aus den Daten, die das Panel
+jetzt hat: sie stand in `pvPower` und `loadPower`, die für die Verlaufsansicht
+weiterhin protokolliert werden, aber die Entscheidung fällt nur noch über den
+Netzzähler.
 
 ## 2. Zeitverhalten
 
