@@ -57,6 +57,7 @@
 #include "../rct/RctTypes.h"
 #include "../storage/sdlog.h"
 #include "../web/WebServer.h"
+#include "fonts/lv_font_mdi_icons_24.h"
 #include "fonts/lv_font_mdi_icons_28.h"
 // Montserrat with German umlauts (Latin-1 supplement), falling back to the
 // LVGL built-ins for the LV_SYMBOL_* glyphs. See OFL-Montserrat.txt.
@@ -106,6 +107,15 @@ static const lv_color_t COL_OK = lv_color_hex(0x3EC97A);
 static const lv_color_t COL_ERR = lv_color_hex(0xE5484D);
 static const lv_color_t COL_WARN = lv_color_hex(0xEBD300); // waiting, not broken
 static const lv_color_t COL_BORDER = lv_color_hex(0x2A3038); // stat card ring
+
+// The three states a button under the diagram can be in, and the colours that
+// say so. Green is the project's own green, grey is the colour the other rows on
+// the Service page have, and the amber is the one the battery series wears in the
+// history chart (kChartColor[4]) - three existing colours rather than three new
+// ones, so the same green means the same thing on both pages of the display.
+static const lv_color_t ST_GRUEN = COL_OK;
+static const lv_color_t ST_ORANGE = lv_color_hex(0xF0A202);
+static const lv_color_t ST_GRAU = COL_BAR;
 
 // The page background, and the text that sits directly on it. Everything with a
 // background of its own - cards, the code row, the mode row, the buttons, the
@@ -211,10 +221,49 @@ static const lv_color_t FLOW_WHITE = lv_color_hex(0xFFFFFF); // node fill
 // became U+F0D3 followed by a literal 'E' - the panel then drew a
 // placeholder box and the letter. LVGL declares its LV_SYMBOL_* glyphs the
 // same way for the same reason.
+// The three glyphs of the buttons under the diagram, baked into
+// lv_font_mdi_icons_24 (see NOTICE). Written as UTF-8 bytes, not as \uXXXX for the
+// same reason as the two node glyphs above.
+static const char kBtnPlugIcon[] =
+    "\xF3\xB0\x9A\xA5"; // power-plug U+F06A5, Verbrauch
+static const char kBtnBatteryIcon[] =
+    "\xF3\xB0\x81\xBE"; // battery-50 U+F007E, Batterie
+
 static const char kFlowGridIcon[] =
     "\xF3\xB0\xB4\xBE"; // transmission-tower U+F0D3E, Netz node
-static const char kFlowSolarIcon[] =
-    "\xF3\xB0\xA9\xB2"; // solar-power U+F0A72, PV node
+// The PV glyph, used by the node above and by the button below - same sign in
+// both places, and one string instead of two that could drift apart.
+static const char kSolarIcon[] =
+    "\xF3\xB1\xA9\xB4"; // solar-power-variant-outline U+F1A74
+
+// The three buttons under the flow diagram: where they sit and how round they
+// are. Three pills of 152 px with 6 px between them and 6 px of margin fill the
+// 480 px page exactly, which is what leaves the diagram room to move down - see
+// FLOW_Y. Three rather than four because the grid has nothing to add to the two
+// that say where the power comes from and one that says whether it is enough: its
+// own arrow on the connector already says import or export.
+//
+// Radius half the height, so they are pills and not rounded rectangles: these are
+// the things that are happening right now, and they are meant to be read as one
+// row rather than as controls.
+#define OV_BTN_W 152
+#define OV_BTN_H 34
+#define OV_BTN_R (OV_BTN_H / 2)
+#define OV_BTN_X0 6
+#define OV_BTN_DX 158 // 152 px plus the 6 px gap
+#define OV_BTN_Y 316
+// What counts as "nothing happening" for the buttons: below 10 W there is no
+// household draw and no battery current to name, and the grid only counts as
+// importing from 20 W (the device regulates around zero below that).
+#define OV_BTN_NONE_W 10.0f
+#define OV_BTN_GRID_W 20.0f
+// The diagram sits in a container of its own (see pageBuildOverview), so the
+// space the buttons freed up can be handed to it by moving one object instead of
+// fifteen coordinates that would have to stay in step. 35 px: the heading ends at
+// 26, so the top of the house node is at 71 and the buttons at 316 are 14 px below
+// the battery value - the diagram is centred in what is left rather than sitting
+// in the middle of the page with a hole under it.
+#define FLOW_Y 35
 
 // ---------------------------------------------------------------------------
 // Page model
@@ -434,6 +483,14 @@ struct AppPage {
   size_t labelCount;
   void (*build)(AppPage *);
 };
+
+// The three buttons under the diagram, in the order Erzeugung / Verbrauch /
+// Batterie. Their text lives in the page's label array; the pills themselves are
+// only needed here, to change their colour. The label indices are kept next to
+// them because the three are not consecutive - the grid button is gone and its
+// slot is still in the enum.
+static lv_obj_t *s_ovBtn[3] = {nullptr, nullptr, nullptr};
+static int s_ovLabel[3] = {0, 0, 0};
 
 // Connector lines of the flow diagram; updated per second.
 static lv_obj_t *s_lineGrid = nullptr;   // haus <-> netz
@@ -741,11 +798,35 @@ static void energyPeriodCb(lv_event_t *e) {
 static void pageBuildOverview(AppPage *p) {
   lv_obj_t *root = p->root;
 
-  // Node circles.
-  makeNode(root, 240, 82, 92, LV_SYMBOL_HOME, &lv_font_montserrat_28_uml); // haus
-  makeNode(root, 60, 80, 60, kFlowSolarIcon, &lv_font_mdi_icons_28); // pv
+  // The diagram gets a container of its own, so the room the four buttons free up
+  // below can be given to the whole thing by moving one object. Its background is
+  // transparent on purpose: the theme walk treats "no background of its own" as
+  // "still on the page background", so the values and the legend inside it follow
+  // the theme like everything else on the background.
+  lv_obj_t *flow = lv_obj_create(root);
+  lv_obj_set_size(flow, 480, 280);
+  lv_obj_set_pos(flow, 0, FLOW_Y);
+  lv_obj_set_style_bg_opa(flow, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(flow, 0, 0);
+  lv_obj_set_style_pad_all(flow, 0, 0);
+
+  // Node circles. Everything from here to the island warning is a child of the
+  // container, with the coordinates it had on the page. The house and the
+  // battery come from the built-in Montserrat (it has no pylon and no solar
+  // panel), the other two from the MDI font.
+  // haus. The icon a quarter larger than the 28 px font it is drawn from, which
+  // is what the node size asks for: 92 px of circle around a 28 px house looks
+  // like a coin with a stamp on it. LVGL scales the label as it draws it, so this
+  // costs no extra flash - and the pivot is set to the centre, because the
+  // default pivot is the top left corner and the icon would grow off to one side.
+  lv_obj_t *hausIco =
+      makeNode(flow, 240, 82, 92, LV_SYMBOL_HOME, &lv_font_montserrat_28_uml);
+  lv_obj_set_style_transform_scale(hausIco, 320, 0); // 256 = 1.0
+  lv_obj_set_style_transform_pivot_x(hausIco, LV_PCT(50), 0);
+  lv_obj_set_style_transform_pivot_y(hausIco, LV_PCT(50), 0);
+  makeNode(flow, 60, 80, 60, kSolarIcon, &lv_font_mdi_icons_28); // pv
   // Battery node: battery icon on top, SOC % below (inside the node).
-  lv_obj_t *bat = lv_obj_create(root);
+  lv_obj_t *bat = lv_obj_create(flow);
   lv_obj_set_size(bat, 60, 60);
   lv_obj_set_pos(bat, 240 - 30, 210 - 30); // centred below the house
   lv_obj_set_style_radius(bat, LV_RADIUS_CIRCLE, 0);
@@ -768,15 +849,15 @@ static void pageBuildOverview(AppPage *p) {
   p->labels[OV_BAT_SOC] = batSoc;
 
   // NETZ node: the transmission tower.
-  makeNode(root, 420, 80, 60, kFlowGridIcon, &lv_font_mdi_icons_28);
+  makeNode(flow, 420, 80, 60, kFlowGridIcon, &lv_font_mdi_icons_28);
 
   // Connector lines (haus <-> node), animated later via color/style.
   static const lv_point_precise_t ptsGrid[2] = {{240, 82}, {420, 80}};
   static const lv_point_precise_t ptsPv[2] = {{240, 82}, {60, 80}};
   static const lv_point_precise_t ptsBat[2] = {{240, 82}, {240, 210}};
-  s_lineGrid = lv_line_create(root);
-  s_linePv = lv_line_create(root);
-  s_lineBat = lv_line_create(root);
+  s_lineGrid = lv_line_create(flow);
+  s_linePv = lv_line_create(flow);
+  s_lineBat = lv_line_create(flow);
   lv_line_set_points(s_lineGrid, ptsGrid, 2);
   lv_line_set_points(s_linePv, ptsPv, 2);
   lv_line_set_points(s_lineBat, ptsBat, 2);
@@ -796,29 +877,29 @@ static void pageBuildOverview(AppPage *p) {
   // Values under each node. The netz direction ("Bezug" / "Einspeisung") is not
   // spelled out: the sign is already visible in the value, the arrow on the
   // connector shows where the power goes, and the status table below names it.
-  p->labels[OV_GRID_VAL] = makeValueLabel(root, 360, 118);
+  p->labels[OV_GRID_VAL] = makeValueLabel(flow, 360, 118);
 
   // Haus value sits right of the vertical battery line (x=240) so the line no
   // longer runs through the text.
   // House consumption: nudged up and left (10 up / 5 right, then 5 up / 5 left)
   // so the number visually belongs to the house node above it.
-  p->labels[OV_HOUSE_VAL] = makeValueLabel(root, 250, 120);
-  p->labels[OV_PV_VAL] = makeValueLabel(root, 0, 116);
-  p->labels[OV_BAT_VAL] = makeValueLabel(root, 180, 247);
+  p->labels[OV_HOUSE_VAL] = makeValueLabel(flow, 250, 120);
+  p->labels[OV_PV_VAL] = makeValueLabel(flow, 0, 116);
+  p->labels[OV_BAT_VAL] = makeValueLabel(flow, 180, 247);
 
   // Direction arrows on the connectors (point toward the flow source),
   // centred exactly on the line: grid/PV lines run at y=81 at these x
   // positions, the battery line is vertical at x=240.
   p->labels[OV_GRID_ARROW] =
-      makeLabel(root, LV_SYMBOL_RIGHT, &lv_font_montserrat_16_uml, FLOW_RED);
+      makeLabel(flow, LV_SYMBOL_RIGHT, &lv_font_montserrat_16_uml, FLOW_RED);
   placeArrow(p->labels[OV_GRID_ARROW], 322, 81);
   lv_obj_add_flag(p->labels[OV_GRID_ARROW], LV_OBJ_FLAG_HIDDEN);
   p->labels[OV_PV_ARROW] =
-      makeLabel(root, LV_SYMBOL_RIGHT, &lv_font_montserrat_16_uml, FLOW_RED);
+      makeLabel(flow, LV_SYMBOL_RIGHT, &lv_font_montserrat_16_uml, FLOW_RED);
   placeArrow(p->labels[OV_PV_ARROW], 150, 81);
   lv_obj_add_flag(p->labels[OV_PV_ARROW], LV_OBJ_FLAG_HIDDEN);
   p->labels[OV_BAT_ARROW] =
-      makeLabel(root, LV_SYMBOL_DOWN, &lv_font_montserrat_16_uml, FLOW_RED);
+      makeLabel(flow, LV_SYMBOL_DOWN, &lv_font_montserrat_16_uml, FLOW_RED);
   placeArrow(p->labels[OV_BAT_ARROW], 240, 146);
   lv_obj_add_flag(p->labels[OV_BAT_ARROW], LV_OBJ_FLAG_HIDDEN);
 
@@ -827,31 +908,69 @@ static void pageBuildOverview(AppPage *p) {
   // and 25 px above the line, so it reads as a marker for that link rather than
   // as something attached to a node. Hidden while the grid is connected.
   p->labels[OV_ISLAND] =
-      makeLabel(root, LV_SYMBOL_WARNING, &lv_font_montserrat_20_uml, FLOW_RED);
+      makeLabel(flow, LV_SYMBOL_WARNING, &lv_font_montserrat_20_uml, FLOW_RED);
   placeArrow(p->labels[OV_ISLAND], 330, 56);
   lv_obj_add_flag(p->labels[OV_ISLAND], LV_OBJ_FLAG_HIDDEN);
 
-  // Status table (2x2): Erzeugung / Verbrauch / Netz / Batterie.
+  // --- The three buttons under the diagram ---
+  // One pill per quantity: the icon says which one it is, the text says what is
+  // happening, and the colour of the pill says which of the three states it is
+  // in. The icons are the ones from the nodes above, so the diagram and the row
+  // under it are written in the same picture language - the solar panel comes
+  // from the same MDI glyph the PV node uses.
+  //
+  // They report and are not tappable: a control that changes nothing when it is
+  // pressed reads as one that does not work, which is the same argument the
+  // pressed colour of the code row makes.
+  // All three icons come from one font and one size, and their glyphs have the
+  // same advance width, so one x for the icons and one for the texts lines the
+  // row up. The power plug is what says "Verbrauch": the house symbol says where
+  // the power goes, the plug says that it is being used.
   struct {
-    int x, y;
+    const char *icon;
+    const lv_font_t *font;
     LangId id;
     int labelIdx;
-  } cells[4] = {
-      {12, 284, T_D_ROW_PRODUCTION, OV_T_ERZ},
-      {248, 284, T_D_ROW_CONSUMPTION, OV_T_VERB},
-      {12, 324, T_D_ROW_GRID, OV_T_NETZ},
-      {248, 324, T_D_ROW_BATTERY, OV_T_BAT},
+  } pills[3] = {
+      {kSolarIcon, &lv_font_mdi_icons_24, T_D_ROW_PRODUCTION, OV_T_ERZ},
+      {kBtnPlugIcon, &lv_font_mdi_icons_24, T_D_ROW_CONSUMPTION, OV_T_VERB},
+      {kBtnBatteryIcon, &lv_font_mdi_icons_24, T_D_ROW_BATTERY, OV_T_BAT},
   };
-  for (int i = 0; i < 4; i++) {
-    // Names muted, values white: the value is what the eye should land on.
-    lv_obj_t *nm =
-        makeLabel(root, tr(cells[i].id), &lv_font_montserrat_14_uml, COL_MUTED);
-    lv_obj_set_pos(nm, cells[i].x, cells[i].y);
-    lv_obj_t *st = makeLabel(root, "--", &lv_font_montserrat_14_uml, FLOW_WHITE);
-    lv_obj_set_pos(st, cells[i].x + 110, cells[i].y);
-    p->labels[cells[i].labelIdx] = st;
+  for (int i = 0; i < 3; i++) {
+    lv_obj_t *btn = lv_obj_create(root);
+    lv_obj_set_size(btn, OV_BTN_W, OV_BTN_H);
+    lv_obj_set_pos(btn, OV_BTN_X0 + i * OV_BTN_DX, OV_BTN_Y);
+    lv_obj_set_style_bg_color(btn, ST_GRAU, 0);
+    lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(btn, OV_BTN_R, 0);
+    lv_obj_set_style_border_width(btn, 0, 0);
+    lv_obj_set_style_pad_all(btn, 0, 0);
+    // Icon and text at fixed places: the icon 12 px from the left edge of the pill,
+    // the text at the same x in all three. Centring the two as a group was tried
+    // first and looks wrong in a row - the icons end up at three different x, and
+    // three icons that are supposed to be a column are not.
+    lv_obj_t *ico = makeLabel(btn, pills[i].icon, pills[i].font, FLOW_WHITE);
+    lv_obj_align(ico, LV_ALIGN_LEFT_MID, 12, 0);
+    p->labels[pills[i].labelIdx] =
+        makeLabel(btn, tr(pills[i].id), &lv_font_montserrat_14_uml, FLOW_WHITE);
+    lv_obj_align(p->labels[pills[i].labelIdx], LV_ALIGN_LEFT_MID, 46, 0);
+    s_ovBtn[i] = btn;
+    s_ovLabel[i] = pills[i].labelIdx;
   }
   p->labelCount = OV_LABEL_COUNT;
+}
+
+// Set one of those buttons: the colour for the state and the word that goes with
+// it. The text comes in ready-made rather than as a LangId, because one of the
+// states has no word of its own - "nothing from the device yet" is the same dash
+// the values above carry, and a dash is not something a translation table should
+// have to carry twice.
+static void ovSetState(int i, lv_color_t farbe, const char *wort) {
+  if (s_ovBtn[i] == nullptr) {
+    return;
+  }
+  lv_obj_set_style_bg_color(s_ovBtn[i], farbe, LV_PART_MAIN);
+  setText(s_pages[PAGE_OVERVIEW].labels[s_ovLabel[i]], "%s", wort);
 }
 
 // "Energie": accumulated energies of the selected period as bars, mirroring
@@ -2081,6 +2200,7 @@ static void refreshCb(lv_timer_t *t) {
     const float gridActive = 50.0f; // W, below = Standby
     const float pvActive = 20.0f;   // W, below = no visible generation
     const float batActive = 50.0f;  // W, below = Standby
+
     const char *dash = "--";
     float pTot = s.gridPowerSum;
     float pvTotal = s.pvPower[0] + s.pvPower[1] + s.s0Power;
@@ -2188,48 +2308,50 @@ static void refreshCb(lv_timer_t *t) {
       lv_obj_set_style_text_color(ov.labels[OV_HOUSE_VAL], FLOW_LINE, 0);
     }
 
-    // --- Status table (2x2, tendency words like the portal, all white) ---
+    // --- The three buttons under the diagram ---
+    // Colour per state, word per state. Grey is always "nothing to say", so it is
+    // also what a button that has no value from the device yet shows - the same
+    // dash the values above use.
     if (has) {
-      bool gridFlowing = fabsf(pTot) >= gridActive;
-      bool batFlowing = fabsf(pBat) >= batActive;
-
-      if (pvTotal >= pvActive) {
-        setText(ov.labels[OV_T_ERZ], "%s", tr(T_D_TEND_PRODUCING));
+      // Erzeugung: is there any, and does it cover what the house uses? The house
+      // value here is the one the diagram is drawn with, so the S0 generator is in
+      // it - without that, a house running on S0 would read as "Erzeugung" in
+      // orange while its own production covered it.
+      if (pvTotal < pvActive) {
+        ovSetState(0, ST_GRAU, dash);
+      } else if (house > pvTotal) {
+        ovSetState(0, ST_ORANGE, tr(T_D_ROW_PRODUCTION));
       } else {
-        setText(ov.labels[OV_T_ERZ], "%s", tr(T_D_TEND_NONE));
+        ovSetState(0, ST_GRUEN, tr(T_D_ROW_PRODUCTION));
       }
 
-      // Verbrauch says where the household power comes from: "Netzstrom" as
-      // soon as the grid is importing, otherwise the house runs on its own
-      // (PV and/or battery), which is what "Unabhängig" names.
-      if (gridImport && fabsf(pTot) >= gridActive) {
-        setText(ov.labels[OV_T_VERB], "%s", tr(T_D_TEND_MAINS));
+      // Verbrauch: nothing at all, or where the power comes from. The grid counts
+      // as "importing" from 20 W on: below that the device regulates around zero
+      // and the sign is noise, so a house that is only drawing its last few watts
+      // from the grid is independent as far as this button is concerned.
+      if (house < OV_BTN_NONE_W) {
+        ovSetState(1, ST_GRAU, tr(T_D_TEND_NOLOAD));
+      } else if (pTot >= OV_BTN_GRID_W) {
+        ovSetState(1, ST_ORANGE, tr(T_D_TEND_MAINS));
       } else {
-        setText(ov.labels[OV_T_VERB], "%s", tr(T_D_TEND_SELF));
+        ovSetState(1, ST_GRUEN, tr(T_D_TEND_SELF));
       }
 
-      if (gridFlowing) {
-        setText(ov.labels[OV_T_NETZ], "%s",
-                tr(gridImport ? T_D_TEND_IMPORT : T_D_TEND_EXPORT));
+      // Batterie: charging (green) or discharging (orange), and "no current" below
+      // 10 W rather than a direction that flips with the last rounding error.
+      if (!s.haveBattery) {
+        ovSetState(2, ST_GRAU, tr(T_D_TEND_NOBAT));
+      } else if (fabsf(pBat) < OV_BTN_NONE_W) {
+        ovSetState(2, ST_GRAU, tr(T_D_TEND_STANDBY));
+      } else if (pBat < 0.0f) {
+        ovSetState(2, ST_GRUEN, tr(T_D_TEND_CHARGE));
       } else {
-        setText(ov.labels[OV_T_NETZ], "%s", tr(T_D_TEND_SELF));
-      }
-
-      if (s.haveBattery) {
-        if (batFlowing) {
-          setText(ov.labels[OV_T_BAT], "%s",
-                  tr(pBat > 0 ? T_D_TEND_DISCHARGE : T_D_TEND_CHARGE));
-        } else {
-          setText(ov.labels[OV_T_BAT], "%s", tr(T_D_TEND_STANDBY));
-        }
-      } else {
-        setText(ov.labels[OV_T_BAT], "%s", tr(T_D_TEND_NOBAT));
+        ovSetState(2, ST_ORANGE, tr(T_D_TEND_DISCHARGE));
       }
     } else {
-      setText(ov.labels[OV_T_ERZ], dash);
-      setText(ov.labels[OV_T_VERB], dash);
-      setText(ov.labels[OV_T_NETZ], dash);
-      setText(ov.labels[OV_T_BAT], dash);
+      ovSetState(0, ST_GRAU, dash);
+      ovSetState(1, ST_GRAU, dash);
+      ovSetState(2, ST_GRAU, dash);
     }
   }
 

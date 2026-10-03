@@ -36,20 +36,28 @@ license text is next to them: src/gui/fonts/OFL-Montserrat.txt. The generator
 command is in the header of each file; it adds the Latin-1 range (0xA0-0xFF) to
 the ASCII set of the upstream font.
 
-Icon font (src/gui/fonts/lv_font_mdi_icons_20.c)
------------------------------------------------
-The two glyphs of the energy-flow diagram are `transmission-tower` (U+F0D3E,
-grid node) and `solar-power` (U+F0A72, PV node) from **Material Design Icons
-(Community)**, Apache License 2.0:
+Icon fonts (src/gui/fonts/)
+---------------------------
+The flow-diagram glyphs and the three glyphs of the buttons under the diagram are
+from **Material Design Icons (Community)**, Apache License 2.0:
 
     https://github.com/pictogrammers/material-design-icons
     Copyright (c) 2021 Pictogrammers
 
-Generated with lv_font_conv from the webfont of `@mdi/font` 7.4.47. Apache-2.0 is
-already in this distribution through ESP-IDF and the ported RCT client, so no
-new license enters the tree.
+| Font                    | Glyphen                                                     | Where |
+|-------------------------|-------------------------------------------------------------|-------|
+| `lv_font_mdi_icons_28`  | `solar-power-variant-outline` U+F1A74, `transmission-tower` U+F0D3E | PV and grid node |
+| `lv_font_mdi_icons_24`  | `solar-power-variant-outline` U+F1A74, `power-plug` U+F06A5, `battery-50` U+F007E | the three buttons under the diagram |
 
-These replace two glyphs that had been taken from the icon font embedded in the
+Both are generated with lv_font_conv from the same webfont of `@mdi/font` 7.x
+(Apache-2.0 is already in this distribution through ESP-IDF and the ported RCT
+client, so no new license enters the tree). Only the glyphs that are used are
+baked in: an icon font costs flash for every empty slot it carries.
+
+The house and battery symbols of the nodes come from the built-in Montserrat
+instead (LVGL's fallback font), which has neither a pylon nor a solar panel.
+
+These glyphs replace two that had been taken from the icon font embedded in the
 RCT Portal. Their code points, U+E039 and U+E044, do not match Google's
 Material Icons at those positions — they were checked against the current
 upstream font — so nothing about that font could be attributed and it has been

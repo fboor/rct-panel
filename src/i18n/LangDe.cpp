@@ -187,16 +187,12 @@ const char *const kLang[T_COUNT] = {
     // --- Anzeige: Übersicht, die vier Zeilen unter dem Flussdiagramm ---
     "Erzeugung",  // T_D_ROW_PRODUCTION
     "Verbrauch",  // T_D_ROW_CONSUMPTION
-    "Netz",       // T_D_ROW_GRID
     "Batterie",   // T_D_ROW_BATTERY
 
     // --- Anzeige: was diese Zeilen gerade sagen (Portal-Tendenzwörter) ---
-    "Produzierend",    // T_D_TEND_PRODUCING
-    "Keine",           // T_D_TEND_NONE
-    "Netzstrom",       // T_D_TEND_MAINS
+    "Netzbezug",       // T_D_TEND_MAINS
     "Unabhängig",      // T_D_TEND_SELF
-    "Bezug",           // T_D_TEND_IMPORT
-    "Einspeisung",     // T_D_TEND_EXPORT
+    "kein Verbrauch",  // T_D_TEND_NOLOAD
     "Entladen",        // T_D_TEND_DISCHARGE
     "Laden",           // T_D_TEND_CHARGE
     "Standby",         // T_D_TEND_STANDBY

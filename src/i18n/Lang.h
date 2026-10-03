@@ -199,16 +199,12 @@ enum LangId : int {
   // --- Anzeige: Übersicht, die vier Zeilen unter dem Flussdiagramm ---------
   T_D_ROW_PRODUCTION,
   T_D_ROW_CONSUMPTION,
-  T_D_ROW_GRID,
   T_D_ROW_BATTERY,
 
   // --- Anzeige: was diese Zeilen gerade sagen (Portal-Tendenzwörter) -------
-  T_D_TEND_PRODUCING,
-  T_D_TEND_NONE,
-  T_D_TEND_MAINS,
-  T_D_TEND_SELF,
-  T_D_TEND_IMPORT,
-  T_D_TEND_EXPORT,
+  T_D_TEND_MAINS,   // the house draws from the grid
+  T_D_TEND_SELF,    // the house runs on its own
+  T_D_TEND_NOLOAD,  // below 10 W: no household draw to name
   T_D_TEND_DISCHARGE,
   T_D_TEND_CHARGE,
   T_D_TEND_STANDBY,
