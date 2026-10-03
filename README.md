@@ -73,6 +73,7 @@ the board.
 | [`docs/sd-history.md`](docs/sd-history.md) | the CSV format and the SD logger |
 | [`docs/energy-page.md`](docs/energy-page.md) | the totals page and its arithmetic |
 | [`docs/web-interface.md`](docs/web-interface.md) | the web interface: its routes, the two JSON endpoints, the browser-drawn charts and their limits |
+| [`docs/geraete-abstraktion.md`](docs/geraete-abstraktion.md) | plan for supporting a second inverter: where the coupling is, which rules are duplicated, and what has to be decided first (German) |
 
 ## License
 
