@@ -35,7 +35,7 @@ const char *const kLang[T_COUNT] = {
     // --- web: the four value cards on the overview -------------------------
     "Netz",                             // T_CARD_GRID
     "PV",                               // T_CARD_PV
-    "Batterie",                         // T_CARD_BATTERY
+    "Akku",                             // T_CARD_BATTERY
     "Verbrauch",                        // T_CARD_LOAD
 
     // --- web: the overview tables ------------------------------------------
@@ -223,7 +223,7 @@ const char *const kLang[T_COUNT] = {
     "Verbrauch",                          // T_D_SER_CONSUMPTION
     "PV",                                 // T_D_SER_PV
     "EXT",                                // T_D_SER_EXT
-    "Batterie",                           // T_D_SER_BATTERY
+    "Akku",                                // T_D_SER_BATTERY
     "SOC",                                // T_D_SER_SOC
     "1 Lücke, %lu min ohne Messwerte",    // T_D_GAP_ONE
     "%d Lücken, %lu min ohne Messwerte",  // T_D_GAP_MANY
