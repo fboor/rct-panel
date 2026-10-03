@@ -24,7 +24,8 @@
 #include "../config/Configuration.h"
 #include "../Diag.h"
 #include "RctCrc.h"
-#include "RctTypes.h"
+#include "../device/Device.h"
+#include "../device/Rules.h"
 
 #define RCT_RX_TIMEOUT_MS 2000    // per-frame receive window
 #define RCT_CYCLE_TIMEOUT_MS 4000 // total per-poll collection budget
@@ -136,7 +137,7 @@ static void rctProcessByte(uint8_t c) {
 // while the device answers, and LVGL runs in the same FreeRTOS task as this file -
 // without a way to render in between, the panel stands still for as long as the
 // wait lasts. main.cpp installs displayLooper()+lv_tick_inc here, which is the
-// only safe place: it is the same task, so rctState is still only ever touched
+// only safe place: it is the same task, so dev is still only ever touched
 // from one context.
 static void (*rctYieldHook)() = nullptr;
 void rctSetYieldHook(void (*fn)()) { rctYieldHook = fn; }
@@ -480,7 +481,10 @@ static void rctSendExtension() {
   rctDrain(300);
 }
 
-RctSnapshot rctState = {};
+// The driver's own handle on the state. Everything outside src/rct/ reads it
+// through dev; only a driver writes it, and only from the task that
+// also runs LVGL - which is why this is a reference and not a copy.
+static DeviceState &dev = deviceStateMutable();
 
 // One-time note when the current sign had to be flipped, so the reconciliation
 // is visible in the log instead of being a silent guess.
@@ -488,11 +492,35 @@ static bool rctCurrentFlipLogged = false;
 
 // Public poll entry point (mirrors parseRCT in the ported project).
 void rctParse() {
+  // Once per boot: how this device's meters read, which is what makes the rules
+  // in src/device/Rules.h right here. All three are false-then-true for the
+  // RCT, and each of them was a correction that used to be written into the
+  // display code at five places:
+  //   loadMeterSeesExternal    false - its load meter reads the demand already
+  //                            minus the S0 generator, so the household is
+  //                            meter + external power
+  //   genCounterSeesExternal   false - the e_dc_* family only counts the two DC
+  //                            inputs, so the external counters are added
+  //                            separately, to generation and to consumption
+  //   feedCounterNegative      true  - the feed-in counters arrive negative,
+  //                            the magnitude is what went in
+  static bool semanticsSet = false;
+  if (!semanticsSet) {
+    semanticsSet = true;
+    const DeviceSemantics rct = {false, false, true};
+    deviceSetSemantics(rct);
+    Serial.printf("RCT: Zaehlerregeln - Lastzaehler%s extern, Erzeugungszaehler%s "
+                  "extern, Einspeisezahler%s negativ\n",
+                  rct.loadMeterSeesExternal ? "sieht" : "sieht nicht",
+                  rct.genCounterSeesExternal ? "sieht" : "sieht nicht",
+                  rct.feedCounterNegative ? "kommen" : "kommen nicht");
+  }
+
   if (!rctClient.connected()) {
     // No link: skip the attempt so the UI (same task) is never frozen by a
-    // blocking connect. "not connected" is signaled through rctState.
+    // blocking connect. "not connected" is signaled through dev.
     if (WiFi.status() != WL_CONNECTED) {
-      rctState.connected = false;
+      dev.connected = false;
       return;
     }
 
@@ -522,10 +550,10 @@ void rctParse() {
         // peer's listen backlog and made every later connect fail too.
         rctClient.stop();
         Serial.println("RCT: connect failed");
-        rctState.connected = false;
+        dev.connected = false;
         return;
       }
-      rctState.connected = true;
+      dev.connected = true;
       if (rctYieldHook) {
         rctYieldHook();
       } else {
@@ -533,7 +561,7 @@ void rctParse() {
       }
       rctSendExtension();
     } else {
-      rctState.connected = false;
+      dev.connected = false;
       return;
     }
   }
@@ -601,7 +629,7 @@ void rctParse() {
     if (rc == RCT_RX_TIMEOUT) {
       if (!rctClient.connected()) {
         rctClient.stop();
-        rctState.connected = false;
+        dev.connected = false;
       }
       streamQuiet = true;
       break;
@@ -628,11 +656,11 @@ void rctParse() {
             }
             break;
         }
-        rctState.haveData = true;
+        dev.haveData = true;
         if (slot == RCT_SLOT_SOC) {
-          rctState.haveBattery = true; // SOC only answers on battery devices
+          dev.haveBattery = true; // SOC only answers on battery devices
         }
-        rctState.lastUpdateMs = millis();
+        dev.lastUpdateMs = millis();
         if (slot >= RCT_SLOT_DEVNAME) {
           infoSeen |= (1u << (slot - RCT_SLOT_DEVNAME));
         } else {
@@ -642,7 +670,7 @@ void rctParse() {
     }
   }
 
-  if (!rctState.haveData) {
+  if (!dev.haveData) {
     Serial.println(F("RCT: no data yet (device unresponsive or only answers "
                      "while the app is connected)"));
     return;
@@ -653,17 +681,17 @@ void rctParse() {
   const float *voltages = &rctCur[RCT_SLOT_V0];
   const float *frequencies = &rctCur[RCT_SLOT_F0];
   const float *loads = &rctCur[RCT_SLOT_L0];
-  memcpy(rctState.gridPower, powers, sizeof(rctState.gridPower));
-  memcpy(rctState.gridVoltage, voltages, sizeof(rctState.gridVoltage));
-  memcpy(rctState.gridFrequency, frequencies, sizeof(rctState.gridFrequency));
-  memcpy(rctState.loadPower, loads, sizeof(rctState.loadPower));
-  rctState.gridPowerSum = rctCur[RCT_SLOT_PGRIDSUM];
-  rctState.feedInEnergyWh = rctCur[RCT_SLOT_EFEED];
-  rctState.gridDrawTotalWh = rctCur[RCT_SLOT_ELOAD];
+  memcpy(dev.gridW, powers, sizeof(dev.gridW));
+  memcpy(dev.gridV, voltages, sizeof(dev.gridV));
+  memcpy(dev.gridHz, frequencies, sizeof(dev.gridHz));
+  memcpy(dev.houseW, loads, sizeof(dev.houseW));
+  dev.gridExchangeW = rctCur[RCT_SLOT_PGRIDSUM];
+  dev.feedInTotalWh = rctCur[RCT_SLOT_EFEED];
+  dev.gridDrawTotalWh = rctCur[RCT_SLOT_ELOAD];
 
-  rctState.pvPower[0] = rctCur[RCT_SLOT_PV0];
-  rctState.pvPower[1] = rctCur[RCT_SLOT_PV1];
-  rctState.s0Power = rctCur[RCT_SLOT_S0];
+  dev.genW[0] = rctCur[RCT_SLOT_PV0];
+  dev.genW[1] = rctCur[RCT_SLOT_PV1];
+  dev.extW = rctCur[RCT_SLOT_S0];
 
   // Integrate the S0 external generator's power into an energy total, as an
   // independent check on the device's own e_ext_day_sum counter. The displayed
@@ -689,19 +717,19 @@ void rctParse() {
       // Cap the step: a long outage would otherwise integrate the average
       // across minutes of production the panel never saw.
       if (dtMs > 0 && dtMs <= RCT_S0_MAX_STEP_MS) {
-        rctState.s0EnergyWh +=
-            (lastS0W + rctState.s0Power) * 0.5f * (float)dtMs / 3600000.0f;
+        dev.extEnergyWh +=
+            (lastS0W + dev.extW) * 0.5f * (float)dtMs / 3600000.0f;
       }
     }
     lastS0Ms = nowMs;
-    lastS0W = rctState.s0Power;
+    lastS0W = dev.extW;
   }
   // SOC/SOH are reported as 0..1 fractions; scale to percent.
   static const auto pct100 = [](float frac) {
     float v = frac * 100.0f;
     return v < 0.0f ? 0.0f : (v > 100.0f ? 100.0f : v);
   };
-  rctState.batterySoc = pct100(rctCur[RCT_SLOT_SOC]);
+  dev.socPct = pct100(rctCur[RCT_SLOT_SOC]);
   // battery.current (OID 0x21961B58) is aligned with p_acc_lp by the physics
   // instead of by a hardcoded negation: P = U * I for a battery, so the signs
   // of U*I and P must agree. Whichever of the two is inconsistent gets flipped,
@@ -722,38 +750,38 @@ void rctParse() {
       }
     }
   }
-  rctState.batteryCurrent = current;
-  rctState.batteryVoltage = voltage;
-  rctState.batteryPower = power;
+  dev.batA = current;
+  dev.batV = voltage;
+  dev.batW = power;
 
   // Service page data (raw, exact values).
-  rctState.batteryStatus = rctRaw[RCT_SLOT_BATSTATUS];
+  dev.batteryStatus = rctRaw[RCT_SLOT_BATSTATUS];
   for (int k = 0; k < 4; k++) {
-    rctState.faultBits[k] = rctRaw[RCT_SLOT_FLT0 + k];
+    dev.faultBits[k] = rctRaw[RCT_SLOT_FLT0 + k];
   }
 
   // The two DC inputs only; the S0 external generator is added by the caller
-  // from s0EnergyWh, because this counter does not see it.
-  rctState.dayPvWh = rctCur[RCT_SLOT_DC0] + rctCur[RCT_SLOT_DC1];
-  rctState.dayFeedInWh = rctCur[RCT_SLOT_EFEEDDAY];
-  rctState.dayLoadWh = rctCur[RCT_SLOT_ELOADDAY];
-  rctState.dayGridLoadWh = rctCur[RCT_SLOT_EGRIDLOADDAY];
+  // from extEnergyWh, because this counter does not see it.
+  dev.dayGenWh = rctCur[RCT_SLOT_DC0] + rctCur[RCT_SLOT_DC1];
+  dev.dayFeedInWh = rctCur[RCT_SLOT_EFEEDDAY];
+  dev.dayHouseWh = rctCur[RCT_SLOT_ELOADDAY];
+  dev.dayGridDrawWh = rctCur[RCT_SLOT_EGRIDLOADDAY];
 
-  rctState.monthPvWh =
+  dev.monthGenWh =
       rctCur[RCT_SLOT_DCMONTH0] + rctCur[RCT_SLOT_DCMONTH1];
-  rctState.yearPvWh =
+  dev.yearGenWh =
       rctCur[RCT_SLOT_DCYEAR0] + rctCur[RCT_SLOT_DCYEAR1];
-  rctState.totalPvWh =
+  dev.totalGenWh =
       rctCur[RCT_SLOT_DCTOTAL0] + rctCur[RCT_SLOT_DCTOTAL1];
-  rctState.totalPvAWh = rctCur[RCT_SLOT_DCTOTAL0];
-  rctState.totalPvBWh = rctCur[RCT_SLOT_DCTOTAL1];
-  rctState.monthLoadWh = rctCur[RCT_SLOT_LOADMONTH];
-  rctState.yearLoadWh = rctCur[RCT_SLOT_LOADYEAR];
-  rctState.totalLoadWh = rctCur[RCT_SLOT_LOADTOTAL];
-  rctState.monthFeedInWh = rctCur[RCT_SLOT_FEEDMONTH];
-  rctState.yearFeedInWh = rctCur[RCT_SLOT_FEEDYEAR];
-  rctState.monthGridLoadWh = rctCur[RCT_SLOT_GRIDMONTH];
-  rctState.yearGridLoadWh = rctCur[RCT_SLOT_GRIDYEAR];
+  dev.totalGenAWh = rctCur[RCT_SLOT_DCTOTAL0];
+  dev.totalGenBWh = rctCur[RCT_SLOT_DCTOTAL1];
+  dev.monthHouseWh = rctCur[RCT_SLOT_LOADMONTH];
+  dev.yearHouseWh = rctCur[RCT_SLOT_LOADYEAR];
+  dev.totalHouseWh = rctCur[RCT_SLOT_LOADTOTAL];
+  dev.monthFeedInWh = rctCur[RCT_SLOT_FEEDMONTH];
+  dev.yearFeedInWh = rctCur[RCT_SLOT_FEEDYEAR];
+  dev.monthGridDrawWh = rctCur[RCT_SLOT_GRIDMONTH];
+  dev.yearGridDrawWh = rctCur[RCT_SLOT_GRIDYEAR];
 
   // External energy (S0 generator), the device's own counters. These are the
   // authoritative values: the e_ext_* family counts the external generator
@@ -763,22 +791,22 @@ void rctParse() {
   // primary - so both are polled and logged raw, and the summed one is used for
   // the display. That is a measured choice, not a documented one, and the log
   // line makes the difference visible on the real device.
-  rctState.dayExtWh = rctCur[RCT_SLOT_EXTDAY];
-  rctState.monthExtWh = rctCur[RCT_SLOT_EXTMONTH];
-  rctState.yearExtWh = rctCur[RCT_SLOT_EXTYEAR];
-  rctState.totalExtWh = rctCur[RCT_SLOT_EXTTOTAL];
-  rctState.dayExtPlainWh = rctCur[RCT_SLOT_EXTDAYP];
-  rctState.monthExtPlainWh = rctCur[RCT_SLOT_EXTMONP];
+  dev.dayExtWh = rctCur[RCT_SLOT_EXTDAY];
+  dev.monthExtWh = rctCur[RCT_SLOT_EXTMONTH];
+  dev.yearExtWh = rctCur[RCT_SLOT_EXTYEAR];
+  dev.totalExtWh = rctCur[RCT_SLOT_EXTTOTAL];
+  dev.dayExtPlainWh = rctCur[RCT_SLOT_EXTDAYP];
+  dev.monthExtPlainWh = rctCur[RCT_SLOT_EXTMONP];
 
-  strlcpy(rctState.deviceName, rctDevName, sizeof(rctState.deviceName));
-  strlcpy(rctState.firmwareVersion, rctFwVersion,
-          sizeof(rctState.firmwareVersion));
-  rctState.coreTemp = rctCur[RCT_SLOT_CORET];
-  rctState.batteryTemp = rctCur[RCT_SLOT_BTEMP];
-  rctState.heatSinkTemp = rctCur[RCT_SLOT_HTEMP];
-  rctState.nextCalibTs = rctRaw[RCT_SLOT_CALIB];
-  rctState.batteryCycles = rctCur[RCT_SLOT_CYCLES];
-  rctState.batterySoh = pct100(rctCur[RCT_SLOT_SOH]);
+  strlcpy(dev.deviceName, rctDevName, sizeof(dev.deviceName));
+  strlcpy(dev.firmwareVersion, rctFwVersion,
+          sizeof(dev.firmwareVersion));
+  dev.coreTemp = rctCur[RCT_SLOT_CORET];
+  dev.batteryTemp = rctCur[RCT_SLOT_BTEMP];
+  dev.heatSinkTemp = rctCur[RCT_SLOT_HTEMP];
+  dev.nextCalibTs = rctRaw[RCT_SLOT_CALIB];
+  dev.batteryCycles = rctCur[RCT_SLOT_CYCLES];
+  dev.batterySoh = pct100(rctCur[RCT_SLOT_SOH]);
   // prim_sm.island_flag (OID 0x3623D82A). rctmon (svalouch/rctmon) names it
   // inverter_grid_separated and forwards the whole value unmasked.
   //
@@ -794,8 +822,8 @@ void rctParse() {
   // answered this OID yet" - both read as 0 in rctRaw, and the Service page
   // would otherwise claim "nein" before the first answer arrived.
   if (infoSeen & (1u << (RCT_SLOT_ISLAND - RCT_SLOT_DEVNAME))) {
-    rctState.islandKnown = true;
-    rctState.islandMode = (rctRaw[RCT_SLOT_ISLAND] & 1u) != 0;
+    dev.islandKnown = true;
+    dev.islandMode = (rctRaw[RCT_SLOT_ISLAND] & 1u) != 0;
   }
 
   // One-time bring-up log for the "Energie" page: proves the 13 accumulated
@@ -808,20 +836,20 @@ void rctParse() {
                   "%.1f | Verbrauch %.1f/%.1f/%.1f/%.1f | Einspeisung "
                   "%.1f/%.1f/%.1f/%.1f | Bezug %.1f/%.1f/%.1f/%.1f"
                   " | Extern %.1f/%.1f/%.1f/%.1f (Tag/Mon/Jahr/Ges, sum)\n",
-                  rctState.dayPvWh / 1000.0f, rctState.monthPvWh / 1000.0f,
-                  rctState.yearPvWh / 1000.0f, rctState.totalPvWh / 1000.0f,
-                  rctState.dayLoadWh / 1000.0f, rctState.monthLoadWh / 1000.0f,
-                  rctState.yearLoadWh / 1000.0f, rctState.totalLoadWh / 1000.0f,
-                  rctState.dayFeedInWh / 1000.0f,
-                  rctState.monthFeedInWh / 1000.0f,
-                  rctState.yearFeedInWh / 1000.0f,
-                  rctState.feedInEnergyWh / 1000.0f,
-                  rctState.dayGridLoadWh / 1000.0f,
-                  rctState.monthGridLoadWh / 1000.0f,
-                  rctState.yearGridLoadWh / 1000.0f,
-                  rctState.gridDrawTotalWh / 1000.0f,
-                  rctState.dayExtWh / 1000.0f, rctState.monthExtWh / 1000.0f,
-                  rctState.yearExtWh / 1000.0f, rctState.totalExtWh / 1000.0f);
+                  dev.dayGenWh / 1000.0f, dev.monthGenWh / 1000.0f,
+                  dev.yearGenWh / 1000.0f, dev.totalGenWh / 1000.0f,
+                  dev.dayHouseWh / 1000.0f, dev.monthHouseWh / 1000.0f,
+                  dev.yearHouseWh / 1000.0f, dev.totalHouseWh / 1000.0f,
+                  dev.dayFeedInWh / 1000.0f,
+                  dev.monthFeedInWh / 1000.0f,
+                  dev.yearFeedInWh / 1000.0f,
+                  dev.feedInTotalWh / 1000.0f,
+                  dev.dayGridDrawWh / 1000.0f,
+                  dev.monthGridDrawWh / 1000.0f,
+                  dev.yearGridDrawWh / 1000.0f,
+                  dev.gridDrawTotalWh / 1000.0f,
+                  dev.dayExtWh / 1000.0f, dev.monthExtWh / 1000.0f,
+                  dev.yearExtWh / 1000.0f, dev.totalExtWh / 1000.0f);
   }
 
   // One-time bring-up log once the whole slow group has answered.
@@ -834,13 +862,13 @@ void rctParse() {
     Serial.printf("RCT info: \"%s\" | SW %s | core %.1f C | bat %.1f C | "
                   "heat %.1f C | calib %lu | cycles %.0f | SOH %.1f %% | "
                   "island %u (raw 0x%08X) | bat_status 0x%08X\n",
-                  rctState.deviceName, rctState.firmwareVersion,
-                  rctState.coreTemp, rctState.batteryTemp,
-                  rctState.heatSinkTemp,
-                  (unsigned long)rctState.nextCalibTs, rctState.batteryCycles,
-                  rctState.batterySoh, (unsigned)rctState.islandMode,
+                  dev.deviceName, dev.firmwareVersion,
+                  dev.coreTemp, dev.batteryTemp,
+                  dev.heatSinkTemp,
+                  (unsigned long)dev.nextCalibTs, dev.batteryCycles,
+                  dev.batterySoh, (unsigned)dev.islandMode,
                   (unsigned)rctRaw[RCT_SLOT_ISLAND],
-                  (unsigned)rctState.batteryStatus);
+                  (unsigned)dev.batteryStatus);
   }
 
   int freshCount = 0;
@@ -852,25 +880,25 @@ void rctParse() {
                 " | bat %.0f%% %.2f kW (%.1f A, %.1f V)"
                 " | ext %.2f kWh (e_ext_day %.2f)"
                 " | integriert %.2f kWh | %d/%d fresh\n",
-                rctState.gridPower[0], rctState.gridPower[1],
-                rctState.gridPower[2], rctState.gridPowerSum,
-                rctState.loadPower[0],
-                rctState.loadPower[1], rctState.loadPower[2],
-                (rctState.pvPower[0] + rctState.pvPower[1] +
-                 rctState.s0Power) / 1000.0f,
-                rctState.s0Power, rctState.batterySoc,
-                rctState.batteryPower / 1000.0f, rctState.batteryCurrent,
-                rctState.batteryVoltage,
-                rctState.dayExtWh / 1000.0f,
+                dev.gridW[0], dev.gridW[1],
+                dev.gridW[2], dev.gridExchangeW,
+                dev.houseW[0],
+                dev.houseW[1], dev.houseW[2],
+                (dev.genW[0] + dev.genW[1] +
+                 dev.extW) / 1000.0f,
+                dev.extW, dev.socPct,
+                dev.batW / 1000.0f, dev.batA,
+                dev.batV,
+                dev.dayExtWh / 1000.0f,
                 // The unsummed e_ext_day next to e_ext_day_sum. Which of the two
                 // is the real external production is documented nowhere, so both
                 // stay in the log until the difference is measured rather than
                 // assumed. Measured so far: sum 2,83 kWh vs plain 0,00 kWh on
                 // 2025-09-29, i.e. the unsummed variant reads zero even though
                 // the generator ran - so the summed one is the displayed value.
-                rctState.dayExtPlainWh / 1000.0f,
-                // Our own integration of s0Power, since boot. Independent of
+                dev.dayExtPlainWh / 1000.0f,
+                // Our own integration of extW, since boot. Independent of
                 // the device: it must track the day counter's rise. A growing
                 // gap means the counter is not what its name says.
-                rctState.s0EnergyWh / 1000.0f, freshCount, RCT_NUM_SLOTS);
+                dev.extEnergyWh / 1000.0f, freshCount, RCT_NUM_SLOTS);
 }

@@ -14,6 +14,7 @@
 #include "display/Touch.h"
 #include "gui/GuiApp.h"
 #include "output/Relay.h"
+#include "device/Device.h"
 #include "rct/RctClient.h"
 #include "storage/sdlog.h"
 #include "web/WebServer.h"
@@ -188,7 +189,7 @@ void loop() {
   static uint32_t lastSd = 0;
   if (now - lastSd >= SD_LOG_INTERVAL_MS) {
     lastSd = now;
-    sdLogSample(rctState);
+    sdLogSample(deviceState());
   }
 
 }

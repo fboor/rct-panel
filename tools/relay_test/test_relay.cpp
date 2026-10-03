@@ -17,7 +17,7 @@
 
 #include "Arduino.h"
 #include "Preferences.h"
-#include "rct/RctTypes.h"
+#include "device/Device.h"
 
 uint32_t g_millis = 0;
 StubSerial Serial;
@@ -27,7 +27,15 @@ bool Preferences::kCharSet = false;
 int Preferences::kInt = 0;
 bool Preferences::kIntSet = false;
 
-RctSnapshot rctState;
+// The panel's storage, in the test's own copy: the module under test reads the
+// state through the API in Device.h, so the test provides it the way the
+// firmware does - one instance behind deviceState(). The relay's surplus mode
+// needs to write to it, which is what deviceStateMutable() is for.
+static DeviceState s_device;
+const DeviceState &deviceState() { return s_device; }
+DeviceState &deviceStateMutable() { return s_device; }
+const DeviceSemantics &deviceSemantics() { return s_device.semantics; }
+void deviceSetSemantics(const DeviceSemantics &sem) { s_device.semantics = sem; }
 
 // Pin state, so the test can see what the module would do.
 int g_pinLevel = -1;
@@ -72,21 +80,21 @@ static void resetWorld() {
   g_pinModeSeen = -1;
   Preferences::kCharSet = false;
   Preferences::kIntSet = false;
-  memset(&rctState, 0, sizeof(rctState));
+  memset(&s_device, 0, sizeof(s_device));
   relayInit();
 }
 
 // Feed fresh values: the "device" is reachable and the given powers apply.
 static void feed(float gridW, float pvA, float pvB, float load, float s0) {
-  rctState.haveData = true;
-  rctState.lastUpdateMs = g_millis;
-  rctState.gridPowerSum = gridW;
-  rctState.pvPower[0] = pvA;
-  rctState.pvPower[1] = pvB;
-  rctState.loadPower[0] = load;
-  rctState.loadPower[1] = 0;
-  rctState.loadPower[2] = 0;
-  rctState.s0Power = s0;
+  deviceStateMutable().haveData = true;
+  deviceStateMutable().lastUpdateMs = g_millis;
+  deviceStateMutable().gridExchangeW = gridW;
+  deviceStateMutable().genW[0] = pvA;
+  deviceStateMutable().genW[1] = pvB;
+  deviceStateMutable().houseW[0] = load;
+  deviceStateMutable().houseW[1] = 0;
+  deviceStateMutable().houseW[2] = 0;
+  deviceStateMutable().extW = s0;
 }
 
 // Time passes in 100 ms steps, as the real loop() would - the module evaluates
@@ -98,7 +106,7 @@ static void step(uint32_t ms, bool live = true) {
   while (g_millis < until) {
     g_millis += 100;
     if (live) {
-      rctState.lastUpdateMs = g_millis;
+      deviceStateMutable().lastUpdateMs = g_millis;
     }
     relayUpdate();
   }
@@ -126,7 +134,7 @@ static void testBootState() {
 
   g_millis = 1000;
   g_pinLevel = -1;
-  memset(&rctState, 0, sizeof(rctState));
+  memset(&s_device, 0, sizeof(s_device));
   relayInit();
 
   check(g_pinModeSeen == OUTPUT, "pin became an output");
@@ -317,28 +325,28 @@ static void testFaultAndIsland() {
   resetWorld();
   relaySetMode(RelayMode::Fault);
 
-  rctState.faultBits[1] = 1u << 5;
+  deviceStateMutable().faultBits[1] = 1u << 5;
   feed(0, 0, 0, 100, 0);
   runFor(25 * 1000);
   check(on(), "fault switches the output on");
 
-  rctState.faultBits[1] = 0;
+  deviceStateMutable().faultBits[1] = 0;
   runFor(2 * 60 * 1000);
   check(!on(), "cleared fault switches it off");
 
   // An island flag that has not answered yet must not read as island.
-  rctState.islandMode = true;
-  rctState.islandKnown = false;
+  deviceStateMutable().islandMode = true;
+  deviceStateMutable().islandKnown = false;
   runFor(30 * 1000);
   check(!on(), "unknown island flag does not switch on");
 
   relaySetMode(RelayMode::Island);
-  rctState.islandKnown = true;
+  deviceStateMutable().islandKnown = true;
   runFor(25 * 1000);
   check(on(), "known island flag switches on");
 
   relaySetMode(RelayMode::Island);
-  rctState.islandMode = false;
+  deviceStateMutable().islandMode = false;
   runFor(2 * 60 * 1000);
   check(!on(), "grid back switches it off");
 }
@@ -435,7 +443,7 @@ static void testCorruptConfig() {
   Preferences::kInt = 999999;
   Preferences::kIntSet = true;
   g_millis = 1000;
-  memset(&rctState, 0, sizeof(rctState));
+  memset(&s_device, 0, sizeof(s_device));
   relayInit();
   check(relayMode() == RelayMode::Off, "unknown mode falls back to Off");
   check(relayThreshold() == 500, "out-of-range threshold falls back to 500");

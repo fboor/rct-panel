@@ -14,7 +14,8 @@
 #ifndef RCT_SDLOG_H
 #define RCT_SDLOG_H
 
-#include "rct/RctTypes.h"
+#include "device/Device.h"
+#include "device/Rules.h"
 #include "storage/CsvRow.h"
 
 // The chart row format lives in storage/CsvRow.h, together with the reader for
@@ -33,7 +34,7 @@ void sdTick();
 // row is parked in the RAM ring (up to 24 h) and retried; on overflow the
 // oldest row goes and the loss shows up in sdStatusText(). Returns immediately
 // - the card work happens in the worker.
-void sdLogSample(const RctSnapshot &s);
+void sdLogSample(const DeviceState &s);
 
 // Service page status, e.g. "SD: OK | 8,4 GB frei", "SD: -- | 5 gepuffert
 // (25 min)", "SD: OK | 2 Zeilen verloren". Thread-safe (copied out under a

@@ -19,6 +19,13 @@
 #   badge_test     the data-status decision behind the badge, the switching
 #                  output line and the web page: five states, their order, and
 #                  the one-minute boundary
+#   device_test    the device abstraction's rules: the household and the
+#                  generation with and without the external generator, the four
+#                  periods, the sign of the feed-in counter and the six chart
+#                  series - for a device whose meters see the external generator
+#                  and for the RCT, whose do not. The same input has to give
+#                  different answers, and which one applies is the device's to
+#                  say, not the display's
 #   crc_test       the frame checksum: check values computed independently of
 #                  the implementation, plus the padding rule for odd lengths
 #                  that the three-byte extension frame depends on
@@ -50,7 +57,7 @@ set -e
 cd "$(dirname "$0")/.."
 
 fail=0
-for t in relay_test sd_queue_test numfmt_test i18n_test backlight_test badge_test crc_test json_test jstest; do
+for t in device_test relay_test sd_queue_test numfmt_test i18n_test backlight_test badge_test crc_test json_test jstest; do
   printf '\n=== %s ===\n' "$t"
   if [ "$t" = "jstest" ]; then
     if command -v node >/dev/null 2>&1; then

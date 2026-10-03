@@ -19,6 +19,14 @@
 #include "storage/CsvRow.h"
 #include "storage/RowQueue.h"
 
+// The RCT's meter semantics, for the row -> chart conversion: its load meter
+// does not see the external generator, its generation counters do not either,
+// and its feed-in counter arrives negative. A device whose meters see
+// everything gets the all-true struct, which is what the second half of
+// testSampleMapping() checks.
+static const DeviceSemantics kRctSemantics = {false, false, true};
+static const DeviceSemantics kSeesEverything = {true, true, false};
+
 static int g_checks = 0;
 static int g_failed = 0;
 
@@ -172,7 +180,7 @@ static void testLegacyRow() {
 
   // The chart reads an old row as far as it can, and that has to work.
   csvrow::Sample s = {};
-  csvrow::toSample(r, s);
+  csvrow::toSample(r, s, kRctSemantics);
   checkEq((long)s.ts, 1789142400L, "legacy: the chart takes an old row");
   check(near(s.v[2], 1801.0f), "legacy: chart values are right");
 }
@@ -274,13 +282,14 @@ static void testFileSyntax() {
   check(strstr(line, "1234.6") == nullptr, "syntax: no untruncated precision");
 }
 
-// The chart sums. The S0 asymmetry is a decision, not an accident: the
-// inverter's load meter does not see external generation, so the house is
-// meter + external while the PV node is the two strings only.
+// The chart sums, through the panel's rules rather than through code of their
+// own (src/device/Rules.h). That the household is meter plus external is a
+// property of the RCT's meters, not of the panel: the same row read with a
+// device whose meters see the external generator gives the meter alone.
 static void testSampleMapping() {
   csvrow::Row r = makeRow();
   csvrow::Sample s = {};
-  csvrow::toSample(r, s);
+  csvrow::toSample(r, s, kRctSemantics);
   checkEq((long)s.ts, (long)r.ts, "sample: timestamp");
   check(near(s.v[0], 40.0f), "sample: net = g1+g2+g3");
   check(near(s.v[1], 755.0f), "sample: house = l1+l2+l3+s0");
@@ -293,8 +302,19 @@ static void testSampleMapping() {
   r.g1 = 100.0f;
   r.g2 = -200.0f;
   r.g3 = 0.0f;
-  csvrow::toSample(r, s);
+  csvrow::toSample(r, s, kRctSemantics);
   check(near(s.v[0], -100.0f), "sample: export is negative grid power");
+
+  // The same row through a device whose household meter already sees the
+  // external generator: 666 W of meter, no addition, while the external
+  // generator keeps its own series. Before the rules moved into
+  // DeviceSemantics this was the sum written out in five places in C++ and once
+  // in the browser, and all six would have been wrong here.
+  csvrow::toSample(r, s, kSeesEverything);
+  check(near(s.v[1], 666.0f),
+        "sample: a meter that sees the external generator gets no addition");
+  check(near(s.v[3], 89.0f),
+        "sample: the external generator keeps its own series either way");
 }
 
 static void testParseRejects() {

@@ -33,6 +33,9 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "device/DeviceState.h"
+#include "device/Rules.h"
+
 namespace csvrow {
 
 // One row, as numbers. The temperatures and the powers are what the panel
@@ -213,18 +216,35 @@ inline bool parse(const char *line, Row &r) {
   return tail + 1 + used == line + strlen(line);
 }
 
-// Row -> chart point. The sums are the same ones the live display uses, and the
-// S0 asymmetry is deliberate: the inverter's load meter does not see external
-// generation, so the house is meter + external while the PV node is the two
-// strings only. Same rule as the relay's surplus mode.
-inline void toSample(const Row &r, Sample &s) {
+// Row -> chart point. The row holds what the device measured; the panel's
+// rules are applied here, not in the caller, so the restored history and the
+// live chart cannot disagree about the household.
+//
+// That is done by handing the row to the same rule function the live values go
+// through (src/device/Rules.h): the row is filled into a DeviceState, which
+// costs 304 bytes and saves the rule standing in this file a second time.
+// Which way this device's meters read comes in as an argument - the row does
+// not carry it, because the CSV format predates the question and stays at 23
+// columns.
+inline void toSample(const Row &r, Sample &s, const DeviceSemantics &sem) {
+  DeviceState d = {};
+  d.gridW[0] = r.g1;
+  d.gridW[1] = r.g2;
+  d.gridW[2] = r.g3;
+  // The row has the three phases but no total, and the format may not grow a
+  // column for it: the sum is what the total column means anyway.
+  d.gridExchangeW = r.g1 + r.g2 + r.g3;
+  d.genW[0] = r.pvA;
+  d.genW[1] = r.pvB;
+  d.extW = r.s0;
+  d.houseW[0] = r.l1;
+  d.houseW[1] = r.l2;
+  d.houseW[2] = r.l3;
+  d.batW = r.bat;
+  d.socPct = r.soc;
+  d.semantics = sem;
+  ruleChartSample(d, r.ts, s.v);
   s.ts = r.ts;
-  s.v[0] = r.g1 + r.g2 + r.g3;        // Netz
-  s.v[1] = r.l1 + r.l2 + r.l3 + r.s0;  // Verbrauch (meter + external)
-  s.v[2] = r.pvA + r.pvB;              // PV A+B
-  s.v[3] = r.s0;                       // S0
-  s.v[4] = r.bat;                      // Bat
-  s.v[5] = r.soc;                      // SOC %
 }
 
 } // namespace csvrow

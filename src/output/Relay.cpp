@@ -4,7 +4,8 @@
 #include "Relay.h"
 
 #include "../i18n/Lang.h"
-#include "../rct/RctTypes.h"
+#include "../device/Device.h"
+#include "../device/Rules.h"
 #include "RelayPins.h"
 #include <Preferences.h>
 
@@ -163,17 +164,17 @@ bool relayIsOn() { return s_on; }
 // that follows the meter at the grid instead of the two meters at the PV
 // strings.
 static float einspeisungW() {
-  return -rctState.gridPowerSum;
+  return -deviceState().gridExchangeW;
 }
 
 static bool faultActive() {
-  return (rctState.faultBits[0] | rctState.faultBits[1] | rctState.faultBits[2] |
-          rctState.faultBits[3]) != 0u;
+  return (deviceState().faultBits[0] | deviceState().faultBits[1] | deviceState().faultBits[2] |
+          deviceState().faultBits[3]) != 0u;
 }
 
 float relayTriggerValue() {
   switch (s_mode) {
-  case RelayMode::GridDraw: return rctState.gridPowerSum; // + = import
+  case RelayMode::GridDraw: return deviceState().gridExchangeW; // + = import
   case RelayMode::PvSurplus: return einspeisungW();
   default: return 0.0f;
   }
@@ -199,15 +200,15 @@ static bool ruleWantsOn() {
   }
   // Unknown state switches off. Without this, a threshold that was crossed
   // before the link died would keep the output closed indefinitely.
-  if (!rctState.haveData ||
-      (int32_t)(millis() - rctState.lastUpdateMs) > (int32_t)DATA_MAX_AGE_MS) {
+  if (!deviceState().haveData ||
+      (int32_t)(millis() - deviceState().lastUpdateMs) > (int32_t)DATA_MAX_AGE_MS) {
     return false;
   }
   switch (s_mode) {
-  case RelayMode::GridDraw: return thresholdWants(s_on, rctState.gridPowerSum);
+  case RelayMode::GridDraw: return thresholdWants(s_on, deviceState().gridExchangeW);
   case RelayMode::PvSurplus: return thresholdWants(s_on, einspeisungW());
   case RelayMode::Fault: return faultActive();
-  case RelayMode::Island: return rctState.islandKnown && rctState.islandMode;
+  case RelayMode::Island: return deviceState().islandKnown && deviceState().islandMode;
   default: return false;
   }
 }

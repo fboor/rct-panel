@@ -54,7 +54,8 @@
 #include "../display/Touch.h"
 #include "../i18n/Lang.h"
 #include "../output/Relay.h"
-#include "../rct/RctTypes.h"
+#include "../device/Device.h"
+#include "../device/Rules.h"
 #include "../storage/sdlog.h"
 #include "../web/WebServer.h"
 #include "fonts/lv_font_mdi_icons_24.h"
@@ -676,70 +677,27 @@ static void setEnergyValue(lv_obj_t *label, float wh) {
   lv_label_set_text(label, buf);
 }
 
-// The four meter values of the selected period, in Wh.
-static void energyPeriodValues(const RctSnapshot &s, int period,
+// The meter values of the selected period, in Wh, in the panel's terms.
+//
+// The whole arithmetic is in rulePeriod() (src/device/Rules.h): which counter
+// belongs to which period, what to do with an external generator that the
+// device's own counters do not see, that the feed-in counter arrives negative,
+// and that own use is clamped at zero. What that leaves here is only the order
+// the bars are drawn in - and the note on the battery, which is why own use is
+// generation minus feed-in and not a separate number: everything the device
+// produced that was not fed in was used here, directly, through the external
+// generator, or as charge in the battery. That charge counts because this
+// battery supplies the house alone and never feeds in, so its discharge shows
+// up in a different period as consumption - which is why nothing is counted
+// twice here.
+static void energyPeriodValues(const DeviceState &s, int period,
                                float out[ENERGY_ROWS]) {
-  float pv, feed, load, grid, ext;
-  switch (period) {
-    case 1: // Monat
-      pv = s.monthPvWh;   feed = s.monthFeedInWh;
-      load = s.monthLoadWh; grid = s.monthGridLoadWh;
-      ext = s.monthExtWh;
-      break;
-    case 2: // Jahr
-      pv = s.yearPvWh;    feed = s.yearFeedInWh;
-      load = s.yearLoadWh;  grid = s.yearGridLoadWh;
-      ext = s.yearExtWh;
-      break;
-    case 3: // Gesamt
-      // The two lifetime grid meters are the ones already tracked as
-      // feedInEnergyWh / gridDrawTotalWh.
-      pv = s.totalPvWh;   feed = s.feedInEnergyWh;
-      load = s.totalLoadWh; grid = s.gridDrawTotalWh;
-      ext = s.totalExtWh;
-      break;
-    default: // Tag
-      pv = s.dayPvWh;     feed = s.dayFeedInWh;
-      load = s.dayLoadWh;   grid = s.dayGridLoadWh;
-      ext = s.dayExtWh;
-      break;
-  }
-  // Externe Energie (S0-Generator). Das Geraet fuehrt dafuer eine eigene
-  // Zaehlerfamilie, e_ext_*: in den e_dc_* (Erzeugung) kommt der S0-Ertrag
-  // nicht hinein, und im Lastzaehler taucht er ebenfalls nicht auf - sonst
-  // waere er bereits in e_load enthalten und braeuchte hier nichts ergaenzt.
-  // Die Rechnung des Geraets ist insofern eigenartig, und genau deshalb geht
-  // derselbe Betrag auf beide Seiten:
-  //
-  //   Erzeugung = PV (DC) + extern
-  //   Verbrauch = Haus + extern
-  //
-  // Ohne das waere der externe Ertrag weder in "PV Erzeugung" noch in
-  // "Verbrauch" und "Eigenverbrauch" sichtbar, obwohl er das Haus versorgt.
-  // Der Eigenverbrauch unten bleibt damit die Differenz aus dem, was im Haus
-  // ankam, und dem, was dafuer aus dem Netz kam.
-  pv += ext;
-  load += ext;
-  out[EB_VAL_PV] = pv;
-  // The feed-in counters arrive negative on the real device (measured: -20,1 kWh
-  // on a day with 32,5 kWh production). Shown as reported, the "Netzeinspeisung"
-  // bar grew leftwards and the value read -549,7 kWh, which is not an amount of
-  // energy that was fed in. The magnitude is the fed-in energy, so the sign is
-  // dropped here - once, for every period.
-  out[EB_VAL_FEED] = feed < 0.0f ? -feed : feed;
-  out[EB_VAL_GRID] = grid;
-  out[EB_VAL_LOAD] = load;
-  // Eigenverbrauch = Erzeugung minus Einspeisung: alles, was das Geraet
-  // erzeugt hat und nicht eingespeist wurde, ist im eigenen Haus genutzt worden
-  // - direkt, ueber den externen Generator oder als Ladung in den Akku. Die
-  // Akkuladung zaehlt dazu, weil dieser Akku ausschliesslich das eigene Haus
-  // versorgt und nie zur Einspeisung dient; ihre Entnahme erscheint in einem
-  // anderen Zeitraum als Verbrauch, und genau deshalb ist hier nichts doppelt
-  // gezaehlt. Geklammert bei 0: die Zaehler laufen nach einem Geraete-Neustart
-  // kurz auseinander, und ein negativer Balken waere sinnlos.
-  const float selfUse =
-      pv - out[EB_VAL_FEED] > 0.0f ? pv - out[EB_VAL_FEED] : 0.0f;
-  out[EB_VAL_SELF] = selfUse;
+  const PeriodValues v = rulePeriod(s, period);
+  out[EB_VAL_PV] = v.genWh;
+  out[EB_VAL_FEED] = v.feedWh;
+  out[EB_VAL_GRID] = v.gridDrawWh;
+  out[EB_VAL_LOAD] = v.houseWh;
+  out[EB_VAL_SELF] = v.ownWh;
 }
 
 // The five figures of one period plus the two percentages, for whoever needs
@@ -751,7 +709,7 @@ static void energyPeriodValues(const RctSnapshot &s, int period,
 // the generation stayed here.
 void guiEnergyPeriod(int period, float wh[5], float *autarky,
                      float *ownShare) {
-  energyPeriodValues(rctState, period, wh);
+  energyPeriodValues(deviceState(), period, wh);
   const float pv = wh[EB_VAL_PV];
   const float grid = wh[EB_VAL_GRID];
   const float load = wh[EB_VAL_LOAD];
@@ -1358,7 +1316,7 @@ static void serviceRelayState() {
   // Only the two threshold modes show a number, and only they can say how old
   // that number is. The threshold for "old" is the same one the badge uses, so
   // "wartet" above and "(letzte Messung)" here always mean the same moment.
-  const bool stale = dataAgeMs(millis(), rctState.lastUpdateMs) > kDataStaleMs;
+  const bool stale = dataAgeMs(millis(), deviceState().lastUpdateMs) > kDataStaleMs;
   if (m == RelayMode::Off) {
     setText(st, "%s", tr(T_D_OUT_NOTHING));
   } else if (m == RelayMode::GridDraw || m == RelayMode::PvSurplus) {
@@ -2118,7 +2076,7 @@ static void touchReadMarked(lv_indev_t *indev, lv_indev_data_t *data) {
 
 static void refreshCb(lv_timer_t *t) {
   (void)t;
-  const RctSnapshot &s = rctState;
+  const DeviceState &s = deviceState();
   diagPhase("gui.refresh");
 
   // Wi-Fi setup overlay: visible while the provisioning AP runs, or during
@@ -2207,10 +2165,10 @@ static void refreshCb(lv_timer_t *t) {
     const float batActive = 50.0f;  // W, below = Standby
 
     const char *dash = "--";
-    float pTot = s.gridPowerSum;
-    float pvTotal = s.pvPower[0] + s.pvPower[1] + s.s0Power;
-    float pBat = s.batteryPower;
-    float house = s.loadPower[0] + s.loadPower[1] + s.loadPower[2] + s.s0Power;
+    float pTot = s.gridExchangeW;
+    float pvTotal = ruleGenerationW(s);
+    float pBat = s.batW;
+    float house = ruleHouseW(s);
     bool has = s.haveData;
 
     // --- Grid ---
@@ -2276,7 +2234,7 @@ static void refreshCb(lv_timer_t *t) {
 
     // --- Battery (haus <-> batterie) ---
     if (s.haveBattery) {
-      setText(ov.labels[OV_BAT_SOC], "%.0f %%", s.batterySoc);
+      setText(ov.labels[OV_BAT_SOC], "%.0f %%", s.socPct);
       bool active = has && fabsf(pBat) >= batActive;
       if (active) {
         float absK = fabsf(pBat) / 1000.0f;
@@ -2399,23 +2357,27 @@ static void refreshCb(lv_timer_t *t) {
   diagPhase("gui.energy");
   AppPage &en = s_pages[PAGE_HEUTE];
   if (en.labels[EN_GEN_VAL]) {
-    // Portal "Heute" day counters (all Wh). Eigenverbrauch = Erzeugt minus
-    // Eingespeist, wie auf der Energie-Seite: alles, was erzeugt und nicht
-    // eingespeist wurde, ist im eigenen Haus genutzt worden - auch der Teil, der
-    // als Akkuladung auf Vorrat liegt. Der Akku versorgt ausschliesslich das
-    // eigene Haus und wird nie zur Einspeisung benutzt, deshalb zaehlt die
-    // Ladung mit; ihre Entnahme erscheint in einem anderen Zeitraum als
-    // Verbrauch, und genau deshalb ist hier nichts doppelt gezaehlt. NICHT
-    // Verbrauch minus Bezug: das laesst die Akkuladung ausser vor und waere an
-    // einem Tag mit Ladebetrieb zu niedrig (live geprueft: nachts 569 Wh Last
-    // bei 0,1 Wh Bezug = 569 Wh aus dem Akku).
-    float gen = s.dayPvWh + s.dayExtWh; // Erzeugt: PV-DC plus externer Generator
-    float feed = s.dayFeedInWh;     // Eingespeist, kommt negativ vom Geraet
-    if (feed < 0.0f) feed = -feed;  // Betrag, nicht Vorzeichen
-    float consumed = s.dayLoadWh + s.dayExtWh; // Verbrauch: Last plus extern
-    float gridIn = s.dayGridLoadWh;     // Bezug (grid draw)
-    float selfUse = gen - feed;         // Eigenverbrauch, nie negativ
-    if (selfUse < 0.0f) selfUse = 0.0f; // Zaehler kurz nach Geraete-Neustart versetzt
+    // Portal "Heute" day counters (all Wh), through the panel's rules rather
+    // than through a third copy of them: what "Erzeugt" and "Verbrauch" mean
+    // on this device is the driver's to say (see DeviceSemantics), and the day
+    // figures have to agree with the energy page for the same day.
+    //
+    // Eigenverbrauch = Erzeugt minus Eingespeist, wie auf der Energie-Seite:
+    // alles, was erzeugt und nicht eingespeist wurde, ist im eigenen Haus
+    // genutzt worden - auch der Teil, der als Akkuladung auf Vorrat liegt. Der
+    // Akku versorgt ausschliesslich das eigene Haus und wird nie zur
+    // Einspeisung benutzt, deshalb zaehlt die Ladung mit; ihre Entnahme
+    // erscheint in einem anderen Zeitraum als Verbrauch, und genau deshalb ist
+    // hier nichts doppelt gezaehlt. NICHT Verbrauch minus Bezug: das laesst die
+    // Akkuladung ausser vor und waere an einem Tag mit Ladebetrieb zu niedrig
+    // (live geprueft: nachts 569 Wh Last bei 0,1 Wh Bezug = 569 Wh aus dem
+    // Akku).
+    const PeriodValues day = rulePeriod(s, 0);
+    float gen = day.genWh;         // Erzeugt
+    float feed = day.feedWh;       // Eingespeist, als Betrag
+    float consumed = day.houseWh;  // Verbrauch
+    float gridIn = day.gridDrawWh; // Bezug (grid draw)
+    float selfUse = day.ownWh;     // Eigenverbrauch, nie negativ
     // Autarkie = 1 - Bezug / Verbrauch. No load consumes nothing from the
     // grid, so the day is fully independent.
     float autarkie =
@@ -2463,28 +2425,28 @@ static void refreshCb(lv_timer_t *t) {
     setText(inf.labels[INF_LAST], tr(T_D_LASTDATA_AGO),
             s.lastUpdateMs ? (millis() - s.lastUpdateMs) / 1000 : 0UL);
     setText(inf.labels[INF_UPTIME], "%lu s", millis() / 1000);
-    setNum(inf.labels[INF_L1], "%.3f kW", s.gridPower[0] / 1000.0f);
-    setNum(inf.labels[INF_L2], "%.3f kW", s.gridPower[1] / 1000.0f);
-    setNum(inf.labels[INF_L3], "%.3f kW", s.gridPower[2] / 1000.0f);
-    float pvTotal = s.pvPower[0] + s.pvPower[1] + s.s0Power;
+    setNum(inf.labels[INF_L1], "%.3f kW", s.gridW[0] / 1000.0f);
+    setNum(inf.labels[INF_L2], "%.3f kW", s.gridW[1] / 1000.0f);
+    setNum(inf.labels[INF_L3], "%.3f kW", s.gridW[2] / 1000.0f);
+    float pvTotal = ruleGenerationW(s);
     setNum(inf.labels[INF_PV], "%.3f kW", pvTotal / 1000.0f);
     if (s.haveData) {
       setNum(inf.labels[INF_CORE], "%.1f °C", s.coreTemp);
       setNum(inf.labels[INF_HTEMP], "%.1f °C", s.heatSinkTemp);
-      setNum(inf.labels[INF_FREQ], "%.2f Hz", s.gridFrequency[0]);
+      setNum(inf.labels[INF_FREQ], "%.2f Hz", s.gridHz[0]);
     }
   }
 
   AppPage &dev = s_pages[PAGE_DEVICE];
   if (dev.labels[DEV_SOC]) {
     if (s.haveData) {
-      setNum(dev.labels[DEV_SOC], "%.0f %%", s.batterySoc);
+      setNum(dev.labels[DEV_SOC], "%.0f %%", s.socPct);
       // Battery-centric sign on the Akku page: charging = "+", discharging =
       // "-", the opposite of the Overview flow diagram (discharge feeds the
       // house and reads "+" there). %+ keeps the sign column stable, so A and
       // V stay put when the battery switches between charging/discharging.
       setNum(dev.labels[DEV_BAT], "%+.3f kW  %.1f A  %.1f V",
-             -s.batteryPower / 1000.0f, -s.batteryCurrent, s.batteryVoltage);
+             -s.batW / 1000.0f, -s.batA, s.batV);
       setNum(dev.labels[DEV_BTEMP], "%.1f °C", s.batteryTemp);
 
       // Next calibration: the inverter reports a Unix timestamp; turn it
@@ -2536,7 +2498,7 @@ static void refreshCb(lv_timer_t *t) {
       // it is the register a support question can be asked about - and a
       // second line for it would have to be matched up by eye.
       char tmp[64];
-      serviceBatteryDecode(s.batteryStatus, s.batteryPower, tmp, sizeof(tmp));
+      serviceBatteryDecode(s.batteryStatus, s.batW, tmp, sizeof(tmp));
       setText(sv.labels[SV_BAT_STATUS], "%s (0x%08lX)", tmp,
               (unsigned long)s.batteryStatus);
     }
@@ -2694,15 +2656,11 @@ static void refreshCb(lv_timer_t *t) {
       if (s_lastHistMs == 0 || now - s_lastHistMs >= HIST_INTERVAL_MS) {
         s_lastHistMs = now;
         float v[HIST_SERIES] = {0.0f};
-        v[0] = s.gridPowerSum;                                    // Netz
-        // Verbrauch: the inverter's load meter already subtracted the S0
-        // generator, so household demand is meter + external (same rule as the
-        // SD restore, see sdlog.cpp parseLine).
-        v[1] = s.loadPower[0] + s.loadPower[1] + s.loadPower[2] + s.s0Power;
-        v[2] = s.pvPower[0] + s.pvPower[1];                      // PV A+B
-        v[3] = s.s0Power;                                        // S0
-        v[4] = s.batteryPower;                                   // Bat
-        v[5] = s.batterySoc;                                     // SOC %
+        // Netz, Haus, beide Generatoren, externer Ertrag, Akku, Ladezustand -
+        // die sechs Reihen des Verlaufs in der Reihenfolge des Diagramms. Die
+        // Rechnung liegt in Rules.h; der Verlauf aus dem CSV rechnet dieselbe
+        // Regel noch einmal, aus den Differenzen statt aus den Zählern.
+        ruleChartSample(s, s.lastUpdateMs, v);                                     // SOC %
         // Wall clock if it is up, else 0. A 0 timestamp disables gap detection
         // for this sample rather than inventing a time: before SNTP there is
         // nothing to compare against, and millis() restarts every boot anyway.

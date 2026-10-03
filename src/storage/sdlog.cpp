@@ -494,7 +494,9 @@ static bool parseLine(const char *line, SdHistSample *s) {
   if (!csvrow::parse(line, r)) {
     return false;
   }
-  csvrow::toSample(r, *s);
+  // Which way this device's meters read is fixed for the panel's lifetime,
+  // so the worker may read it without asking anyone.
+  csvrow::toSample(r, *s, deviceSemantics());
   return true;
 }
 
@@ -774,7 +776,7 @@ static void sdWorkerWriteRow(const SdReq &req) {
   buildStatus();
 }
 
-void sdLogSample(const RctSnapshot &s) {
+void sdLogSample(const DeviceState &s) {
   if (!s.haveData) {
     return; // no zero rows for a disconnected inverter
   }
@@ -794,31 +796,31 @@ void sdLogSample(const RctSnapshot &s) {
   row.ts = (uint32_t)time(nullptr);
   row.faults = (uint32_t)(s.faultBits[0] | s.faultBits[1] | s.faultBits[2] |
                          s.faultBits[3]);
-  row.pvA = s.pvPower[0];
-  row.pvB = s.pvPower[1];
-  row.s0 = s.s0Power;
+  row.pvA = s.genW[0];
+  row.pvB = s.genW[1];
+  row.s0 = s.extW;
   row.tc = s.coreTemp;
   row.tb = s.batteryTemp;
   row.th = s.heatSinkTemp;
-  row.l1 = s.loadPower[0];
-  row.l2 = s.loadPower[1];
-  row.l3 = s.loadPower[2];
-  row.bat = s.batteryPower;
-  row.soc = s.batterySoc;
-  row.g1 = s.gridPower[0];
-  row.g2 = s.gridPower[1];
-  row.g3 = s.gridPower[2];
+  row.l1 = s.houseW[0];
+  row.l2 = s.houseW[1];
+  row.l3 = s.houseW[2];
+  row.bat = s.batW;
+  row.soc = s.socPct;
+  row.g1 = s.gridW[0];
+  row.g2 = s.gridW[1];
+  row.g3 = s.gridW[2];
   // The island flag is the state at the moment of sampling, not a duration, so
   // a 0 also covers "the flag has not answered yet" - one number for both, and
   // the column description in the manual says so. The totals are the device's
   // own lifetime counters, i.e. the same values the energy page shows: logged
   // here so the history keeps them even when a month file is cut.
   row.island = s.islandMode ? 1.0f : 0.0f;
-  row.pvATotal = s.totalPvAWh;
-  row.pvBTotal = s.totalPvBWh;
+  row.pvATotal = s.totalGenAWh;
+  row.pvBTotal = s.totalGenBWh;
   row.extTotal = s.totalExtWh;
-  row.loadTotal = s.totalLoadWh;
-  row.feedTotal = s.feedInEnergyWh;
+  row.loadTotal = s.totalHouseWh;
+  row.feedTotal = s.feedInTotalWh;
   row.gridTotal = s.gridDrawTotalWh;
   if (csvrow::format(req.line, sizeof(req.line), row) == 0) {
     // Not reachable with kLineCap as sized - the host test formats the worst

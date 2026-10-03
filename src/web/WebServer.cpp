@@ -35,7 +35,8 @@
 #include "../gui/GuiApp.h"
 #include "../i18n/Lang.h"
 #include "../output/Relay.h"
-#include "../rct/RctTypes.h"
+#include "../device/Device.h"
+#include "../device/Rules.h"
 #include "../storage/CsvRow.h"
 #include "../storage/sdlog.h"
 #include "Json.h"
@@ -99,15 +100,6 @@ const char *relayModeNameLong(RelayMode mode) {
 
 namespace {
 
-// Household load over the three phases, plus the S0 meter - the same sum the
-// panel's flow diagram and its history sampler use, and for the same reason: the
-// inverter's load meter reads the demand already minus the S0 generator, so the
-// external power has to be added back (see the sign conventions in
-// GuiApp.cpp). Without it the tile reads the generator instead of the house and
-// goes negative whenever the S0 input produces more than the meter sees.
-float loadSum(const RctSnapshot &s) {
-  return s.loadPower[0] + s.loadPower[1] + s.loadPower[2] + s.s0Power;
-}
 
 WebServer s_server(80);
 bool s_serverStarted = false;
@@ -337,7 +329,7 @@ void sendNavPage(const char *title, const char *current, const String &body,
 // ---------------------------------------------------------------------------
 
 void handleRoot() {
-  const RctSnapshot &s = rctState;
+  const DeviceState &s = deviceState();
   char v[40];
   String b;
   b.reserve(4800);
@@ -360,14 +352,13 @@ void handleRoot() {
   // from the grid, negative = feed-in. fmtNumLang: the decimal separator of
   // this build, and no "-0,00 kW" for a grid power that is a rounding error
   // below zero.
-  fmtNumLang(v, sizeof(v), "%.2f kW", (double)s.gridPowerSum / 1000.0);
+  fmtNumLang(v, sizeof(v), "%.2f kW", (double)s.gridExchangeW / 1000.0);
   card(T_CARD_GRID, v);
-  fmtNumLang(v, sizeof(v), "%.2f kW",
-             (double)(s.pvPower[0] + s.pvPower[1] + s.s0Power) / 1000.0);
+  fmtNumLang(v, sizeof(v), "%.2f kW", (double)ruleGenerationW(s) / 1000.0);
   card(T_CARD_PV, v);
-  fmtNumLang(v, sizeof(v), "%.0f %%", (double)s.batterySoc);
+  fmtNumLang(v, sizeof(v), "%.0f %%", (double)s.socPct);
   card(T_CARD_BATTERY, v);
-  fmtNumLang(v, sizeof(v), "%.0f W", (double)loadSum(s));
+  fmtNumLang(v, sizeof(v), "%.0f W", (double)ruleHouseW(s));
   card(T_CARD_LOAD, v);
   b += F("</div>");
 
