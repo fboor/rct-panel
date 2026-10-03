@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="960" viewBox="0 0 1440 960" font-family="DejaVu Sans, sans-serif">
-<rect width="1440" height="960" fill="#ffffff"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1000" viewBox="0 0 1440 1000" font-family="DejaVu Sans, sans-serif">
+<rect width="1440" height="1000" fill="#ffffff"/>
 <text x="40" y="44" fill="#0b3d6b" font-size="27" font-weight="700">Frontplatte 120 &#215; 200 mm</text>
 <text x="40" y="68" fill="#56616e" font-size="14">Wandplatte, die nur das Touchpaneel aufnimmt: Anzeige und Platine kommen von hinten in ein eigenes Geh&#228;use. Alle Masse in mm.</text>
 <rect x="200.0" y="190.0" width="240.0" height="400.0" rx="16.0" fill="#dde6ee" stroke="#8fa4b8" stroke-width="1.6"/>
@@ -117,28 +117,33 @@
 <text x="1107.0" y="686.0" fill="#56616e" font-size="12.5">Paneelecken</text>
 <text x="1383.0" y="686.0" fill="#2f3b47" font-size="12.5" font-weight="600" text-anchor="end">r 2 (Annahme)</text>
 <text x="200" y="656" fill="#0b3d6b" font-size="19" font-weight="700">Farbvarianten der Front</text>
-<rect x="200.0" y="674.0" width="120" height="200" rx="8" fill="#7c8b9a" stroke="#7c8b9a" stroke-width="1"/>
-<rect x="203.0" y="677.0" width="114" height="194" rx="6" fill="#dde6ee"/>
-<rect x="217.8" y="691.9" width="84.3" height="84.3" rx="2" fill="#f2a33c"/>
-<rect x="219.5" y="693.5" width="81.0" height="81.0" rx="1.5" fill="#12181f"/>
-<rect x="224.1" y="698.9" width="71.8" height="70.2" rx="1" fill="none" stroke="#3d4a57" stroke-width="0.6"/>
-<text x="260.0" y="898.0" fill="#2f3b47" font-size="13" text-anchor="middle">Natur</text>
-<rect x="354.0" y="674.0" width="120" height="200" rx="8" fill="#9aa7b1" stroke="#9aa7b1" stroke-width="1"/>
-<rect x="357.0" y="677.0" width="114" height="194" rx="6" fill="#f7f9fb"/>
-<rect x="371.9" y="691.9" width="84.3" height="84.3" rx="2" fill="#e08a12"/>
-<rect x="373.5" y="693.5" width="81.0" height="81.0" rx="1.5" fill="#12181f"/>
-<rect x="378.1" y="698.9" width="71.8" height="70.2" rx="1" fill="none" stroke="#3d4a57" stroke-width="0.6"/>
-<text x="414.0" y="898.0" fill="#2f3b47" font-size="13" text-anchor="middle">Weiss</text>
-<rect x="508.0" y="674.0" width="120" height="200" rx="8" fill="#5a6673" stroke="#5a6673" stroke-width="1"/>
-<rect x="511.0" y="677.0" width="114" height="194" rx="6" fill="#2f3742"/>
-<rect x="525.9" y="691.9" width="84.3" height="84.3" rx="2" fill="#f2a33c"/>
-<rect x="527.5" y="693.5" width="81.0" height="81.0" rx="1.5" fill="#12181f"/>
-<rect x="532.1" y="698.9" width="71.8" height="70.2" rx="1" fill="none" stroke="#3d4a57" stroke-width="0.6"/>
-<text x="568.0" y="898.0" fill="#2f3b47" font-size="13" text-anchor="middle">Graphit</text>
-<rect x="662.0" y="674.0" width="120" height="200" rx="8" fill="#6b4426" stroke="#6b4426" stroke-width="1"/>
-<rect x="665.0" y="677.0" width="114" height="194" rx="6" fill="#b5824f"/>
-<rect x="679.9" y="691.9" width="84.3" height="84.3" rx="2" fill="#8a4b20"/>
-<rect x="681.5" y="693.5" width="81.0" height="81.0" rx="1.5" fill="#12181f"/>
-<rect x="686.1" y="698.9" width="71.8" height="70.2" rx="1" fill="none" stroke="#3d4a57" stroke-width="0.6"/>
-<text x="722.0" y="898.0" fill="#2f3b47" font-size="13" text-anchor="middle">Buche</text>
+<text x="200" y="674" fill="#56616e" font-size="12">von innen: Displayfl&#228;che offen &#183; Schnittkante 1,2 mm &#183; Kleberand 1,65 mm &#183; Au&#223;enkante 3 mm</text>
+<rect x="200.0" y="690.0" width="120" height="200" rx="8" fill="#7c8b9a" stroke="#7c8b9a" stroke-width="1"/>
+<rect x="203.0" y="693.0" width="114" height="194" rx="6" fill="#dde6ee"/>
+<rect x="217.8" y="707.9" width="84.3" height="84.3" rx="2" fill="#f2a33c"/>
+<rect x="218.9" y="708.9" width="82.2" height="82.2" rx="2" fill="#3ec97a"/>
+<rect x="219.5" y="709.5" width="81.0" height="81.0" rx="1.5" fill="#ffffff"/>
+<rect x="224.1" y="714.9" width="71.8" height="70.2" rx="1" fill="none" stroke="#b6c0c9" stroke-width="0.6" stroke-dasharray="2 2"/>
+<text x="260.0" y="914.0" fill="#2f3b47" font-size="13" text-anchor="middle">Natur</text>
+<rect x="354.0" y="690.0" width="120" height="200" rx="8" fill="#9aa7b1" stroke="#9aa7b1" stroke-width="1"/>
+<rect x="357.0" y="693.0" width="114" height="194" rx="6" fill="#f7f9fb"/>
+<rect x="371.9" y="707.9" width="84.3" height="84.3" rx="2" fill="#e08a12"/>
+<rect x="372.9" y="708.9" width="82.2" height="82.2" rx="2" fill="#3ec97a"/>
+<rect x="373.5" y="709.5" width="81.0" height="81.0" rx="1.5" fill="#ffffff"/>
+<rect x="378.1" y="714.9" width="71.8" height="70.2" rx="1" fill="none" stroke="#b6c0c9" stroke-width="0.6" stroke-dasharray="2 2"/>
+<text x="414.0" y="914.0" fill="#2f3b47" font-size="13" text-anchor="middle">Weiss</text>
+<rect x="508.0" y="690.0" width="120" height="200" rx="8" fill="#5a6673" stroke="#5a6673" stroke-width="1"/>
+<rect x="511.0" y="693.0" width="114" height="194" rx="6" fill="#2f3742"/>
+<rect x="525.9" y="707.9" width="84.3" height="84.3" rx="2" fill="#f2a33c"/>
+<rect x="526.9" y="708.9" width="82.2" height="82.2" rx="2" fill="#3ec97a"/>
+<rect x="527.5" y="709.5" width="81.0" height="81.0" rx="1.5" fill="#ffffff"/>
+<rect x="532.1" y="714.9" width="71.8" height="70.2" rx="1" fill="none" stroke="#b6c0c9" stroke-width="0.6" stroke-dasharray="2 2"/>
+<text x="568.0" y="914.0" fill="#2f3b47" font-size="13" text-anchor="middle">Graphit</text>
+<rect x="662.0" y="690.0" width="120" height="200" rx="8" fill="#6b4426" stroke="#6b4426" stroke-width="1"/>
+<rect x="665.0" y="693.0" width="114" height="194" rx="6" fill="#b5824f"/>
+<rect x="679.9" y="707.9" width="84.3" height="84.3" rx="2" fill="#8a4b20"/>
+<rect x="680.9" y="708.9" width="82.2" height="82.2" rx="2" fill="#3ec97a"/>
+<rect x="681.5" y="709.5" width="81.0" height="81.0" rx="1.5" fill="#ffffff"/>
+<rect x="686.1" y="714.9" width="71.8" height="70.2" rx="1" fill="none" stroke="#b6c0c9" stroke-width="0.6" stroke-dasharray="2 2"/>
+<text x="722.0" y="914.0" fill="#2f3b47" font-size="13" text-anchor="middle">Buche</text>
 </svg>

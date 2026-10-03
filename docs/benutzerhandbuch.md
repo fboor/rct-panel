@@ -227,14 +227,17 @@ je einen von drei Zuständen zeigen:
 
 | Feld | grün | orange | grau |
 |---|---|---|---|
-| Erzeugung (Sonne mit Panel) | deckt den Hausverbrauch | deckt ihn nicht | PV liefert nichts, Feld zeigt `–` |
+| Erzeugung (Sonne mit Panel) | deckt den Hausverbrauch | deckt ihn nicht | unter 20 W: „Inaktiv“ |
 | Verbrauch (Stecker) | Unabhängig (kein Netzbezug) | Netzbezug | unter 10 W: „kein Verbrauch“ |
 | Akku (halbvoller Akku) | Laden | Entladen | kein Strom, oder gar kein Akku |
 
 Der Netzbezug zählt erst ab 20 W als solcher — unterhalb davon regelt das
-Gerät um null, und das Vorzeichen ist dann Rauschen. Für „Erzeugung“ gilt
-derselbe Hausverbrauch wie im Diagramm, also mit dem S0-Zähler; ein Haus,
-das aus S0 versorgt wird, erscheint deshalb nicht als orange.
+Gerät um null, und das Vorzeichen ist dann Rauschen. Dieselbe Grenze gilt für
+die Erzeugung: unter 20 W steht im Feld „Inaktiv“, nicht der Strich — der
+Strich bleibt den Werten vorbehalten, die der Wechselrichter noch gar nicht
+gemeldet hat. Für „Erzeugung“ gilt derselbe Hausverbrauch wie im Diagramm,
+also mit dem S0-Zähler; ein Haus, das aus S0 versorgt wird, erscheint deshalb
+nicht als orange.
 
 <figure class="display-shot">
   <img src="../screenshots/screenshot-s1-d.png" alt="Übersicht im dunklen Theme: links der PV-Knoten mit der Sonne, in der Mitte der größere Hausknoten, rechts der Netz-Knoten mit dem Mast, unten der Akku-Knoten, und darunter drei grüne, grüne und graue Felder mit Erzeugung, Unabhängig und Standby">

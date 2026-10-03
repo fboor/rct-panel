@@ -2322,8 +2322,13 @@ static void refreshCb(lv_timer_t *t) {
       // value here is the one the diagram is drawn with, so the S0 generator is in
       // it - without that, a house running on S0 would read as "Erzeugung" in
       // orange while its own production covered it.
+      //
+      // Below 20 W the word, not the dash: the dash says "the device has not
+      // reported a value yet", and at that point it has - the panels are simply
+      // not producing anything, which is a state and deserves a word like the
+      // other five. The dash stays for the case where no value has arrived at all.
       if (pvTotal < pvActive) {
-        ovSetState(0, ST_GRAU, dash);
+        ovSetState(0, ST_GRAU, tr(T_D_TEND_INACTIVE));
       } else if (house > pvTotal) {
         ovSetState(0, ST_ORANGE, tr(T_D_ROW_PRODUCTION));
       } else {

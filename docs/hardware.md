@@ -124,7 +124,16 @@ dimensioned in mm, the second one at 1:1 for printing:
 | File | What |
 |---|---|
 | `img/frontplatte.svg` | front view with dimensions, section A–A, legend, colour variants |
-| `img/frontplatte-1zu1.svg` | front view at 1:1, for a printout or as a background for the layout |
+| `img/frontplatte-1zu1.svg` | front view at 1:1, with the glue ring and the cut edge filled in |
+| `img/frontplatte.dxf` | DXF R12 in mm for the laser cutter: outer contour and the 81 mm window, layers `SCHNITT` and `MARKIERUNG` |
+| `img/frontplatte-lage.dxf` | the optional 0.45 mm front layer with the 84.3 mm pocket, for gluing the recess on instead of milling it |
+
+Visicut imports DXF (and the 1:1 SVG, but that one has filled shapes and the
+DXF is unambiguous). The geometry is nominal, so let Visicut compensate the
+kerf. A laser cutter cannot make the 0.45 mm recess itself — that is what
+`frontplatte-lage.dxf` is for: cut the pocket as a 0.45 mm sheet and glue it on.
+Without the recess the panel sits 0.3 mm proud of the front and the glue seam
+becomes a visible hairline at 42 mm from the centre.
 
 The numbers that come from the device, not from a datasheet:
 
