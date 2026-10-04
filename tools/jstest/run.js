@@ -528,3 +528,209 @@ check(api.rpFmtDate('2026-10-02', '{Y}-{M}-{D}') === '2026-10-02', 'English date
     process.exit(failed === 0 ? 0 : 1);
   });
 }
+
+// --- the crosshair under the pointer -----------------------------------------
+// Hovering a chart has to answer "what is the value here", and the answer is the
+// sample nearest the pointer - not the nearest pixel. Everything that can go
+// wrong is in there: which sample is nearest, what the box says, and the fact
+// that the drawing is thrown away and rebuilt every 5 s while the pointer is not.
+//
+// The first version of this added a line per pointer movement and caught the
+// leaving on an event that does not bubble; both showed up on the panel as
+// vertical lines that stayed and multiplied. So the two are checked here as
+// well, because that is what the stub can see best: the drawing's own children
+// after a lot of movements, and the group behind them.
+{
+  const code = blockOf('kScript');
+  // The SVG's own mapping is a stub: with the identity matrix the client's x is
+  // the viewBox x, which is what makes the expected numbers readable here. The
+  // real one is getScreenCTM().inverse(), and it is the reason the pointer maps
+  // correctly when the drawing sits centred with margins.
+  function knotenAnlegen(name) {
+    const k = {name, attrs: {}, kinder: [],
+               setAttribute(a, w) { this.attrs[a] = String(w); },
+               removeAttribute(a) { delete this.attrs[a]; },
+               getAttribute(a) { return this.attrs[a]; },
+               appendChild(c) { this.kinder.push(c); return c; }};
+    return k;
+  }
+  const knoten = [];
+  const svg = Object.assign(knotenAnlegen('svg'), {
+    kinder: knoten,
+    getBoundingClientRect: () => ({width: 360, height: 208, left: 0, top: 0}),
+    getScreenCTM: () => ({inverse: () => 'M'}),
+  });
+  const tip = {style: {}, innerHTML: ''};
+  const chartDiv = {__rpEl: null, getBoundingClientRect: () => ({width: 344, left: 0})};
+  tip.parentNode = chartDiv;
+  const el = {
+    attributes: {
+      'data-col': 'ca0c0f,a45ee5,3ec97a,2e93e5,f0a202,ffea00',
+      'data-lab': 'Netz|Verbrauch|PV|EXT|Akku|SOC',
+      'data-dfmt': '{D}.{M}.{Y}', 'data-sfmt': '{D}.{M}.',
+      'data-sep': ',', 'data-none': 'keine Messwerte',
+    },
+    rpIdx: -1,
+    // What rpChart() writes into innerHTML is what throws the old drawing away -
+    // and with it the old crosshair, because it belongs to that drawing. The stub
+    // drops the children with it.
+    get innerHTML() { return this._html; },
+    set innerHTML(v) { this._html = v; knoten.length = 0; },
+    setAttribute(k, v) { this.attributes[k] = v; },
+    getAttribute(k) { return this.attributes[k] !== undefined ? this.attributes[k] : null; },
+    querySelector(sel) {
+      if (sel === 'svg') { return svg; }
+      if (sel === '.tip') { return tip; }
+      if (sel === '.chart') { return chartDiv; }
+      return null;
+    },
+    querySelectorAll() { return []; },
+    style: {},
+  };
+  chartDiv.__rpEl = el;
+  // Three samples an hour apart with a gap in the middle: the gap is the case
+  // that must not be answered with a value.
+  const ring = {
+    tz: 'CET-1CEST,M3.5.0,M10.5.0/3',
+    unit: ['W', 'W', 'W', 'W', 'W', '%'],
+    data: [{t: 1790890800, v: [100, 200, 300, 0, -50, 60]},
+           null,
+           {t: 1790894400, v: [500, 600, 700, 0, -550, 62]},
+           {t: 1790898000, v: [1500, 1600, 1700, 0, -60, 64]}],
+  };
+  class DOMPoint {
+    constructor(x, y) { this.x = x; this.y = y; }
+    matrixTransform() { return {x: this.x, y: this.y}; }
+  }
+  const sandbox3 = {
+    console, DOMPoint,
+    document: {
+      readyState: 'complete',
+      getElementById: () => null,
+      addEventListener: () => {},
+      createElementNS: (ns, name) => knotenAnlegen(name),
+    },
+    setInterval: () => 1, clearInterval: () => {}, setTimeout: (fn) => { fn(); },
+    fetch: () => Promise.resolve({ok: true, json: () => Promise.resolve(ring)}),
+  };
+  vm.createContext(sandbox3);
+  vm.runInContext(blockOf('kLogic') + '\n' + code.replace(
+    'var rpRetryMs=5000;', 'var rpRetryMs=300;') +
+    '\nthis.__h={rpChart:rpChart,rpHoverAt:rpHoverAt,rpHoverOff:rpHoverOff,' +
+    'rpPowerText:rpPowerText};', sandbox3);
+  const h = sandbox3.__h;
+  h.rpChart(el, ring);
+  const gruppe = svg.kinder[svg.kinder.length - 1];
+  const text = () => tip.innerHTML.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+
+  check(el.rpCtx !== undefined && el.rpCtx.pts.length === 4,
+        'the chart keeps what the pointer needs', String(el.rpCtx && el.rpCtx.pts.length), '4');
+  check(chartDiv.__rpEl === el, 'and the drawing points back at it', 'ok', 'ok');
+  check(gruppe !== undefined && gruppe.name === 'g' && gruppe.kinder.length === 7,
+        'one group with the line and the six dots',
+        gruppe.kinder.map((k) => k.name).join(','), 'line,circle,circle,circle,circle,circle,circle');
+  check(gruppe.getAttribute('display') === 'none',
+        'and it stays out of sight while nobody points at it',
+        String(gruppe.getAttribute('display')), 'none');
+
+  // Over the newest sample: the last value, and the box says so.
+  h.rpHoverAt(el, {clientX: 320, clientY: 0});
+  check(el.rpIdx === 3, 'the nearest sample is the one under the pointer',
+        String(el.rpIdx), '3');
+  check(gruppe.getAttribute('display') === undefined, 'the group comes into sight',
+        String(gruppe.getAttribute('display')), 'undefined');
+  check(tip.style.display === 'block', 'the box appears', String(tip.style.display), 'block');
+  check(tip.innerHTML.indexOf('1,50 kW') >= 0,
+        'the power is written in kW above 1000 W', text(), '…');
+  check(tip.innerHTML.indexOf('64') >= 0 && tip.innerHTML.indexOf('%') >= 0,
+        'the state of charge is in there as a percentage', text(), '…');
+  check(gruppe.kinder[0].getAttribute('x1') === '320.0',
+        'the line stands over the sample',
+        String(gruppe.kinder[0].getAttribute('x1')), '320.0');
+  check(gruppe.kinder[0].getAttribute('x2') === '320.0' &&
+        gruppe.kinder[0].getAttribute('y1') !== gruppe.kinder[0].getAttribute('y2'),
+        'and spans the plot from top to bottom',
+        gruppe.kinder[0].getAttribute('y2') + ' vs ' + gruppe.kinder[0].getAttribute('y1'), '…');
+  check(gruppe.kinder.slice(1).every((d) => d.getAttribute('display') === undefined &&
+                                       d.getAttribute('cx') === '320.0'),
+        'a dot on each of the six lines, all of them at the sample',
+        gruppe.kinder.slice(1).map((d) => d.getAttribute('cx')).join(' '),
+        '320.0 320.0 320.0 320.0 320.0 320.0');
+
+  // Over the second sample: whole watts, and the other value.
+  h.rpHoverAt(el, {clientX: 180, clientY: 0});
+  check(el.rpIdx === 2, 'a different pointer position finds a different sample',
+        String(el.rpIdx), '2');
+  check(tip.innerHTML.indexOf('500 W') >= 0,
+        'below 1000 W the value stays in watts', text(), '…');
+  check(tip.innerHTML.indexOf('1,50 kW') < 0, 'and the old value is gone',
+        String(tip.innerHTML.indexOf('1,50 kW') < 0), true);
+
+  // The gap: a pointer over the hole must not be answered with a number from
+  // somewhere else.
+  h.rpHoverAt(el, {clientX: 150, clientY: 0});
+  check(el.rpIdx === 2, 'a pointer over the gap answers with the nearest sample that exists',
+        String(el.rpIdx), '2');
+
+  // The point of the whole rewrite: a hundred movements leave one crosshair.
+  for (let i = 0; i < 100; i++) {
+    h.rpHoverAt(el, {clientX: 40 + (i % 280), clientY: 0});
+  }
+  check(svg.kinder.length === 1,
+        'a hundred movements leave one group in the drawing',
+        String(svg.kinder.length), '1');
+  check(gruppe.kinder.length === 7, 'and it still has seven children',
+        String(gruppe.kinder.length), '7');
+
+  // Away again: the box and the crosshair go.
+  h.rpHoverOff(el);
+  check(tip.style.display === 'none', 'the box goes when the pointer does',
+        String(tip.style.display), 'none');
+  check(gruppe.getAttribute('display') === 'none', 'and the crosshair with it',
+        String(gruppe.getAttribute('display')), 'none');
+  check(svg.kinder.length === 1, 'by hiding it, not by taking it away',
+        String(svg.kinder.length), '1');
+  h.rpHoverOff(el);
+  check(gruppe.getAttribute('display') === 'none', 'and saying it twice changes nothing',
+        String(gruppe.getAttribute('display')), 'none');
+
+  // The redraw every 5 s: the new drawing gets its own crosshair, and the pointer
+  // is still on it.
+  const vorher = svg.kinder.length;
+  h.rpHoverAt(el, {clientX: 320, clientY: 0});
+  h.rpChart(el, ring);
+  const neu = svg.kinder[svg.kinder.length - 1];
+  check(svg.kinder.length === 1, 'the rebuilt drawing has one group again',
+        String(svg.kinder.length), '1');
+  check(neu !== gruppe && neu.getAttribute('display') === undefined,
+        'and the crosshair is standing at the sample again',
+        String(neu.getAttribute('display')), 'undefined');
+  check(neu.kinder.length === 7 && vorher === 1, 'with its own line and dots',
+        String(neu.kinder.length), '7');
+  check(el.rpIdx === 3 && tip.innerHTML.indexOf('1,50 kW') >= 0,
+        'while the pointer never moved', String(el.rpIdx) + '/' + text(), '…');
+
+  // A sample without a value: no dot, and no dot left where the last one was.
+  ring.data[3].v[2] = null;
+  h.rpChart(el, ring);
+  const g2 = svg.kinder[svg.kinder.length - 1];
+  h.rpHoverAt(el, {clientX: 320, clientY: 0});
+  check(g2.kinder[3].getAttribute('display') === 'none',
+        'a line with no value gets no dot',
+        String(g2.kinder[3].getAttribute('display')), 'none');
+  check(g2.kinder[1].getAttribute('display') === undefined,
+        'and the others keep theirs', String(g2.kinder[1].getAttribute('display')), 'undefined');
+  ring.data[3].v[2] = 1700;
+
+  // The units helper on its own, including the two sides of the 1 kW line.
+  check(h.rpPowerText(380, ',') === '380 W', '380 W stay watts',
+        h.rpPowerText(380, ','), '380 W');
+  check(h.rpPowerText(1234, ',') === '1,23 kW', '1234 W become kilowatts',
+        h.rpPowerText(1234, ','), '1,23 kW');
+  check(h.rpPowerText(1234, '.') === '1.23 kW', 'the separator follows the language',
+        h.rpPowerText(1234, '.'), '1.23 kW');
+  check(h.rpPowerText(null, ',') === '--', 'a missing value is a dash',
+        h.rpPowerText(null, ','), '--');
+  console.log('== ' + checks + ' checks, ' + failed + ' failed ==');
+  process.exit(failed === 0 ? 0 : 1);
+}

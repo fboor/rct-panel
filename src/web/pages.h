@@ -115,7 +115,18 @@ code{background:#e8ebef;padding:1px 5px;border-radius:4px;font-size:14px}
 .rates{display:flex;gap:8px;margin:12px 0 14px}
 .rates div{flex:1;background:#fff;border:1px solid #dfe3e8;border-radius:8px;padding:9px 11px;font-size:13px;color:#5a6672}
 .rates div b{display:block;font-size:18px;font-weight:600;color:#1d2530;font-variant-numeric:tabular-nums}
-.chart{background:#fff;border:1px solid #dfe3e8;border-radius:8px;padding:8px 8px 4px;margin-bottom:10px}
+.chart{background:#fff;border:1px solid #dfe3e8;border-radius:8px;padding:8px 8px 4px;margin-bottom:10px;position:relative}
+/* The values under the pointer. One box, positioned over the drawing, so the
+   numbers come to the pointer instead of the pointer having to find them. The
+   pointer-events:none is what lets the box sit on top of the line without
+   swallowing the movement that put it there. */
+.tip{position:absolute;z-index:2;background:rgba(255,255,255,.97);border:1px solid #c9d1d9;
+  border-radius:6px;padding:6px 8px;font-size:12px;line-height:1.45;color:#1d2530;
+  box-shadow:0 2px 8px rgba(20,30,45,.14);pointer-events:none;white-space:nowrap;display:none}
+.tip b{font-weight:600}
+.tip .w{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;
+  vertical-align:middle}
+.tip .u{color:#8a94a0;margin-left:3px}
 /* The drawing keeps its proportions, so on a wide screen it would grow to
    twice the height of the phone version and push everything below it off the
    fold. Capped, the SVG centres itself in the cap - the alternative, a
@@ -632,7 +643,212 @@ function rpChart(el,j){
     // stands for a whole day and its own timestamp would be midday.
     lg+='<p class="stamp">'+rpEsc(sf.replace('%s',rpDateHm(tz,(j.stamp||last))))+'</p>';
   }
-  el.innerHTML='<div class="chart">'+h+'</div>'+lg;
+  el.innerHTML='<div class="chart">'+h+'<div class="tip"></div></div>'+lg;
+  // What the pointer needs, kept on the element because the drawing above is
+  // thrown away and rebuilt every 5 s: the scales, the samples and the names are
+  // gone with it, and the crosshair has to be drawn again on the new one as long
+  // as the pointer is still standing there.
+  el.rpCtx={pts:pts,band:band,cols:cols,labs:labs,sep:sep,tz:tz,
+            xOf:xOf,yOf:yOf,ySoc:ySoc,unit:socUnit};
+  // The drawing points back at the element the scales hang on: the listener is
+  // delegated and finds the inner .chart, and one indirection is what lets it
+  // reach the context without a second registry.
+  var box=el.querySelector('.chart');
+  if(box){box.__rpEl=el}
+  rpCrossInit(el);
+  rpHoverDraw(el);
+}
+// --- the pointer on a chart ---------------------------------------------------
+// What a line chart always provokes: what is the value *here*? The answer is the
+// sample nearest the pointer - not the nearest pixel, because the samples are
+// five minutes apart and the pointer is not - and it is drawn as a crosshair plus
+// the six values, so nobody has to read a value off a line.
+//
+// Three things make it work where it has to:
+//   - The scales live on the element (rpCtx above), not in this function's
+//     closure, because the drawing is rebuilt every 5 s and the pointer is not.
+//   - The pointer's position goes through getScreenCTM().inverse() instead of a
+//     division by the width: the SVG keeps its proportions and is capped at
+//     380 px, so on a wide screen it sits centred with margins and a plain
+//     division would be off by half a chart.
+//   - One delegated listener for all charts, installed once. A listener per
+//     drawing would die every 5 s with the element it was on.
+function rpPowerText(w,sep){
+  if(w===null||w===undefined||!(w===w)){return '--'}
+  if(Math.abs(w)<1000){return rpNum(w,0,sep)+' W'}
+  return rpNum(w/1000,2,sep)+' kW';
+}
+// The middle of the day, for a band: the sample stands for the whole day, and a
+// band has no timestamp of its own to point at.
+function rpSampleX(c,p){
+  return c.xOf(c.band?p.t+12*3600:p.t);
+}
+function rpHoverAt(el,ev){
+  var c=el.rpCtx;
+  if(!c){return}
+  var svg=el.querySelector('svg');
+  if(!svg){return}
+  var m=svg.getScreenCTM();
+  if(!m){return}
+  var loc=new DOMPoint(ev.clientX,ev.clientY).matrixTransform(m.inverse());
+  var best=-1,bd=1e18,i,p,d;
+  for(i=0;i<c.pts.length;i++){
+    p=c.pts[i];
+    if(!p){continue}
+    d=Math.abs(rpSampleX(c,p)-loc.x);
+    if(d<bd){bd=d;best=i}
+  }
+  // The pointer fires far more often than the sample under it changes, and two
+  // movements inside the same sample would redraw exactly the same thing.
+  if(el.rpIdx===best){return}
+  el.rpIdx=best;
+  rpHoverDraw(el);
+}
+function rpHoverOff(el){
+  if((el.rpIdx===undefined?-1:el.rpIdx)<0){return}
+  el.rpIdx=-1;
+  rpHoverDraw(el);
+}
+// The crosshair is built once per drawing and afterwards only *moved*. That is
+// the whole answer to a version that added a line per pointer movement: with the
+// elements standing there, a redraw can change attributes and nothing else, so
+// nothing can pile up - and going away is a single attribute on the group
+// instead of a search through the drawing for whatever is to be taken away.
+// The elements are made with createElementNS because a piece of markup put into
+// an SVG as HTML lands outside the drawing and is not seen at all.
+function rpCrossInit(el){
+  var svg=el.querySelector('svg');
+  if(!svg){return}
+  var c=el.rpCtx;
+  var g=document.createElementNS(rpSvgNs,'g');
+  g.setAttribute('class','cross');
+  var line=document.createElementNS(rpSvgNs,'line');
+  line.setAttribute('y1',rpVY0);
+  line.setAttribute('y2',rpVY0+rpVH);
+  line.setAttribute('stroke','#8a94a0');
+  line.setAttribute('stroke-width','1');
+  line.setAttribute('stroke-dasharray','3 2');
+  g.appendChild(line);
+  // One dot per line, and two for a band (low and high): six colours without
+  // six marks are six lines to look along.
+  var dots=[],i,n=c.band?12:6;
+  for(i=0;i<n;i++){
+    var dot=document.createElementNS(rpSvgNs,'circle');
+    dot.setAttribute('r',2.4);
+    dot.setAttribute('fill','#'+c.cols[c.band?(i>>1):i]);
+    g.appendChild(dot);
+    dots.push(dot);
+  }
+  svg.appendChild(g);
+  c.x={g:g,line:line,dots:dots};
+}
+// One dot: onto the value, or out of sight when the sample has nothing for that
+// line. A dot left at the last known place would be a value nobody measured.
+function rpDotSet(dot,x,y,leer){
+  if(leer){
+    dot.setAttribute('display','none');
+    return;
+  }
+  dot.removeAttribute('display');
+  dot.setAttribute('cx',x.toFixed(1));
+  dot.setAttribute('cy',y.toFixed(1));
+}
+function rpHoverDraw(el){
+  var c=el.rpCtx;
+  if(!c||!c.x){return}
+  var svg=el.querySelector('svg'),box=el.querySelector('.tip');
+  var idx=(el.rpIdx===undefined)?-1:el.rpIdx;
+  var p=(idx>=0)?c.pts[idx]:null;
+  if(!p){
+    c.x.g.setAttribute('display','none');
+    if(box){box.style.display='none'}
+    return;
+  }
+  var x=rpSampleX(c,p),k,yFn;
+  c.x.g.removeAttribute('display');
+  c.x.line.setAttribute('x1',x.toFixed(1));
+  c.x.line.setAttribute('x2',x.toFixed(1));
+  for(k=0;k<6;k++){
+    yFn=(k===5)?c.ySoc:c.yOf;
+    if(c.band){
+      var lo=p.lo[k],hi=p.hi[k];
+      rpDotSet(c.x.dots[2*k],x,yFn(lo),(lo===null||lo===undefined||!(lo===lo)));
+      rpDotSet(c.x.dots[2*k+1],x,yFn(hi),(hi===null||hi===undefined||!(hi===hi)));
+    }else{
+      var v=p.v[k];
+      rpDotSet(c.x.dots[k],x,yFn(v),(v===null||v===undefined||!(v===v)));
+    }
+  }
+  // --- the values ---
+  if(box){
+    var stamp=c.band?rpDateHm(c.tz,p.t+12*3600):rpDateHm(c.tz,p.t);
+    var rows='',val;
+    for(k=0;k<6;k++){
+      if(k>0){rows+='<br>'}
+      rows+='<span class="w" style="background:#'+c.cols[k]+'"></span>'+rpEsc(c.labs[k]||'')+' ';
+      if(k===5){
+        val=(c.band?p.hi[k]:p.v[k]);
+        rows+='<b>'+(val===null||val===undefined||!(val===val)?'--':rpNum(val,0,c.sep)+c.unit)+'</b>';
+      }else if(c.band){
+        var lo=p.lo[k],hi=p.hi[k];
+        if(lo===null||hi===null||!(lo===lo)||!(hi===hi)){
+          rows+='<b>--</b>';
+        }else if(Math.abs(hi-lo)<1){
+          rows+='<b>'+rpPowerText(lo,c.sep)+'</b>';
+        }else{
+          // A band is two numbers, and writing it as one would be a value
+          // nobody measured.
+          rows+='<b>'+rpPowerText(lo,c.sep)+' - '+rpPowerText(hi,c.sep)+'</b>';
+        }
+      }else{
+        rows+='<b>'+rpPowerText(p.v[k],c.sep)+'</b>';
+      }
+    }
+    box.innerHTML='<b>'+rpEsc(stamp)+'</b><br>'+rows;
+    // Beside the crosshair, on the side that has room for it: a box hanging over
+    // the edge is a box nobody reads. Where that is comes from the drawing's own
+    // matrix, because the SVG keeps its proportions and is capped at 380 px - on
+    // a wide screen it sits centred with margins, and dividing the viewBox by
+    // the width would put the box half a chart off.
+    var kasten=box.parentNode.getBoundingClientRect();
+    var m=svg?svg.getScreenCTM():null;
+    var px=(m?new DOMPoint(x,rpVY0).matrixTransform(m).x:x)-kasten.left;
+    box.style.display='block';
+    box.style.top='6px';
+    box.style.left=(px>kasten.width*0.55?'6px':'auto');
+    box.style.right=(px>kasten.width*0.55?'auto':'6px');
+  }
+}
+// Set once, by the first page that has a chart. Declared out here because
+// rpHoverInit() belongs to this block and not to rpVerlauf().
+var rpHoverReady=0;
+var rpSvgNs='http://www.w3.org/2000/svg';
+function rpHoverInit(){
+  if(rpHoverReady){return}
+  rpHoverReady=1;
+  document.addEventListener('pointermove',function(ev){
+    var box=ev.target.closest?ev.target.closest('.chart'):null;
+    var alle=document.querySelectorAll('.chart');
+    var i,el;
+    for(i=0;i<alle.length;i++){
+      el=alle[i];
+      if(el!==box){rpHoverOff(el)}
+    }
+    if(box&&box.__rpEl){rpHoverAt(box.__rpEl,ev)}
+  },{passive:true});
+  // Leaving the drawing has to be caught on an event that bubbles: pointerleave
+  // does not, so on the document it would only ever fire when the pointer left
+  // the window, and the crosshair would have stayed over the chart. Inside the
+  // page the pointermove above does the clearing, and a finger keeps what it
+  // touched - otherwise the values would vanish the moment the tap ends, and
+  // there is no pointer left to ask again.
+  document.addEventListener('pointerout',function(ev){
+    if(ev.relatedTarget||ev.pointerType==='touch'){return}
+    var alle=document.querySelectorAll('.chart'),i;
+    for(i=0;i<alle.length;i++){
+      if(alle[i].__rpEl){rpHoverOff(alle[i].__rpEl)}
+    }
+  },{passive:true});
 }
 var rpTick=0;
 function rpLoadChart(el){
@@ -751,6 +967,8 @@ function rpBoot(){
 function rpVerlauf(){
   var el=document.getElementById('verlauf');
   if(!el){return}
+  // One delegated listener for every chart on the page, once - see rpHoverInit().
+  rpHoverInit();
   var seg=document.getElementById('range');
   var nav=document.getElementById('nav');
   var lab=document.getElementById('rangetext');

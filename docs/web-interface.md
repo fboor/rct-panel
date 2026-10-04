@@ -225,6 +225,42 @@ Dazu ein Navigator (‹ ›) über die Zeiträume, mit dem Datum in der Mitte. D
 Woche beginnt am Montag, weil das der deutsche Sprachgebrauch ist; das
 Jahresdatum steht in der Mitte nur dann, wenn es sich ändert.
 
+### Der Zeiger auf dem Diagramm
+
+`rpChart()` bekommt aus `/api/verlauf.json` je Probe `{t, v[6]}` (Linie) bzw.
+`{t, lo[6], hi[6]}` (Band) und rechnet daraus die Skalen `xOf`, `yOf`, `ySoc`.
+Alles, was der Zeiger danach noch braucht, legt sie als `rpCtx` **auf das
+Element** — nicht in einen Abschlussbereich: der Zeichner wird alle 5 s neu
+gebaut, der Zeiger nicht.
+
+* Die Zeigerposition läuft durch `svg.getScreenCTM().inverse()`, nicht durch eine
+  Division mit der Breite. Der SVG behält sein Verhältnis und ist auf 380 px
+  gedeckelt, sitzt auf einem breiten Schirm also mittig mit Rand; eine Division
+  wäre dort um ein halbes Diagramm daneben.
+* Das Fadenkreuz wird **einmal je Zeichnung** als `<g>` mit einer Linie und je
+  einem Punkt pro Linie angelegt (`createElementNS`, weil ein Stück Markup als
+  HTML in einen SVG eingesetzt außerhalb der Zeichnung landet) und danach nur noch
+  **bewegt**. Ein Umbau kann dann nur noch Attribute ändern, es kann sich nichts
+  aufhäufen, und Weggehen ist ein `display="none"` an der Gruppe statt einer Suche
+  im Zeichner nach dem, was wieder weg muss.
+* Der Zeiger wird über einen **einzelnen, an `document` hängenden**
+  `pointermove` bedient; ein Listener je Zeichner würde alle 5 s mit seinem
+  Element sterben. Das Verlassen kommt über `pointerout`, **nicht** über
+  `pointerleave` — das Ereignis steigt nicht auf, ein Listener auf `document`
+  sähe es nur beim Verlassen des Fensters, und das Fadenkreuz stünde danach für
+  immer über dem Diagramm. Ausgenommen sind zwei Fälle: `relatedTarget` (der
+  Zeiger ist nur von einem Element auf ein anderes gewandert; das `pointermove`
+  darüber erledigt es) und `pointerType == 'touch'` (nach dem Tippen ist der
+  Zeiger weg, und die Werte müssen stehen bleiben, bis wieder getippt wird).
+* Ein Wert, den es in dieser Probe nicht gibt, **bekommt keinen Punkt** und in
+  der Box einen Strich. Ein Punkt auf dem letzten bekannten Wert wäre eine Zahl,
+  die niemand gemessen hat.
+
+Der Test dafür steht in `tools/jstest` (Block „the crosshair under the pointer")
+mit gestubbtem DOM: hundert Zeigerbewegungen müssen **eine** Gruppe im Zeichner
+hinterlassen, und das Neuzeichnen muss eine neue Gruppe mit dem Fadenkreuz an der
+Probe des Zeigers liefern.
+
 ### Wie der Browser aus der CSV rechnet
 
 **Die Energie eines Zeitraums ist die Differenz der Lebensdauerzähler zwischen

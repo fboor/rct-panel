@@ -644,6 +644,25 @@ Höhe** der Ladezustand. Weil die Ladezustandslinie über die volle Höhe von 0 
 bis 100 % läuft, steht rechts neben der Null-Linie der Stand, den der Akku in
 diesem Moment hatte — auf der Linie also rund 50 %, oben 100 %, unten 0 %.
 
+Fahren Sie mit dem Zeiger über das Diagramm, beantwortet es die Frage, die
+Liniendiagramme immer aufwerfen: **Was ist der Wert *hier*?** Eine senkrechte
+Linie steht über der Probe, auf die der Zeiger zeigt, auf jeder der sechs Linien
+ein Punkt, und in der weißen Box oben daneben stehen der Zeitpunkt und alle
+sechs Werte.
+
+Dabei gilt dasselbe wie überall: der Zeiger wählt die Probe **am nächsten**, nicht
+das Pixel am nächsten — die Proben liegen fünf Minuten auseinander, der Zeiger
+nicht. Steht er über einer Lücke, antwortet die nächste Probe, die es gibt. Eine
+Linie, für die in dieser Probe kein Wert gemessen wurde, bekommt keinen Punkt und
+in der Box einen Strich. Leistungen unter 1000 W stehen in Watt, darüber in kW,
+mit dem Dezimalzeichen Ihrer Sprache; bei **Woche** und **Monat**, wo der Punkt
+ein ganzer Tag ist, steht der Tag als Spanne vom tiefsten bis zum höchsten Wert.
+
+Mit dem Finger funktioniert es genauso: Sie tippen auf das Diagramm, und die Box
+bleibt stehen, bis Sie woanders hinfassen — beim Finger gibt es danach keinen
+Zeiger, der sie wegnehmen könnte. Mit der Maus verschwindet sie, sobald der
+Zeiger das Diagramm verlässt.
+
 <figure class="web-shot">
   <img src="img/web-verlauf.png" alt="Verlaufsseite des Panels: oben der Bereichswähler 24 Stunden, Tag, Woche, Monat, darunter das Datum mit den Pfeilen zum Blättern, dann ein Liniendiagramm eines ganzen Tages mit sechs Linien und die Achsenbeschriftungen kW links und Prozent rechts, darunter die Farblegende und die Angabe des Zeitpunkts der jüngsten Messung">
   <figcaption>Bild 9: Der Verlauf für einen einzelnen Tag (hier der 2. Oktober 2026) — die sechs Linien wie auf dem Panel, mit den Einheiten an den Achsen und der Legende darunter</figcaption>
