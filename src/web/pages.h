@@ -577,12 +577,18 @@ function rpChart(el,j){
     // The days along the bottom, thinned out so the labels cannot collide. The
     // short pattern drops the year: a row of days either all share one or none
     // has it.
-    var sf=el.getAttribute('data-sfmt'),every=Math.ceil(n/6);
-    for(i=0;i<n;i++){
-      if(i%every!==0){continue}
-      var day=rpKeyOf(pts[i].t+12*3600);
-      h+='<text x="'+xOf(pts[i].t+12*3600).toFixed(1)+'" y="202" text-anchor="middle" font-size="11" fill="#5a6672">'+
-         rpEsc(rpFmtDate(day,sf||fmt))+'</text>';
+    // Only a day with a band can be named - a day the panel recorded nothing for
+    // has no lo and no hi, and there is nothing to write under it. The thinning
+    // counts the days that are there, not the slots, or two missing days in a
+    // month would push two labels onto each other.
+    var sf=el.getAttribute('data-sfmt'),tage=[],j;
+    for(j=0;j<n;j++){if(pts[j]){tage.push(j)}}
+    var every=Math.max(1,Math.ceil(tage.length/6));
+    for(j=0;j<tage.length;j++){
+      if(j%every!==0){continue}
+      var tag=pts[tage[j]].t+12*3600;
+      h+='<text x="'+xOf(tag).toFixed(1)+'" y="202" text-anchor="middle" font-size="11" fill="#5a6672">'+
+         rpEsc(rpFmtDate(rpKeyOf(tag),sf||fmt))+'</text>';
     }
   }else{
     // The time of day, at the panel's own zone and not at the browser's: the

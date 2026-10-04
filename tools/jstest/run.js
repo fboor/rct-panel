@@ -722,6 +722,80 @@ check(api.rpFmtDate('2026-10-02', '{Y}-{M}-{D}') === '2026-10-02', 'English date
         'and the others keep theirs', String(g2.kinder[1].getAttribute('display')), 'undefined');
   ring.data[3].v[2] = 1700;
 
+  // --- the bands (a week, a month) ------------------------------------------
+  // A band is two values per day and therefore two dots per line, and it is the
+  // one shape where a value can be a range rather than a number. The stub DOM is
+  // the same object, so this is the same code path with a different answer.
+  const woche = {
+    tz: 'CET-1CEST,M3.5.0,M10.5.0/3', mode: 'band',
+    unit: ['W', 'W', 'W', 'W', 'W', '%'],
+    data: [{t: 1790832000, lo: [0, 0, 300, 0, -1500, 21], hi: [0, 0, 2400, 0, -1500, 34]},
+           {t: 1790918400, lo: [0, 0, 500, 0, -1600, 88], hi: [900, 0, 3000, 0, -1600, 92]},
+           null],
+  };
+  const svg2 = knotenAnlegen('svg');
+  svg2.kinder = [];
+  svg2.getBoundingClientRect = () => ({width: 360, height: 208, left: 0, top: 0});
+  svg2.getScreenCTM = () => ({inverse: () => 'M'});
+  const tip2 = {style: {}, innerHTML: ''};
+  const chart2 = {__rpEl: null, getBoundingClientRect: () => ({width: 344, left: 0})};
+  tip2.parentNode = chart2;
+  const el2 = Object.assign({}, el, {
+    innerHTML: '', rpIdx: -1, _html: '',
+    querySelector(sel) {
+      if (sel === 'svg') { return svg2; }
+      if (sel === '.tip') { return tip2; }
+      if (sel === '.chart') { return chart2; }
+      return null;
+    },
+  });
+  chart2.__rpEl = el2;
+  h.rpChart(el2, woche);
+  const g3 = svg2.kinder[svg2.kinder.length - 1];
+  check(el2.rpCtx.band === true, 'a week comes in as a band', String(el2.rpCtx.band), 'true');
+  check(g3.kinder.length === 13,
+        'a band gets two dots per line, because a day has a low and a high',
+        g3.kinder.map((k) => k.name).join(','), 'line + 12 circles');
+
+  h.rpHoverAt(el2, {clientX: 150, clientY: 0});
+  check(g3.getAttribute('display') === undefined, 'the band crosshair shows up',
+        String(g3.getAttribute('display')), 'undefined');
+  // Two dots per line: the low one and the high one. Dot 3 in the list is PV, dot
+  // 8 is the battery - PV moved that day, the battery did not.
+  check(g3.kinder[5].getAttribute('cy') !== g3.kinder[6].getAttribute('cy'),
+        'the two dots of a line stand apart when the day moved',
+        g3.kinder[5].getAttribute('cy') + ' / ' + g3.kinder[6].getAttribute('cy'), '≠');
+  check(g3.kinder[9].getAttribute('cy') === g3.kinder[10].getAttribute('cy') &&
+        g3.kinder[9].getAttribute('cy') !== g3.kinder[5].getAttribute('cy'),
+        'and stand on each other when it did not (the battery idled)',
+        g3.kinder.map((d) => String(d.getAttribute('cy'))).join(' '), '…');
+  check(tip2.innerHTML.indexOf('1,50 kW') >= 0 && tip2.innerHTML.indexOf('2,40 kW') >= 0,
+        'the box writes the day as a range, from the low to the high',
+        tip2.innerHTML.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim(), '…');
+  check(tip2.innerHTML.indexOf('1,50 kW - 1,50 kW') < 0,
+        'and not as a range whose ends are the same number',
+        String(tip2.innerHTML.indexOf('1,50 kW - 1,50 kW') < 0), true);
+  check(/34\s*%/.test(tip2.innerHTML.replace(/<[^>]*>/g, ' ')),
+        'the state of charge of that day is in there too',
+        tip2.innerHTML.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim(), '…');
+  // A day the panel has no values for: the two dots go, the box says a dash. The
+  // drawing is built again first, because that is how new data arrives - and
+  // because rpHoverAt() leaves a pointer alone that is still on the same sample.
+  woche.data[0].lo[0] = null;
+  woche.data[0].hi[0] = null;
+  h.rpChart(el2, woche);
+  const g4 = svg2.kinder[svg2.kinder.length - 1];
+  h.rpHoverAt(el2, {clientX: 60, clientY: 0});
+  check(g4.kinder[1].getAttribute('display') === 'none' &&
+        g4.kinder[2].getAttribute('display') === 'none',
+        'a day without a measurement gets neither dot',
+        g4.kinder.slice(1, 3).map((d) => String(d.getAttribute('display'))).join(' '), 'none none');
+  check(g4.kinder[6].getAttribute('display') === undefined,
+        'while the line that has values keeps its two',
+        String(g4.kinder[6].getAttribute('display')), 'undefined');
+  check(tip2.innerHTML.indexOf('<b>--</b>') >= 0, 'and a dash in the box',
+        String(tip2.innerHTML.indexOf('<b>--</b>') >= 0), true);
+
   // The units helper on its own, including the two sides of the 1 kW line.
   check(h.rpPowerText(380, ',') === '380 W', '380 W stay watts',
         h.rpPowerText(380, ','), '380 W');

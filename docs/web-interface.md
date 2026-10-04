@@ -219,7 +219,10 @@ Vier Bereiche, ein Zustand:
   Fünf-Minuten-Punkte über einen Monat als Linie durch Punkte wären eine
   erfundene Genauigkeit; ein Band sagt, was der Tag wirklich hergegeben hat. Die
   sechs Bänder stehen nebeneinander statt übereinander, sonst verdeckten sie
-  sich gegenseitig.
+  sich gegenseitig. Ein Tag, für den die Datei keine Zeile hat, bekommt weder
+  Band noch Beschriftung; die Beschriftung unten zählt die Tage, **die es gibt**,
+  nicht die Plätze - sonst stünden bei zwei fehlenden Tagen zwei Daten
+  übereinander.
 
 Dazu ein Navigator (‹ ›) über die Zeiträume, mit dem Datum in der Mitte. Die
 Woche beginnt am Montag, weil das der deutsche Sprachgebrauch ist; das
