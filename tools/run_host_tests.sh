@@ -32,6 +32,10 @@
 #                  fill was pure white, also the light page background, so a
 #                  white node read as sitting on the page and switching to dark
 #                  repainted it. Right after every boot, wrong after every tap
+#   flow_layout_test the overview's diagram: which node goes where for a device
+#                  family, and that a full device comes out pixel-identical to
+#                  the fixed layout it had before - a refactoring is only worth
+#                  doing if the common case does not move
 #   json_scan_test the JSON scanner the OpenInverterGateway driver reads its
 #                  values with: a flat object of register names, a field set that
 #                  depends on the model, and the answers of the simulator that
@@ -74,7 +78,7 @@ set -e
 cd "$(dirname "$0")/.."
 
 fail=0
-for t in device_test relay_test sd_queue_test numfmt_test i18n_test backlight_test badge_test crc_test json_test theme_test json_scan_test oig_field_test jstest; do
+for t in device_test relay_test sd_queue_test numfmt_test i18n_test backlight_test badge_test crc_test json_test theme_test flow_layout_test json_scan_test oig_field_test jstest; do
   printf '\n=== %s ===\n' "$t"
   if [ "$t" = "jstest" ]; then
     if command -v node >/dev/null 2>&1; then

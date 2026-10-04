@@ -43,6 +43,7 @@
 #include <WiFi.h>
 
 #include "GuiApp.h"
+#include "FlowLayout.h"
 #include "Theme.h"
 
 #include "../Charts.h"
@@ -96,6 +97,10 @@ static const lv_color_t COL_TEXT_DUNKEL = lv_color_hex(0xE8ECF1);
 // text, and it is easier on the eyes at night without costing any contrast.
 static const lv_color_t COL_TEXT_HELL = lv_color_hex(0x101418);
 static bool s_hell = false; // from NVS, read before the first colour is used
+// Which flow-diagram layout is on the wall, as the four facts it depends on.
+// 0xFF is not a key any device can produce, so a page that has just been built
+// always applies its layout once. See flowCapsKey() further down.
+static uint8_t s_flowKey = 0xFF;
 static const lv_color_t COL_CARD = lv_color_hex(0x1C222A);
 static const lv_color_t COL_BAR = lv_color_hex(0x3A4550); // top / bottom bars (clearly brighter than cards)
 static const lv_color_t COL_ACCENT = lv_color_hex(0x2E93E5);
@@ -199,7 +204,21 @@ static Preferences prefs;
 static void themeLaden() {
   prefs.begin("gui", false);
   s_hell = prefs.getUChar("theme", 0) != 0;
+  s_flowKey = prefs.getUChar("flowcaps", 0xFF);
   prefs.end();
+}
+
+// Called once when the live capabilities turn out to be different from what the
+// page was built with - i.e. when this device is not the one that was there at
+// the last boot. One line in the log, because a diagram that changed shape is
+// something to be able to explain afterwards.
+static void flowKeySpeichern(uint8_t key) {
+  prefs.begin("gui", true);
+  prefs.putUChar("flowcaps", key);
+  prefs.end();
+  Serial.printf("gui: Diagramm neu aufgebaut - Haus %s, Akku %s, Netz %s\n",
+                (key & 1u) ? "ja" : "nein", (key & 2u) ? "ja" : "nein",
+                (key & 4u) ? "ja" : "nein");
 }
 
 static void themeSpeichern() {
@@ -522,6 +541,30 @@ static lv_obj_t *s_lineGrid = nullptr;   // haus <-> netz
 static lv_obj_t *s_linePv = nullptr;     // haus <-> pv
 static lv_obj_t *s_lineBat = nullptr;    // haus <-> batterie
 
+// The nodes themselves, with their icons. The diagram is built once and then
+// moved rather than rebuilt, because a rebuild would throw away the state that
+// lives in it - the connector colours, the arrow directions, the percentage
+// inside the battery node - and a page that rearranges itself has to be given a
+// new layout at least once.
+//
+// The node of a node-with-an-icon is the icon's parent (makeNode centres the
+// label in the circle), so no second return value was needed for it.
+static lv_obj_t *s_nodePv = nullptr;
+static lv_obj_t *s_nodeHaus = nullptr;
+static lv_obj_t *s_nodeGrid = nullptr;
+static lv_obj_t *s_nodeBat = nullptr; // not a makeNode(): icon and SOC together
+static lv_obj_t *s_icoPv = nullptr;
+static lv_obj_t *s_icoGrid = nullptr;
+static lv_obj_t *s_batSoc = nullptr;   // the percentage inside the battery node
+static lv_obj_t *s_batIco = nullptr;
+
+// The layout functions, defined further down next to the theme walk's helpers -
+// they are one block with it. The page is built before they exist, and the
+// layout is part of how the page comes up.
+static uint8_t flowCapsKey(const DeviceCaps &c);
+static DeviceCaps capsFromKey(uint8_t key);
+static void applyFlowLayout(const FlowLayout &L, AppPage *ov);
+
 static lv_obj_t *s_statusLabel = nullptr; // link/status badge top-right
 static lv_obj_t *s_splashLabel = nullptr; // splash page label
 static int s_page = PAGE_OVERVIEW;
@@ -808,10 +851,12 @@ static void pageBuildOverview(AppPage *p) {
   // default pivot is the top left corner and the icon would grow off to one side.
   lv_obj_t *hausIco =
       makeNode(flow, 240, 82, 92, LV_SYMBOL_HOME, &lv_font_montserrat_28_uml);
+  s_nodeHaus = lv_obj_get_parent(hausIco);
   lv_obj_set_style_transform_scale(hausIco, 320, 0); // 256 = 1.0
   lv_obj_set_style_transform_pivot_x(hausIco, LV_PCT(50), 0);
   lv_obj_set_style_transform_pivot_y(hausIco, LV_PCT(50), 0);
-  makeNode(flow, 60, 80, 60, kSolarIcon, &lv_font_mdi_icons_28); // pv
+  s_icoPv = makeNode(flow, 60, 80, 60, kSolarIcon, &lv_font_mdi_icons_28); // pv
+  s_nodePv = lv_obj_get_parent(s_icoPv);
   // Battery node: battery icon on top, SOC % below (inside the node).
   lv_obj_t *bat = lv_obj_create(flow);
   lv_obj_set_size(bat, 60, 60);
@@ -827,16 +872,18 @@ static void pageBuildOverview(AppPage *p) {
   // glyph: a completely full battery next to a "71 %" reading below it just
   // looks wrong. Resolved through the font fallback chain (uml -> montserrat,
   // which covers the 0xF240 symbol block).
-  lv_obj_t *batIco =
+  s_batIco =
       makeLabel(bat, LV_SYMBOL_BATTERY_3, &lv_font_montserrat_20_uml, FLOW_GRAY);
-  lv_obj_align(batIco, LV_ALIGN_CENTER, 0, -7);
-  lv_obj_t *batSoc =
-      makeLabel(bat, "--", &lv_font_montserrat_14_uml, FLOW_GRAY);
-  lv_obj_align(batSoc, LV_ALIGN_CENTER, 0, 9);
-  p->labels[OV_BAT_SOC] = batSoc;
+  lv_obj_align(s_batIco, LV_ALIGN_CENTER, 0, -7);
+  s_batSoc = makeLabel(bat, "--", &lv_font_montserrat_14_uml, FLOW_GRAY);
+  lv_obj_align(s_batSoc, LV_ALIGN_CENTER, 0, 9);
+  p->labels[OV_BAT_SOC] = s_batSoc;
+  s_nodeBat = bat;
 
   // NETZ node: the transmission tower.
-  makeNode(flow, 420, 80, 60, kFlowGridIcon, &lv_font_mdi_icons_28);
+  s_icoGrid =
+      makeNode(flow, 420, 80, 60, kFlowGridIcon, &lv_font_mdi_icons_28);
+  s_nodeGrid = lv_obj_get_parent(s_icoGrid);
 
   // Connector lines (haus <-> node), animated later via color/style.
   static const lv_point_precise_t ptsGrid[2] = {{240, 82}, {420, 80}};
@@ -953,6 +1000,175 @@ static void pageBuildOverview(AppPage *p) {
     s_ovLabel[i] = pills[i].labelIdx;
   }
   p->labelCount = OV_LABEL_COUNT;
+
+  // The layout of the last device that answered, not of this one: the caps are
+  // in the answer and the answer has not come yet. With nothing stored the key
+  // is 0xFF, which yields the full layout - the one this page was drawn for.
+  const FlowLayout startL = flowLayoutFor(capsFromKey(s_flowKey));
+  applyFlowLayout(startL, p);
+  s_flowKey = flowCapsKey(capsFromKey(s_flowKey));
+}
+
+// ---------------------------------------------------------------------------
+// The layout, applied to what was built once
+// ---------------------------------------------------------------------------
+//
+// Everything above builds the diagram at fixed positions, because that is what
+// an RCT Power needs and it is what the screenshots in the manual show. This is
+// the other half: a device that cannot report a household meter or a battery
+// gets the diagram its measurements deserve, instead of a house with a zero in
+// it.
+//
+// Applied, not rebuilt. The page carries state - the connector colours, the
+// arrow directions, the percentage inside the battery node - and a rebuild would
+// throw all of that away. So the objects are moved, hidden and re-typed in
+// place, which is also what the theme switch does with the colours.
+
+static void setNodeShown(lv_obj_t *node, const FlowNode &n) {
+  if (node == nullptr) {
+    return;
+  }
+  if (!n.visible) {
+    lv_obj_add_flag(node, LV_OBJ_FLAG_HIDDEN);
+    return;
+  }
+  lv_obj_remove_flag(node, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_set_size(node, n.d, n.d);
+  lv_obj_set_pos(node, n.x - n.d / 2, n.y - n.d / 2);
+}
+
+// The icon of a node that becomes the hub is scaled the way the house icon is,
+// with the pivot in the middle - the default pivot is the top left corner and the
+// glyph would grow off to one side.
+static void setNodeIconScale(lv_obj_t *ico, bool gross) {
+  if (ico == nullptr) {
+    return;
+  }
+  lv_obj_set_style_transform_scale(ico, gross ? 320 : 256, 0); // 256 = 1.0
+  lv_obj_set_style_transform_pivot_x(ico, LV_PCT(50), 0);
+  lv_obj_set_style_transform_pivot_y(ico, LV_PCT(50), 0);
+}
+
+static void setLinkShown(lv_obj_t *line, const FlowLink &l) {
+  if (line == nullptr) {
+    return;
+  }
+  if (!l.visible) {
+    lv_obj_add_flag(line, LV_OBJ_FLAG_HIDDEN);
+    return;
+  }
+  lv_obj_remove_flag(line, LV_OBJ_FLAG_HIDDEN);
+  // lv_line_set_points() keeps the pointer, so the points have to live as long as
+  // the line does - hence static and not on the stack.
+  static lv_point_precise_t pts[3][2];
+  const int which = (line == s_linePv) ? 0 : (line == s_lineGrid ? 1 : 2);
+  pts[which][0].x = l.x1;
+  pts[which][0].y = l.y1;
+  pts[which][1].x = l.x2;
+  pts[which][1].y = l.y2;
+  lv_line_set_points(line, pts[which], 2);
+}
+
+static void setValueShown(lv_obj_t *label, const FlowValue &v) {
+  if (label == nullptr) {
+    return;
+  }
+  if (!v.visible) {
+    lv_obj_add_flag(label, LV_OBJ_FLAG_HIDDEN);
+    return;
+  }
+  lv_obj_remove_flag(label, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_set_pos(label, v.x, v.y);
+  lv_obj_set_style_text_font(label,
+                             v.gross ? &lv_font_montserrat_28_uml
+                                     : &lv_font_montserrat_16_uml,
+                             0);
+}
+
+// Which layout is on the wall. The four facts the layout depends on as one
+// byte: the three meters and whether the device has said anything at all.
+//
+// The byte is stored, because the capabilities arrive with the first answer -
+// about ten seconds after boot - and a diagram that rearranges itself then looks
+// like a fault on a panel that is meant to be looked at, not diagnosed. So the
+// page is built with the layout of the last device that answered, and a device
+// that says otherwise is applied once, noted, and remembered for the next boot.
+static uint8_t flowCapsKey(const DeviceCaps &c) {
+  return (uint8_t)((c.houseMeter ? 1u : 0u) | (c.battery ? 2u : 0u) |
+                   (c.gridMeter ? 4u : 0u) | (c.isKnown() ? 8u : 0u));
+}
+
+static DeviceCaps capsFromKey(uint8_t key) {
+  DeviceCaps c = {};
+  c.houseMeter = (key & 1u) != 0;
+  c.battery = (key & 2u) != 0;
+  c.gridMeter = (key & 4u) != 0;
+  // The bit that says "the device has answered" only matters for a stored key
+  // that says nothing: three false bits mean a device that measures none of the
+  // three, which is a real answer, and bit 3 keeps it from being mistaken for
+  // "nothing answered yet".
+  c.sleepsWithoutGeneration = (key & 8u) != 0; // makes isKnown() true
+  return c;
+}
+
+// What is on the wall now. 0xFF is not a key any device can produce, so the
+// first call always applies - which is what a page that was just built wants.
+static void applyFlowLayout(const FlowLayout &L, AppPage *ov) {
+  setNodeShown(s_nodePv, L.pv);
+  setNodeShown(s_nodeHaus, L.house);
+  setNodeShown(s_nodeGrid, L.grid);
+  setNodeShown(s_nodeBat, L.battery);
+  // Only the PV node changes its size between the layouts, so only it needs its
+  // icon re-scaled; the house is the hub whenever it is there at all, and the
+  // other two are always outer nodes. The percentage inside the battery node
+  // needs nothing either - a hidden parent hides its children with it.
+  setNodeIconScale(s_icoPv, L.pv.d == kFlowHubD);
+
+  setLinkShown(s_linePv, L.linkPv);
+  setLinkShown(s_lineGrid, L.linkGrid);
+  setLinkShown(s_lineBat, L.linkBattery);
+
+  // The arrows sit on their connector's midpoint, and the island triangle 25 px
+  // above the grid link - computed from the layout so they follow it.
+  int16_t cx = 0, cy = 0;
+  flowLinkMidpoint(L.linkPv, &cx, &cy);
+  if (ov != nullptr && ov->labels[OV_PV_ARROW] != nullptr) {
+    placeArrow(ov->labels[OV_PV_ARROW], cx, cy);
+  }
+  flowLinkMidpoint(L.linkGrid, &cx, &cy);
+  if (ov != nullptr && ov->labels[OV_GRID_ARROW] != nullptr) {
+    placeArrow(ov->labels[OV_GRID_ARROW], cx, cy);
+  }
+  flowLinkMidpoint(L.linkBattery, &cx, &cy);
+  if (ov != nullptr && ov->labels[OV_BAT_ARROW] != nullptr) {
+    placeArrow(ov->labels[OV_BAT_ARROW], cx, cy);
+  }
+  flowLinkMidpoint(L.linkGrid, &cx, &cy);
+  if (ov != nullptr && ov->labels[OV_ISLAND] != nullptr) {
+    placeArrow(ov->labels[OV_ISLAND], cx, (int16_t)(cy - 25));
+    if (!L.islandMark) {
+      lv_obj_add_flag(ov->labels[OV_ISLAND], LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+
+  setValueShown(ov != nullptr ? ov->labels[OV_PV_VAL] : nullptr, L.valPv);
+  setValueShown(ov != nullptr ? ov->labels[OV_HOUSE_VAL] : nullptr, L.valHouse);
+  setValueShown(ov != nullptr ? ov->labels[OV_GRID_VAL] : nullptr, L.valGrid);
+  setValueShown(ov != nullptr ? ov->labels[OV_BAT_VAL] : nullptr, L.valBattery);
+
+  // The pills: one per quantity that is drawn, centred as a group.
+  for (int i = 0; i < 3; i++) {
+    if (s_ovBtn[i] == nullptr) {
+      continue;
+    }
+    if (L.pills & (1u << i)) {
+      lv_obj_remove_flag(s_ovBtn[i], LV_OBJ_FLAG_HIDDEN);
+      lv_obj_set_pos(s_ovBtn[i], L.pillX[i], kFlowPillY);
+    } else {
+      lv_obj_add_flag(s_ovBtn[i], LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+
 }
 
 // Set one of those buttons: the colour for the state and the word that goes with
@@ -2122,6 +2338,19 @@ static void refreshCb(lv_timer_t *t) {
   (void)t;
   const DeviceState &s = deviceState();
   diagPhase("gui.refresh");
+
+  // The diagram follows what the device can report, and that arrives with the
+  // first answer - ten seconds or so after boot. Once, not per tick: the key is
+  // compared first, and only a device that reports something different from the
+  // one the page was built for moves anything.
+  {
+    const uint8_t key = flowCapsKey(s.caps);
+    if (key != s_flowKey) {
+      applyFlowLayout(flowLayoutFor(s.caps), &s_pages[PAGE_OVERVIEW]);
+      s_flowKey = key;
+      flowKeySpeichern(key);
+    }
+  }
 
   // Wi-Fi setup overlay: visible while the provisioning AP runs, or during
   // the boot test window (first 10 s) so the QR layout can be verified.
