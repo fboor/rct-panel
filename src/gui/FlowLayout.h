@@ -47,10 +47,20 @@ struct FlowLink {
 enum FlowPill { FLOW_PILL_PRODUCTION = 0, FLOW_PILL_HOUSE, FLOW_PILL_BATTERY };
 
 // A value under a node.
+//
+// x and y are the label's left edge and top edge - lv_obj_set_pos() on a label
+// with a fixed width positions its corner, not its middle, which is the case all
+// four values were drawn for until the one-node layout wanted its number in the
+// middle of the band under the circle. So a value can also say that its y is the
+// middle, and the width is stated rather than left at the label's own 120 px: the
+// 36 px font needs more than that ("1,23 kW" is 133 px, and a label too narrow
+// for its text wraps it onto a second line).
 struct FlowValue {
   bool visible;
-  int16_t x, y;    // left edge, as before: the label is LV_ALIGN_LEFT_MID
-  bool gross;      // the 28 px font, for the value of the big PV
+  int16_t x, y;    // left edge, or middle vertically when centreY
+  int16_t w;       // the label's width; 0 leaves it as it is
+  bool centreY;    // y is the middle of the value, not its top edge
+  bool gross;      // the 36 px font, for the value of the big PV
 };
 
 // Everything the overview's diagram needs to know, and nothing about how it is
@@ -64,6 +74,7 @@ struct FlowLayout {
   bool batterySoc;      // the percentage inside the battery node
   bool islandMark;      // the warning triangle has a connector to sit on
   bool grossPvIco;      // the PV icon is scaled like the hub's
+  bool pvIcoNative;     // the PV icon has a font of its own and is drawn 1:1
 };
 
 // --- the fixed layout of a full device, unchanged ---------------------------
@@ -75,19 +86,40 @@ static const int16_t kFlowHubY = 82;   // the hub's centre, 2 px lower
 static const int16_t kFlowSideD = 60;  // PV, grid, battery
 static const int16_t kFlowHubD = 92;   // the house
 // The PV as the only node on the page: bigger than a node that has company,
-// because it is then the whole diagram. 138 px, which is 92 * 1.5 - halfway
-// between a hub and the first attempt at 184, which was too much of a jump from
-// the 92 px of a full page. Its icon is scaled in proportion (480 % where the
-// house uses 320 %), so the glyph keeps its size relative to the circle.
-static const int16_t kFlowAlleinD = 138;
+// because it is then the whole diagram, and big enough for the glyph that goes
+// with it. The glyph's ink is 114 px, so 138 px left 12 px of white inside the
+// circle - the icon looked pressed against the rim. 160 px gives 23 px on each
+// side, and its top edge is at y = 2: the most room the heading above the
+// container (which ends at 35 on the page) allows.
+static const int16_t kFlowAlleinD = 160;
 static const int16_t kFlowPvX = 60;
 static const int16_t kFlowHubX = 240;
 static const int16_t kFlowGridX = 420;
 static const int16_t kFlowBatY = 210;
 
+// The three pills are 152 px wide with 6 px between them and 6 px of margin,
+// which fills the 480 px page exactly. Fewer pills are centred as a group: one
+// pill at the far left with 320 px of empty space next to it looks broken, and
+// the order does not change.
+static const int16_t kFlowPillW = 152;
+static const int16_t kFlowPillH = 34; // GuiApp.cpp uses this for the pills it builds
+static const int16_t kFlowPillGap = 6;
+static const int16_t kFlowPageW = 480;
+static const int16_t kFlowPillY = 316;
+// The diagram's container sits this far down the page (GuiApp.cpp's FLOW_Y, which
+// is that constant). The nodes and the values live in the container, the pills on
+// the page - so the band between the circle and the pill can only be measured in
+// the container, and that needs this offset. It is the heading's height: the
+// heading ends at 26, the container starts at 35.
+static const int16_t kFlowFlowY = 35;
+static const int16_t kFlowPillYInFlow = (int16_t)(kFlowPillY - kFlowFlowY);
+
 // Where a value sits. The hub's value is right of the vertical battery line, so
 // the line does not run through the text - which is also where the value of the
 // big PV goes in a layout without a house, because the place is free then.
+// The width the value labels have been created with, and the only one that fits
+// the 16 px font; the one-node layout states a wider one for its 36 px number.
+static const int16_t kFlowValW = 120;
 static const int16_t kFlowHubValX = 250;
 static const int16_t kFlowHubValY = 120;
 static const int16_t kFlowPvValX = 0;
@@ -96,22 +128,24 @@ static const int16_t kFlowGridValX = 360;
 static const int16_t kFlowGridValY = 118;
 static const int16_t kFlowBatValX = 180;
 static const int16_t kFlowBatValY = 247;
-// The value under the PV when it is the only node: centred (the label is 120 px
-// wide and centred in itself, so its left edge is 240 - 60), and lower than the
-// house's value because there is no battery below it.
-static const int16_t kFlowAlleinValX = 180;
-// 30 px higher than the house's value: the circle is smaller now, and 250 put the
-// number so far below it that the two stopped reading as one group.
-static const int16_t kFlowAlleinValY = 220;
-
-// The three pills are 152 px wide with 6 px between them and 6 px of margin,
-// which fills the 480 px page exactly. Fewer pills are centred as a group: one
-// pill at the far left with 320 px of empty space next to it looks broken, and
-// the order does not change.
-static const int16_t kFlowPillW = 152;
-static const int16_t kFlowPillGap = 6;
-static const int16_t kFlowPageW = 480;
-static const int16_t kFlowPillY = 316;
+// The value under the PV when it is the only node on the page: centred, and in
+// the middle of the empty band between the circle above it and the pill below it.
+// Both ends of the band are in the container, where this value lives too: the
+// circle's lower edge (82 + 160/2 = 162) and the pill's upper edge (316 - 35 -
+// 17 = 264), so its middle is 213. The first version measured the circle in the
+// container and the pill on the page and called the result 225 - 12 px too low,
+// because it had added the heading's height to the distance instead of taking it
+// off.
+//
+// Centred horizontally too: a 200 px label whose text is centred in itself has
+// its left edge at 240 - 100, and 200 px is what the 36 px font needs for
+// "1,23 kW" - see FlowValue above.
+static const int16_t kFlowAlleinValW = 200;
+static const int16_t kFlowAlleinValX =
+    (int16_t)(kFlowHubX - kFlowAlleinValW / 2);
+static const int16_t kFlowAlleinValY =
+    (int16_t)((kFlowHubY + kFlowAlleinD / 2 + kFlowPillYInFlow - kFlowPillH / 2) /
+              2);
 
 // The layout for one device family. caps.isKnown() false means "nothing has
 // answered yet": the full layout is drawn, because an RCT Power is what most of
@@ -182,37 +216,51 @@ static inline FlowLayout flowLayoutFor(const DeviceCaps &caps) {
   L.valHouse.visible = kenneHaus;
   L.valHouse.x = kFlowHubValX;
   L.valHouse.y = kFlowHubValY;
+  L.valHouse.w = kFlowValW;
+  L.valHouse.centreY = false;
   L.valHouse.gross = false;
 
   L.valPv.visible = true;
   L.valPv.gross = hubIstPv;
+  L.valPv.w = hubIstPv ? kFlowAlleinValW : kFlowValW;
+  L.valPv.centreY = false;
   if (hubIstPv && kenneAkku) {
     // A battery hangs below the PV node, and with it the vertical line - so the
     // value keeps the place the house's value had: right of that line, so the
-    // line does not run through the digits.
+    // line does not run through the digits. It is not centred here: there is
+    // still a node below, and the number belongs to the one above.
     L.valPv.x = kFlowHubValX;
     L.valPv.y = kFlowHubValY;
   } else if (hubIstPv) {
-    // Nothing below the node, so nothing to make room for: the value is the
-    // content of the page and goes centred under it, and lower, because the
-    // space the battery used would otherwise be empty room between the number
-    // and the pill.
+    // Nothing below the node and nothing above but the circle: the value is the
+    // content of the page, so it goes in the middle of the band between the two -
+    // which is the only thing that makes it belong to the circle rather than to
+    // the pill. Its y is therefore a middle, not a top edge.
     L.valPv.x = kFlowAlleinValX;
     L.valPv.y = kFlowAlleinValY;
+    L.valPv.centreY = true;
   } else {
     L.valPv.x = kFlowPvValX;
     L.valPv.y = kFlowPvValY;
   }
   L.grossPvIco = hubIstPv;
+  // In the one-node layout the icon is drawn from its own font at its own size;
+  // everywhere else it is the 28 px font, scaled like the hub's or left alone.
+  // A 28 px glyph at 480 % is a blur, and that layout is the whole page.
+  L.pvIcoNative = hubIstPv && L.pv.d == kFlowAlleinD;
 
   L.valGrid.visible = kenneNetz;
   L.valGrid.x = kFlowGridValX;
   L.valGrid.y = kFlowGridValY;
+  L.valGrid.w = kFlowValW;
+  L.valGrid.centreY = false;
   L.valGrid.gross = false;
 
   L.valBattery.visible = kenneAkku;
   L.valBattery.x = kFlowBatValX;
   L.valBattery.y = kFlowBatValY;
+  L.valBattery.w = kFlowValW;
+  L.valBattery.centreY = false;
   L.valBattery.gross = false;
 
   L.batterySoc = kenneAkku;

@@ -62,6 +62,7 @@
 #include "../web/WebServer.h"
 #include "fonts/lv_font_mdi_icons_24.h"
 #include "fonts/lv_font_mdi_icons_28.h"
+#include "fonts/lv_font_mdi_icons_136.h"
 // Montserrat with German umlauts (Latin-1 supplement), falling back to the
 // LVGL built-ins for the LV_SYMBOL_* glyphs. See OFL-Montserrat.txt.
 #include "fonts/lv_font_montserrat_14_uml.h"
@@ -290,12 +291,15 @@ static const char kSolarIcon[] =
 // Radius half the height, so they are pills and not rounded rectangles: these are
 // the things that are happening right now, and they are meant to be read as one
 // row rather than as controls.
-#define OV_BTN_W 152
-#define OV_BTN_H 34
+// The three pills' measurements are the layout's, because the one-node layout
+// places the value in the middle of the band above them and needs to know where
+// that band begins - see FlowLayout.h. Same numbers as before, one place.
+#define OV_BTN_W kFlowPillW
+#define OV_BTN_H kFlowPillH
 #define OV_BTN_R (OV_BTN_H / 2)
 #define OV_BTN_X0 6
-#define OV_BTN_DX 158 // 152 px plus the 6 px gap
-#define OV_BTN_Y 316
+#define OV_BTN_DX (kFlowPillW + kFlowPillGap) // 152 px plus the 6 px gap
+#define OV_BTN_Y kFlowPillY
 // What counts as "nothing happening" for the buttons: below 10 W there is no
 // household draw and no battery current to name, and the grid only counts as
 // importing from 20 W (the device regulates around zero below that).
@@ -307,7 +311,7 @@ static const char kSolarIcon[] =
 // 26, so the top of the house node is at 71 and the buttons at 316 are 14 px below
 // the battery value - the diagram is centred in what is left rather than sitting
 // in the middle of the page with a hole under it.
-#define FLOW_Y 35
+#define FLOW_Y kFlowFlowY
 
 // ---------------------------------------------------------------------------
 // Page model
@@ -866,6 +870,10 @@ static void pageBuildOverview(AppPage *p) {
   lv_obj_set_style_transform_pivot_x(hausIco, LV_PCT(50), 0);
   lv_obj_set_style_transform_pivot_y(hausIco, LV_PCT(50), 0);
   s_icoPv = makeNode(flow, 60, 80, 60, kSolarIcon, &lv_font_mdi_icons_28); // pv
+  // The pivot is the middle: the default is the top left corner, and a scaled
+  // icon grows to the lower right from there instead of staying in its circle.
+  lv_obj_set_style_transform_pivot_x(s_icoPv, LV_PCT(50), 0);
+  lv_obj_set_style_transform_pivot_y(s_icoPv, LV_PCT(50), 0);
   s_nodePv = lv_obj_get_parent(s_icoPv);
   // Battery node: battery icon on top, SOC % below (inside the node).
   lv_obj_t *bat = lv_obj_create(flow);
@@ -1048,11 +1056,23 @@ static void setNodeShown(lv_obj_t *node, const FlowNode &n) {
 // The icon of a node that becomes the hub is scaled the way the house icon is,
 // with the pivot in the middle - the default pivot is the top left corner and the
 // glyph would grow off to one side.
-static void setNodeIconScale(lv_obj_t *ico, bool gross, int scale = 320) {
+// How far the glyph of a font sits above the middle of that font's line box.
+// For lv_font_mdi_icons_136: line_height 114, base_line 6, ofs_y -6. Its ink
+// is 114 px, so it begins 12 px above the top of the line and ends 12 px above
+// the bottom - 12 px above the middle of the line. Centring the label in the
+// circle is therefore not the same as centring the ink in it, and in a 160 px
+// circle 12 px is the difference between standing in it and floating in it.
+//
+// A number rather than something read out of the font, because the font is a
+// file in the repository and these four numbers are in it; they do not change
+// on their own, and if they ever do, this is where to look.
+static const int16_t kIcoInkHoch = 12;
+
+static void setNodeIconScale(lv_obj_t *ico, bool gross) {
   if (ico == nullptr) {
     return;
   }
-  lv_obj_set_style_transform_scale(ico, gross ? scale : 256, 0); // 256 = 1.0
+  lv_obj_set_style_transform_scale(ico, gross ? 320 : 256, 0); // 256 = 1.0
   lv_obj_set_style_transform_pivot_x(ico, LV_PCT(50), 0);
   lv_obj_set_style_transform_pivot_y(ico, LV_PCT(50), 0);
 }
@@ -1077,6 +1097,22 @@ static void setLinkShown(lv_obj_t *line, const FlowLink &l) {
   lv_line_set_points(line, pts[which], 2);
 }
 
+// An arrow is shown when its own connection is drawn and something is flowing
+// along it - both, and never one alone. The layout owns the first, the refresh
+// the second, and this is where the two meet. The refresh alone decided this by
+// itself, and on a device with one node it put the PV arrow back every second,
+// on a page that has no connector to put it on.
+static void arrowShown(lv_obj_t *arrow, bool linkSichtbar, bool fluss) {
+  if (arrow == nullptr) {
+    return;
+  }
+  if (linkSichtbar && fluss) {
+    lv_obj_remove_flag(arrow, LV_OBJ_FLAG_HIDDEN);
+  } else {
+    lv_obj_add_flag(arrow, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
 static void setValueShown(lv_obj_t *label, const FlowValue &v) {
   if (label == nullptr) {
     return;
@@ -1086,7 +1122,23 @@ static void setValueShown(lv_obj_t *label, const FlowValue &v) {
     return;
   }
   lv_obj_remove_flag(label, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_set_pos(label, v.x, v.y);
+  // The width comes from the layout because the font does not always fit the
+  // 120 px the label was created with: in 36 px, "1,23 kW" is 133 px, and a
+  // label too narrow for its text wraps it onto a second line.
+  if (v.w > 0) {
+    lv_obj_set_width(label, v.w);
+  }
+  // lv_obj_set_pos() puts a label's corner where it is told, not its middle. Four
+  // of the five values were drawn that way from the start and their numbers were
+  // placed for it; the one-node value says centreY, because there the number is
+  // supposed to be in the middle of the band under the circle - and being 16 px
+  // off is exactly what it was before this was stated.
+  if (v.centreY) {
+    lv_obj_update_layout(label);
+    lv_obj_set_pos(label, v.x, v.y - lv_obj_get_height(label) / 2);
+  } else {
+    lv_obj_set_pos(label, v.x, v.y);
+  }
   // The gross value is 36 px: it is the content of the page in that layout, and
   // a scaled 28 px label would have cost nothing but looked like a copy. The
   // built-in font and not one of the _uml ones - those carry the umlauts the
@@ -1126,7 +1178,15 @@ static DeviceCaps capsFromKey(uint8_t key) {
 
 // What is on the wall now. 0xFF is not a key any device can produce, so the
 // first call always applies - which is what a page that was just built wants.
+// The layout that is on the wall, kept because the refresh runs every second and
+// has to know what the layout decided: an arrow belongs to a connection, and only
+// the layout knows whether there is one. Without this the layout hid the three
+// arrows and the refresh, on its next tick, put the PV one back - which is why a
+// red arrowhead sat on the page with nothing under it.
+static FlowLayout s_layout;
+
 static void applyFlowLayout(const FlowLayout &L, AppPage *ov) {
+  s_layout = L;
   setNodeShown(s_nodePv, L.pv);
   setNodeShown(s_nodeHaus, L.house);
   setNodeShown(s_nodeGrid, L.grid);
@@ -1135,7 +1195,24 @@ static void applyFlowLayout(const FlowLayout &L, AppPage *ov) {
   // icon re-scaled; the house is the hub whenever it is there at all, and the
   // other two are always outer nodes. The percentage inside the battery node
   // needs nothing either - a hidden parent hides its children with it.
-  setNodeIconScale(s_icoPv, L.grossPvIco, L.pv.d == kFlowAlleinD ? 480 : 320);
+  if (L.pvIcoNative) {
+    // Drawn 1:1 from a font that has this size. It was a 28 px glyph scaled to
+    // 480 %, which is a 134 px glyph drawn from 28 px of information - on a
+    // panel that is read from across a room that is a smudge, and this is the
+    // whole page on a device without meters.
+    lv_obj_set_style_text_font(s_icoPv, &lv_font_mdi_icons_136, 0);
+    lv_obj_set_style_transform_scale(s_icoPv, 256, 0); // 256 = 1.0
+  } else {
+    lv_obj_set_style_text_font(s_icoPv, &lv_font_mdi_icons_28, 0);
+    setNodeIconScale(s_icoPv, L.grossPvIco);
+  }
+  // Both branches change the font, and the font is what decides the height of
+  // the label's line box, so its place in the node has to be set again - and
+  // with the glyph's ink in mind rather than the middle of the line it is
+  // drawn in.
+  lv_obj_update_layout(s_icoPv);
+  lv_obj_center(s_icoPv);
+  lv_obj_set_y(s_icoPv, (int16_t)(lv_obj_get_y(s_icoPv) + kIcoInkHoch));
 
   setLinkShown(s_linePv, L.linkPv);
   setLinkShown(s_lineGrid, L.linkGrid);
@@ -2512,10 +2589,8 @@ static void refreshCb(lv_timer_t *t) {
         // import: grid -> haus (arrow points left), export: haus -> grid
         lv_label_set_text(ov.labels[OV_GRID_ARROW],
                           gridImport ? LV_SYMBOL_LEFT : LV_SYMBOL_RIGHT);
-        lv_obj_remove_flag(ov.labels[OV_GRID_ARROW], LV_OBJ_FLAG_HIDDEN);
-      } else {
-        lv_obj_add_flag(ov.labels[OV_GRID_ARROW], LV_OBJ_FLAG_HIDDEN);
       }
+      arrowShown(ov.labels[OV_GRID_ARROW], s_layout.linkGrid.visible, active);
     } else {
       lv_label_set_text(ov.labels[OV_GRID_VAL], dash);
       lv_obj_set_style_text_color(ov.labels[OV_GRID_VAL], FLOW_WHITE, 0);
@@ -2525,20 +2600,23 @@ static void refreshCb(lv_timer_t *t) {
     }
 
     // --- PV (panel -> haus) ---
-    if (has && pvTotal >= pvActive) {
+    const bool pvFliesst = has && pvTotal >= pvActive;
+    if (pvFliesst) {
       setPower(ov.labels[OV_PV_VAL], pvTotal);
       lv_obj_set_style_text_color(ov.labels[OV_PV_VAL], FLOW_RED, 0);
       lv_obj_set_style_line_color(s_linePv, FLOW_RED, 0);
       lv_obj_set_style_line_width(s_linePv, 4, 0);
       lv_label_set_text(ov.labels[OV_PV_ARROW], LV_SYMBOL_RIGHT);
-      lv_obj_remove_flag(ov.labels[OV_PV_ARROW], LV_OBJ_FLAG_HIDDEN);
     } else {
       lv_label_set_text(ov.labels[OV_PV_VAL], dash);
       lv_obj_set_style_text_color(ov.labels[OV_PV_VAL], FLOW_WHITE, 0);
       lv_obj_set_style_line_color(s_linePv, FLOW_LINE, 0);
       lv_obj_set_style_line_width(s_linePv, 2, 0);
-      lv_obj_add_flag(ov.labels[OV_PV_ARROW], LV_OBJ_FLAG_HIDDEN);
     }
+    // Outside the if, because "there is flow" is not the same question as "the
+    // arrow is wanted": on a device whose diagram has one node there is no
+    // connector, and an arrow on nothing is what the layout had already ruled out.
+    arrowShown(ov.labels[OV_PV_ARROW], s_layout.linkPv.visible, pvFliesst);
 
     // --- Battery (haus <-> batterie) ---
     if (s.haveBattery) {
@@ -2553,14 +2631,13 @@ static void refreshCb(lv_timer_t *t) {
         // house; charging (pBat < 0) draws down into the battery.
         lv_label_set_text(ov.labels[OV_BAT_ARROW],
                           pBat > 0 ? LV_SYMBOL_UP : LV_SYMBOL_DOWN);
-        lv_obj_remove_flag(ov.labels[OV_BAT_ARROW], LV_OBJ_FLAG_HIDDEN);
       } else {
         lv_label_set_text(ov.labels[OV_BAT_VAL], dash);
         lv_obj_set_style_text_color(ov.labels[OV_BAT_VAL], FLOW_WHITE, 0);
         lv_obj_set_style_line_color(s_lineBat, FLOW_LINE, 0);
         lv_obj_set_style_line_width(s_lineBat, 2, 0);
-        lv_obj_add_flag(ov.labels[OV_BAT_ARROW], LV_OBJ_FLAG_HIDDEN);
       }
+      arrowShown(ov.labels[OV_BAT_ARROW], s_layout.linkBattery.visible, active);
     } else {
       lv_label_set_text(ov.labels[OV_BAT_VAL], dash);
       lv_obj_set_style_text_color(ov.labels[OV_BAT_VAL], FLOW_WHITE, 0);

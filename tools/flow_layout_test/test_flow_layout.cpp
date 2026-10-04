@@ -84,6 +84,13 @@ static void testFullDeviceIsUnchanged() {
   checkEq(L.pillX[2], 322, "voll: dritte Pille bei 322");
   check(L.islandMark, "voll: Insel-Zeichen vorhanden");
   check(L.batterySoc, "voll: Ladezustand im Akku-Knoten");
+  // Die Eigenheiten des einen-Knoten-Falls: alle vier Werte sitzen wie bisher
+  // nach ihrer linken Oberkante, und das PV-Icon bleibt das 28px-Icon des
+  // Mittelpunkts (320 %) - hier ist ein 60px-Knoten, da waere eine eigene
+  // 136px-Schrift nur Speicher fuer nichts.
+  check(!L.pvIcoNative, "voll: das 28px-Icon, wie der Mittelpunkt es auch hat");
+  check(!L.valPv.centreY && L.valPv.w == kFlowValW,
+        "voll: PV-Wert wie die anderen drei");
 }
 
 // No battery: the house stays the hub, the battery and its connector go.
@@ -117,6 +124,15 @@ static void testWithoutHouseMeter() {
   check(L.pv.x == 240 && L.pv.y == 82 && L.pv.d == 92,
         "ohne Hauszaehler: PV sitzt als Mittelpunkt in der Mitte und ist gross");
   check(L.valPv.gross, "ohne Hauszaehler: PV-Wert gross");
+  // With a node below it the number belongs to the node above, so it stays where
+  // the house's value was - and it is placed by its top edge like the others.
+  check(!L.valPv.centreY, "ohne Hauszaehler: mit Akku ist y die Oberkante");
+  checkEq(L.valPv.w, kFlowAlleinValW,
+          "ohne Hauszaehler: auch hier die breite Zahl, der Wert ist gross");
+  // 92 px is a node with company, so the 28 px font scaled to 320 % is fine -
+  // that is what the house uses as well.
+  check(!L.pvIcoNative,
+        "ohne Hauszaehler: mit Akku und Netz das 28px-Icon wie im vollen Bild");
   check(L.valPv.x == kFlowHubValX && L.valPv.y == kFlowHubValY,
         "ohne Hauszaehler: mit Akku und Netz bleibt der Wert, wo der Hauswert war");
   check(L.grossPvIco, "ohne Hauszaehler: das PV-Icon wird wie das eines "
@@ -141,13 +157,40 @@ static void testWithoutHouseMeter() {
 // one node, and one pill.
 static void testOnlyGeneration() {
   const FlowLayout L = flowLayoutFor(capsOf(false, false, false));
-  // The only thing the device can report, so twice the size again: 92 * 2.
+  // The only thing the device can report, so bigger than a hub: 138 px.
   check(L.pv.visible && L.pv.x == 240 && L.pv.y == 82 && L.pv.d == kFlowAlleinD,
-        "nur Erzeugung: PV in der Mitte und noch einmal doppelt so gross");
+        "nur Erzeugung: PV in der Mitte und 160 px gross");
   check(L.valPv.gross, "nur Erzeugung: Wert gross");
-  // Centred under the node, and lower: the space the battery used is free.
+  // Centred under the node, and in the middle of the band between the circle's
+  // lower edge and the pill's upper edge: 151 and 299, so 225.
   check(L.valPv.x == kFlowAlleinValX && L.valPv.y == kFlowAlleinValY,
         "nur Erzeugung: der Wert sitzt mittig darunter und weiter unten");
+  // The band between circle and pill, measured where the value lives: in the
+  // container, which sits kFlowFlowY lower than the page the pills are on. Both
+  // ends of the band in one coordinate system - 162 and 264, so 213.
+  checkEq(kFlowAlleinValY, 213, "Band zwischen Kreis und Pille");
+  checkEq(L.valPv.y, (int16_t)((82 + 160 / 2 + (316 - 35) - 34 / 2) / 2),
+          "nur Erzeugung: die Mitte ist gerechnet, nicht geraten");
+  // Room for the glyph: 114 px of ink inside 160 px of circle. At 138 px it had
+  // 12 px on each side and looked pressed against the rim.
+  checkEq(kFlowAlleinD - 114, 46, "nur Erzeugung: 23 px Luft links und rechts");
+  // And the circle fits under the heading: its top edge is inside the container.
+  check(82 - kFlowAlleinD / 2 >= 0,
+        "nur Erzeugung: der Kreis passt unter die Kopfzeile");
+  // Its y is a middle, so the caller puts the top edge half a line above it -
+  // a label is placed by its corner, and getting that wrong is what put the
+  // number 16 px too low the first time.
+  check(L.valPv.centreY, "nur Erzeugung: y ist die Mitte des Wertes");
+  // 200 px, because "1,23 kW" in the 36 px font is 133 px and a narrower label
+  // wraps its text onto a second line.
+  checkEq(L.valPv.w, kFlowAlleinValW, "nur Erzeugung: der Wert bekommt 200 px");
+  checkEq(L.valPv.w, 200, "nur Erzeugung: 200 px fuer den 36px-Wert");
+  checkEq(L.valPv.x, 140, "nur Erzeugung: 200 px mittig auf 240 heisst 140");
+  // The circle is 160, so it is still inside the page horizontally and its
+  // bottom leaves room for the value: 162 + 102 px of band is where it goes.
+  check(kFlowAlleinD <= kFlowPageW, "nur Erzeugung: der Kreis passt in die Seite");
+  // Its own font at its own size: the 28 px glyph at 480 % was a blur.
+  check(L.pvIcoNative, "nur Erzeugung: das PV-Icon aus eigener Schrift, 1:1");
   check(!L.linkPv.visible, "nur Erzeugung: keine Verbindung nach links");
   check(!L.house.visible && !L.grid.visible && !L.battery.visible,
         "nur Erzeugung: nur der PV-Knoten");
