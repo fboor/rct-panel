@@ -60,4 +60,9 @@ public:
 // is not the one configured.
 DeviceDriver *makeDriver(const DeviceConfig &cfg);
 
+// The port a family answers on by default, "" for a type nobody implements. The
+// settings page puts it into the port field when the type changes, so that
+// switching a device does not also mean remembering a number.
+const char *deviceDefaultPort(const char *type);
+
 #endif // RCT_DEVICE_DRIVER_H

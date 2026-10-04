@@ -27,3 +27,21 @@ DeviceDriver *makeDriver(const DeviceConfig &cfg) {
   }
   return nullptr;
 }
+
+// The port each family answers on by default. The settings page offers it when
+// the type changes, because the two are not the same number - a RCT Power speaks
+// its own protocol on 8899, and a stick answers HTTP on 80 - and a number that is
+// wrong is a panel that never connects.
+//
+// Next to makeDriver() and not inside the drivers: a driver that carried its own
+// default would have to be asked before it exists, and the list of families is
+// already written down once, here.
+const char *deviceDefaultPort(const char *type) {
+  if (strcmp(type, "RCT") == 0) {
+    return "8899";
+  }
+  if (strcmp(type, "OIG") == 0) {
+    return "80";
+  }
+  return "";
+}

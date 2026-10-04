@@ -36,6 +36,7 @@
 #include "../i18n/Lang.h"
 #include "../output/Relay.h"
 #include "../device/Device.h"
+#include "../device/DeviceDriver.h"
 #include "../device/Rules.h"
 #include "../storage/CsvRow.h"
 #include "../storage/sdlog.h"
@@ -1502,6 +1503,11 @@ void handleSettingsPage() {
       const bool on = strcmp(device_type, ty.id) == 0;
       b += F("<option value=\"");
       b += ty.id;
+      // The port this family answers on, so the field below can be filled from
+      // the choice above instead of from the reader's memory. The number comes
+      // from the factory, which is where the families are written down.
+      b += F("\" data-port=\"");
+      b += deviceDefaultPort(ty.id);
       b += F("\"");
       if (on) {
         b += F(" selected");
@@ -1522,8 +1528,11 @@ void handleSettingsPage() {
   b += F("\">");
   b += F("<label for=\"port\">");
   b += tr(T_LBL_DEVICE_PORT);
-  b += F("</label><input type=\"text\" id=\"port\" name=\"port\" inputmode="
-         "numeric\" value=\"");
+  // The opening quote belongs to the second half: without it the attribute reads
+  // inputmode=numeric" and the browser throws the rest of the line away, port
+  // included.
+  b += F("</label><input type=\"text\" id=\"port\" name=\"port\" "
+         "inputmode=\"numeric\" value=\"");
   escape(device_port, esc, sizeof(esc));
   b += esc;
   b += F("\">");
@@ -1542,6 +1551,18 @@ void handleSettingsPage() {
   b += F("<button class=\"btn\">");
   b += tr(T_BTN_SAVE);
   b += F("</button></form>");
+
+  // Fill the port when the type changes. The two are one setting, not two: a RCT
+  // Power speaks its protocol on 8899 and a stick answers HTTP on 80, so a type
+  // change that leaves the old port standing produces a panel that connects to
+  // nothing and reports nothing - which looks like a broken device, not like a
+  // forgotten number. Filled rather than suggested: the field is right there, and
+  // a value that needs a second thought is the one people leave alone.
+  b += F("<script>(function(){var t=document.getElementById('typ'),"
+         "p=document.getElementById('port');if(!t||!p)return;"
+         "t.addEventListener('change',function(){var d=t.selectedOptions[0];"
+         "if(d&&d.getAttribute('data-port'))p.value=d.getAttribute('data-port');"
+         "});})();</script>");
 
   addMaintSection(b);
   sendNavPage(tr(T_PAGE_SETTINGS), "/einstellungen", b);

@@ -858,17 +858,23 @@ static void pageBuildOverview(AppPage *p) {
   // container, with the coordinates it had on the page. The house and the
   // battery come from the built-in Montserrat (it has no pylon and no solar
   // panel), the other two from the MDI font.
-  // haus. The icon a quarter larger than the 28 px font it is drawn from, which
-  // is what the node size asks for: 92 px of circle around a 28 px house looks
-  // like a coin with a stamp on it. LVGL scales the label as it draws it, so this
-  // costs no extra flash - and the pivot is set to the centre, because the
-  // default pivot is the top left corner and the icon would grow off to one side.
+  // haus. Drawn at its own size, from the font that has the glyph in it.
+  //
+  // The house has always come out of the 28 px uml font - and out of its
+  // fallback, because that font carries no symbols at all: it was generated with
+  // --lv-fallback lv_font_montserrat_28, so LV_SYMBOL_HOME was drawn by LVGL's
+  // built-in 28 px and then stretched to 320 % to fill the node. A glyph stretched
+  // three times its own size is a blur, the same lesson the PV icon has already
+  // taught twice today.
+  //
+  // lv_font_montserrat_36 has the symbol itself (62 of them, 0xF015 among them),
+  // and its house is about 26 px tall - at 100 % that is the same 66 px in the
+  // 92 px circle as before, drawn from 36 px of information instead of 28 px, and
+  // with nothing scaled. The uml variant of that size would add ~8 kB of flash for
+  // the two letters the house does not have.
   lv_obj_t *hausIco =
-      makeNode(flow, 240, 82, 92, LV_SYMBOL_HOME, &lv_font_montserrat_28_uml);
+      makeNode(flow, 240, 82, 92, LV_SYMBOL_HOME, &lv_font_montserrat_36);
   s_nodeHaus = lv_obj_get_parent(hausIco);
-  lv_obj_set_style_transform_scale(hausIco, 320, 0); // 256 = 1.0
-  lv_obj_set_style_transform_pivot_x(hausIco, LV_PCT(50), 0);
-  lv_obj_set_style_transform_pivot_y(hausIco, LV_PCT(50), 0);
   s_icoPv = makeNode(flow, 60, 80, 60, kSolarIcon, &lv_font_mdi_icons_28); // pv
   // The pivot is the middle: the default is the top left corner, and a scaled
   // icon grows to the lower right from there instead of staying in its circle.
