@@ -332,6 +332,21 @@ static void testMeterPresence() {
         "MIC1000: das Einspeiseregister gibt es auch");
 }
 
+// What the inverter delivers, minus what it feeds in - usable as a household only
+// where both halves are measurements, which is what the driver checks before it
+// uses it (see the fourth rule in DeviceCaps.h). The arithmetic is worth checking
+// on its own, especially the clamp: a household that consumes negative watts does
+// not exist, and a rounding difference between two registers must not invent one.
+static void testHouseholdFromAc() {
+  checkNearValue(oigHausAusAc(181.0f, 0.0f), 181.0f,
+                 "ohne Zaehler: alles, was der Wechselrichter abgibt, ist der Hausverbrauch");
+  checkNearValue(oigHausAusAc(181.0f, 60.0f), 121.0f,
+                 "mit Einspeisung: die Einspeisung gehoert nicht ins Haus");
+  checkNearValue(oigHausAusAc(100.0f, 101.0f), 0.0f,
+                 "mehr Einspeisung als Erzeugung: null, nicht negativ");
+  checkNearValue(oigHausAusAc(0.0f, 0.0f), 0.0f, "nichts geliefert, nichts eingespeist");
+}
+
 // A key that holds a string is not a measurement. The list must move on instead
 // of reporting a quantity it cannot read.
 static void testStringIsNotAValue() {
@@ -354,6 +369,7 @@ int main() {
   testMic1000();
   testBatteryPresence();
   testMeterPresence();
+  testHouseholdFromAc();
   testStringIsNotAValue();
 
   printf("%s: %d Prüfungen, %d fehlgeschlagen\n",
