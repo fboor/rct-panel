@@ -133,6 +133,9 @@ static void testWithoutHouseMeter() {
   // that is what the house uses as well.
   check(!L.pvIcoNative,
         "ohne Hauszaehler: mit Akku und Netz das 28px-Icon wie im vollen Bild");
+  // Nur der eine Knoten rueckt ab: bei einem Akku darunter waere eine andere
+  // Mitte genau der Fehler, den diese Aenderung sonst wiederholt.
+  check(L.pv.y == kFlowHubY, "ohne Hauszaehler: mit Akku in der Zeile geblieben");
   check(L.valPv.x == kFlowHubValX && L.valPv.y == kFlowHubValY,
         "ohne Hauszaehler: mit Akku und Netz bleibt der Wert, wo der Hauswert war");
   check(L.grossPvIco, "ohne Hauszaehler: das PV-Icon wird wie das eines "
@@ -158,8 +161,9 @@ static void testWithoutHouseMeter() {
 static void testOnlyGeneration() {
   const FlowLayout L = flowLayoutFor(capsOf(false, false, false));
   // The only thing the device can report, so bigger than a hub: 138 px.
-  check(L.pv.visible && L.pv.x == 240 && L.pv.y == 82 && L.pv.d == kFlowAlleinD,
-        "nur Erzeugung: PV in der Mitte und 160 px gross");
+  check(L.pv.visible && L.pv.x == 240 && L.pv.y == kFlowAlleinY &&
+            L.pv.d == kFlowAlleinD,
+        "nur Erzeugung: PV in der Mitte, 160 px gross und 8 px tiefer");
   check(L.valPv.gross, "nur Erzeugung: Wert gross");
   // Centred under the node, and in the middle of the band between the circle's
   // lower edge and the pill's upper edge: 151 and 299, so 225.
@@ -168,15 +172,17 @@ static void testOnlyGeneration() {
   // The band between circle and pill, measured where the value lives: in the
   // container, which sits kFlowFlowY lower than the page the pills are on. Both
   // ends of the band in one coordinate system - 162 and 264, so 213.
-  checkEq(kFlowAlleinValY, 213, "Band zwischen Kreis und Pille");
-  checkEq(L.valPv.y, (int16_t)((82 + 160 / 2 + (316 - 35) - 34 / 2) / 2),
+  checkEq(kFlowAlleinValY, 217, "Band zwischen Kreis und Pille");
+  checkEq(L.valPv.y, (int16_t)((kFlowAlleinY + 160 / 2 + (316 - 35) - 34 / 2) / 2),
           "nur Erzeugung: die Mitte ist gerechnet, nicht geraten");
   // Room for the glyph: 114 px of ink inside 160 px of circle. At 138 px it had
   // 12 px on each side and looked pressed against the rim.
   checkEq(kFlowAlleinD - 114, 46, "nur Erzeugung: 23 px Luft links und rechts");
   // And the circle fits under the heading: its top edge is inside the container.
-  check(82 - kFlowAlleinD / 2 >= 0,
+  check(kFlowAlleinY - kFlowAlleinD / 2 >= 0,
         "nur Erzeugung: der Kreis passt unter die Kopfzeile");
+  checkEq(kFlowAlleinY - kFlowAlleinD / 2, 10,
+          "nur Erzeugung: und hat 10 px Luft nach oben");
   // Its y is a middle, so the caller puts the top edge half a line above it -
   // a label is placed by its corner, and getting that wrong is what put the
   // number 16 px too low the first time.

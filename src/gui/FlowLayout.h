@@ -92,6 +92,11 @@ static const int16_t kFlowHubD = 92;   // the house
 // side, and its top edge is at y = 2: the most room the heading above the
 // container (which ends at 35 on the page) allows.
 static const int16_t kFlowAlleinD = 160;
+// 8 px below the hub row's centre. The circle fits under the heading either way
+// (its top edge is at y = 10 now, at y = 2 before), and it reads better with the
+// heading not sitting on it: with nothing else on the page, a circle pinned to the
+// top of it looks like it wants to climb out of the frame.
+static const int16_t kFlowAlleinY = (int16_t)(kFlowHubY + 8);
 static const int16_t kFlowPvX = 60;
 static const int16_t kFlowHubX = 240;
 static const int16_t kFlowGridX = 420;
@@ -131,11 +136,11 @@ static const int16_t kFlowBatValY = 247;
 // The value under the PV when it is the only node on the page: centred, and in
 // the middle of the empty band between the circle above it and the pill below it.
 // Both ends of the band are in the container, where this value lives too: the
-// circle's lower edge (82 + 160/2 = 162) and the pill's upper edge (316 - 35 -
-// 17 = 264), so its middle is 213. The first version measured the circle in the
+// circle's lower edge (90 + 160/2 = 170) and the pill's upper edge (316 - 35 -
+// 17 = 264), so its middle is 217. The first version measured the circle in the
 // container and the pill on the page and called the result 225 - 12 px too low,
 // because it had added the heading's height to the distance instead of taking it
-// off.
+// off. It moves with the circle above it, which is the point of measuring.
 //
 // Centred horizontally too: a 200 px label whose text is centred in itself has
 // its left edge at 240 - 100, and 200 px is what the 36 px font needs for
@@ -144,7 +149,8 @@ static const int16_t kFlowAlleinValW = 200;
 static const int16_t kFlowAlleinValX =
     (int16_t)(kFlowHubX - kFlowAlleinValW / 2);
 static const int16_t kFlowAlleinValY =
-    (int16_t)((kFlowHubY + kFlowAlleinD / 2 + kFlowPillYInFlow - kFlowPillH / 2) /
+    (int16_t)((kFlowAlleinY + kFlowAlleinD / 2 + kFlowPillYInFlow -
+               kFlowPillH / 2) /
               2);
 
 // The layout for one device family. caps.isKnown() false means "nothing has
@@ -170,12 +176,15 @@ static inline FlowLayout flowLayoutFor(const DeviceCaps &caps) {
   L.house.y = kFlowHubY;
   L.house.d = kFlowHubD;
 
-  // The PV node: an outer node of the row, or the hub when there is no house.
+  // The PV node: an outer node of the row, the hub when there is no house, and on
+  // its own - alone, 160 px and 8 px lower - when there is neither a house nor
+  // anything else below it. Decided once, because both its size and its place
+  // follow from it and a second, later test could read a d that is not set yet.
+  const bool pvAllein = hubIstPv && !kenneAkku && !kenneNetz;
   L.pv.visible = true;
   L.pv.x = hubIstPv ? kFlowHubX : kFlowPvX;
-  L.pv.y = hubIstPv ? kFlowHubY : kFlowRowY;
-  L.pv.d = hubIstPv ? (kenneAkku || kenneNetz ? kFlowHubD : kFlowAlleinD)
-                    : kFlowSideD;
+  L.pv.y = hubIstPv ? (pvAllein ? kFlowAlleinY : kFlowHubY) : kFlowRowY;
+  L.pv.d = hubIstPv ? (pvAllein ? kFlowAlleinD : kFlowHubD) : kFlowSideD;
 
   L.grid.visible = kenneNetz;
   L.grid.x = kFlowGridX;
@@ -247,7 +256,7 @@ static inline FlowLayout flowLayoutFor(const DeviceCaps &caps) {
   // In the one-node layout the icon is drawn from its own font at its own size;
   // everywhere else it is the 28 px font, scaled like the hub's or left alone.
   // A 28 px glyph at 480 % is a blur, and that layout is the whole page.
-  L.pvIcoNative = hubIstPv && L.pv.d == kFlowAlleinD;
+  L.pvIcoNative = pvAllein;
 
   L.valGrid.visible = kenneNetz;
   L.valGrid.x = kFlowGridValX;

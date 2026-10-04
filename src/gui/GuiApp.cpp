@@ -1066,7 +1066,11 @@ static void setNodeShown(lv_obj_t *node, const FlowNode &n) {
 // A number rather than something read out of the font, because the font is a
 // file in the repository and these four numbers are in it; they do not change
 // on their own, and if they ever do, this is where to look.
-static const int16_t kIcoInkHoch = 12;
+//
+// 12 of them are corrected, the remaining 4 are left: the icon is meant to stand
+// a little above the middle of its circle, so that it sits on the circle's lower
+// half the way a house stands on the ground rather than floating in it.
+static const int16_t kIcoInkHoch = 4;
 
 static void setNodeIconScale(lv_obj_t *ico, bool gross) {
   if (ico == nullptr) {
