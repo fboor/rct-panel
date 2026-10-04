@@ -936,11 +936,19 @@ static void pageBuildOverview(AppPage *p) {
     // the text at the same x in all three. Centring the two as a group was tried
     // first and looks wrong in a row - the icons end up at three different x, and
     // three icons that are supposed to be a column are not.
+    //
+    // The gap is the same for all three because the glyphs are: every icon in
+    // lv_font_mdi_icons_24 has adv_w 384, i.e. 24 px at this size, so the icon
+    // ends at 36 whatever it is. The text then starts at 42 - a 6 px gap, which
+    // reads as one group. At 46 the gap was 10 px, and with the two long words
+    // ("kein Verbrauch", "keine Batterie", about 104 px at 14 px) only 6 px were
+    // left at the right edge of a 152 px pill, so those two looked pushed out
+    // while the short one looked centred.
     lv_obj_t *ico = makeLabel(btn, pills[i].icon, pills[i].font, FLOW_WHITE);
     lv_obj_align(ico, LV_ALIGN_LEFT_MID, 12, 0);
     p->labels[pills[i].labelIdx] =
         makeLabel(btn, tr(pills[i].id), &lv_font_montserrat_14_uml, FLOW_WHITE);
-    lv_obj_align(p->labels[pills[i].labelIdx], LV_ALIGN_LEFT_MID, 46, 0);
+    lv_obj_align(p->labels[pills[i].labelIdx], LV_ALIGN_LEFT_MID, 42, 0);
     s_ovBtn[i] = btn;
     s_ovLabel[i] = pills[i].labelIdx;
   }
