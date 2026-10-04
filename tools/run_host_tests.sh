@@ -26,6 +26,16 @@
 #                  and for the RCT, whose do not. The same input has to give
 #                  different answers, and which one applies is the device's to
 #                  say, not the display's
+#   theme_test     the theme walk's decision: what an object's background and
+#                  text become when the theme is switched. One comparison in it
+#                  was wrong for as long as the light theme existed - the node
+#                  fill was pure white, also the light page background, so a
+#                  white node read as sitting on the page and switching to dark
+#                  repainted it. Right after every boot, wrong after every tap
+#   json_scan_test the JSON scanner the OpenInverterGateway driver reads its
+#                  values with: a flat object of register names, a field set that
+#                  depends on the model, and the answers of the simulator that
+#                  the test data was captured from
 #   crc_test       the frame checksum: check values computed independently of
 #                  the implementation, plus the padding rule for odd lengths
 #                  that the three-byte extension frame depends on
@@ -57,7 +67,7 @@ set -e
 cd "$(dirname "$0")/.."
 
 fail=0
-for t in device_test relay_test sd_queue_test numfmt_test i18n_test backlight_test badge_test crc_test json_test jstest; do
+for t in device_test relay_test sd_queue_test numfmt_test i18n_test backlight_test badge_test crc_test json_test theme_test json_scan_test jstest; do
   printf '\n=== %s ===\n' "$t"
   if [ "$t" = "jstest" ]; then
     if command -v node >/dev/null 2>&1; then

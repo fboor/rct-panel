@@ -43,6 +43,7 @@
 #include <WiFi.h>
 
 #include "GuiApp.h"
+#include "Theme.h"
 
 #include "../Charts.h"
 #include "../DataStatus.h"
@@ -157,28 +158,37 @@ static lv_color_t s_altOk = COL_OK, s_neuOk = COL_OK;
 // the light theme even collides with the new background) - so opacity has to
 // be asked as well, otherwise the first plain label on a page would end the
 // chain and leave everything below it untouched.
+// lv_color_t as the 24-bit RGB the decision in Theme.h compares. lv_color_hex()
+// takes this form and lv_color_to32() does not exist in LVGL 9, so the three
+// bytes are packed here.
+static inline int32_t themeRgb(lv_color_t c) {
+  return ((int32_t)c.red << 16) | ((int32_t)c.green << 8) | (int32_t)c.blue;
+}
+
 static void themeDurchlaufen(lv_obj_t *o, bool aufBg) {
+  // The decision itself is in Theme.h, host-tested (tools/theme_test): it is a
+  // handful of colour comparisons, and one of them was wrong for as long as the
+  // light theme existed - the node fill was pure white, also the light page
+  // background, so a white node was taken for something sitting on the page and
+  // switching to dark repainted it. Only the theme button runs this walk, which
+  // is why no screenshot showed it. What is left here are the LVGL calls.
   const bool undurchsichtig =
       lv_obj_get_style_bg_opa(o, LV_PART_MAIN) != LV_OPA_TRANSP;
-  const bool eigeneFlaeche =
-      undurchsichtig &&
-      !lv_color_eq(lv_obj_get_style_bg_color(o, LV_PART_MAIN), s_altBg);
-  if (aufBg && !eigeneFlaeche && undurchsichtig) {
-    lv_obj_set_style_bg_color(o, s_neuBg, LV_PART_MAIN);
-  } else if (eigeneFlaeche) {
-    aufBg = false; // a panel of its own: nothing below it is on the background
+  const int32_t bg = themeRgb(lv_obj_get_style_bg_color(o, LV_PART_MAIN));
+  const int32_t txt = themeRgb(lv_obj_get_style_text_color(o, LV_PART_MAIN));
+  const ThemeDecision d =
+      themeDecision(undurchsichtig, bg, themeRgb(s_altBg), themeRgb(s_neuBg), txt,
+                    themeRgb(s_altText), themeRgb(s_neuText), themeRgb(s_altOk),
+                    themeRgb(s_neuOk), aufBg);
+  if (d.bg != -1) {
+    lv_obj_set_style_bg_color(o, lv_color_hex((uint32_t)d.bg), LV_PART_MAIN);
   }
-  const lv_color_t txt = lv_obj_get_style_text_color(o, LV_PART_MAIN);
-  if (aufBg && lv_color_eq(txt, s_altText)) {
-    lv_obj_set_style_text_color(o, s_neuText, LV_PART_MAIN);
-  } else if (lv_color_eq(txt, s_altOk)) {
-    // The green follows the theme wherever it stands - on the background and on
-    // the cards - so it is swapped by colour and not by place.
-    lv_obj_set_style_text_color(o, s_neuOk, LV_PART_MAIN);
+  if (d.text != -1) {
+    lv_obj_set_style_text_color(o, lv_color_hex((uint32_t)d.text), LV_PART_MAIN);
   }
   const uint32_t n = lv_obj_get_child_count(o);
   for (uint32_t i = 0; i < n; i++) {
-    themeDurchlaufen(lv_obj_get_child(o, i), aufBg);
+    themeDurchlaufen(lv_obj_get_child(o, i), d.childAufBg);
   }
 }
 
@@ -203,7 +213,21 @@ static const lv_color_t FLOW_RED = lv_color_hex(0xCA0C0F);   // active flow / va
 static const lv_color_t FLOW_GRAY = lv_color_hex(0x555658);  // icon inside nodes
 static const lv_color_t FLOW_BORDER = lv_color_hex(0x6E6F72); // node ring
 static const lv_color_t FLOW_LINE = lv_color_hex(0xCBCBCD);  // idle connector
-static const lv_color_t FLOW_WHITE = lv_color_hex(0xFFFFFF); // node fill
+// The node fill, and deliberately not pure white.
+//
+// It was 0xFFFFFF, which is exactly COL_BG_HELL - the light theme's page
+// background. themeDurchlaufen() decides "panel of its own, or sitting on the
+// background?" by comparing an object's background with the background of the
+// theme being left, so in the light theme a white node compared equal to a
+// white page and was classified as sitting on it: switching to dark then
+// painted it with the new background and the nodes went dark. Only the switch
+// runs the walk, which is why this showed in no screenshot.
+//
+// An almost-white is not the page in either theme, so the nodes are what they
+// are meant to be in both: a light disc with a grey ring. On the dark page it
+// reads as before; on the light one it is a faint raised disc, which is the
+// point of a node rather than a hole.
+static const lv_color_t FLOW_WHITE = lv_color_hex(0xF2F4F7); // node fill
 
 // The two flow-diagram icons, from Material Design Icons (Community),
 // Apache-2.0, https://github.com/pictogrammers/material-design-icons - see
@@ -2107,7 +2131,7 @@ static void refreshCb(lv_timer_t *t) {
   const char *badge;
   lv_color_t badgeCol;
   switch (dataStatus(networkConnecting(), s.haveData, s.connected,
-                     dataAgeMs(millis(), s.lastUpdateMs))) {
+                     dataAgeMs(millis(), s.lastUpdateMs), s.asleep)) {
   case DataStatus::Connecting:
     badge = tr(T_D_BADGE_CONNECTING);
     badgeCol = COL_WARN;
@@ -2126,6 +2150,14 @@ static void refreshCb(lv_timer_t *t) {
     // itself below.
     badge = tr(T_D_BADGE_WAITING);
     badgeCol = COL_WARN;
+    break;
+  case DataStatus::Asleep:
+    // The device switched itself off: an inverter without battery does this
+    // every night, from dusk to dawn. Not green - the values below are hours
+    // old - but not red either, because nothing is wrong. The dimmed text
+    // colour (COL_MUTED), so the badge reads as quiet rather than as a fault.
+    badge = tr(T_D_BADGE_ASLEEP);
+    badgeCol = COL_MUTED;
     break;
   default:
     badge = tr(T_D_BADGE_LIVE);
