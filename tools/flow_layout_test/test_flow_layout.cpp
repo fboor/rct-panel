@@ -116,13 +116,15 @@ static void testWithoutHouseMeter() {
 
   check(L.pv.x == 240 && L.pv.y == 82 && L.pv.d == 92,
         "ohne Hauszaehler: PV sitzt als Mittelpunkt in der Mitte und ist gross");
-  check(L.valPv.x == 250 && L.valPv.y == 120 && L.valPv.gross,
-        "ohne Hauszaehler: PV-Wert gross, an der Stelle des Hauswertes");
+  check(L.valPv.gross, "ohne Hauszaehler: PV-Wert gross");
+  check(L.valPv.x == kFlowHubValX && L.valPv.y == kFlowHubValY,
+        "ohne Hauszaehler: mit Akku und Netz bleibt der Wert, wo der Hauswert war");
+  check(L.grossPvIco, "ohne Hauszaehler: das PV-Icon wird wie das eines "
+                      "Mittelpunkts skaliert");
 
   // The connectors now start at the PV node, which is the hub.
-  check(L.linkPv.visible && L.linkPv.x1 == 240 && L.linkPv.y1 == 82 &&
-            L.linkPv.x2 == 240 && L.linkPv.y2 == 82,
-        "ohne Hauszaehler: die PV-Laeuft in sich selbst - sie ist die Mitte");
+  check(!L.linkPv.visible,
+        "ohne Hauszaehler: die PV hat keine Verbindung - sie ist die Mitte");
   check(L.linkGrid.x1 == 240 && L.linkGrid.y1 == 82 && L.linkGrid.x2 == 420,
         "ohne Hauszaehler: Netz haengt an der PV");
   check(L.linkBattery.x1 == 240 && L.linkBattery.y1 == 82 &&
@@ -139,9 +141,14 @@ static void testWithoutHouseMeter() {
 // one node, and one pill.
 static void testOnlyGeneration() {
   const FlowLayout L = flowLayoutFor(capsOf(false, false, false));
-  check(L.pv.visible && L.pv.x == 240 && L.pv.y == 82 && L.pv.d == 92,
-        "nur Erzeugung: PV in der Mitte, gross");
+  // The only thing the device can report, so twice the size again: 92 * 2.
+  check(L.pv.visible && L.pv.x == 240 && L.pv.y == 82 && L.pv.d == kFlowAlleinD,
+        "nur Erzeugung: PV in der Mitte und noch einmal doppelt so gross");
   check(L.valPv.gross, "nur Erzeugung: Wert gross");
+  // Centred under the node, and lower: the space the battery used is free.
+  check(L.valPv.x == kFlowAlleinValX && L.valPv.y == kFlowAlleinValY,
+        "nur Erzeugung: der Wert sitzt mittig darunter und weiter unten");
+  check(!L.linkPv.visible, "nur Erzeugung: keine Verbindung nach links");
   check(!L.house.visible && !L.grid.visible && !L.battery.visible,
         "nur Erzeugung: nur der PV-Knoten");
   check(!L.linkGrid.visible && !L.linkBattery.visible,

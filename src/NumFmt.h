@@ -152,4 +152,33 @@ static inline int fmtNumLang(char *out, size_t cap, const char *fmt, ...) {
   return n;
 }
 
+// A power on the display: whole watts below 1 kW, kilowatts with two decimals
+// from there on. "0,38 kW" is a number nobody compares at a glance - 380 W is,
+// and it is about as wide as the values next to it, which is what a row of
+// figures needs to stay readable. Above 1 kW the unit change earns its keep: two
+// decimals of "5,75 kW" are 5 W, while "380 W" would throw away more than the
+// rounding.
+//
+// The boundary is 1000 W and not 999: at 999.5 W the row would show "1000 W" and
+// the next tick "1,00 kW", which is two different renderings of the same
+// number. Above the boundary the sign is kept, because a negative power is
+// information (the convention says + = draw from the grid), below it the sign is
+// dropped by numDropNegZero() the way every other number on the panel drops it.
+//
+// The separator follows the language, which the overview's values did not: they
+// went through setText() and came out with a dot in a German build, while the
+// energy page next to it writes a comma.
+static inline int fmtPower(char *out, size_t cap, float watts) {
+  // The unit is decided from the *rounded* magnitude, not from the raw one: at
+  // 999.5 W a comparison against 1000 would still choose watts, print "1000 W",
+  // and the next tick print "1,00 kW" - two renderings of one number within a
+  // second. Rounding first makes the switch happen exactly where the text does.
+  const float w = watts < 0.0f ? -watts : watts;
+  const long gerundet = (long)(w + 0.5f);
+  if (gerundet < 1000L) {
+    return fmtNumLang(out, cap, "%.0f W", (double)watts);
+  }
+  return fmtNumLang(out, cap, "%.2f kW", (double)(watts / 1000.0f));
+}
+
 #endif // RCT_NUMFMT_H

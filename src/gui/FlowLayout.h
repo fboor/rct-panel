@@ -63,6 +63,7 @@ struct FlowLayout {
   int16_t pillX[3];     // left edge of the pills that exist
   bool batterySoc;      // the percentage inside the battery node
   bool islandMark;      // the warning triangle has a connector to sit on
+  bool grossPvIco;      // the PV icon is scaled like the hub's
 };
 
 // --- the fixed layout of a full device, unchanged ---------------------------
@@ -73,6 +74,12 @@ static const int16_t kFlowRowY = 80;   // the outer nodes' centre
 static const int16_t kFlowHubY = 82;   // the hub's centre, 2 px lower
 static const int16_t kFlowSideD = 60;  // PV, grid, battery
 static const int16_t kFlowHubD = 92;   // the house
+// The PV as the only node on the page: bigger than a node that has company,
+// because it is then the whole diagram. 138 px, which is 92 * 1.5 - halfway
+// between a hub and the first attempt at 184, which was too much of a jump from
+// the 92 px of a full page. Its icon is scaled in proportion (480 % where the
+// house uses 320 %), so the glyph keeps its size relative to the circle.
+static const int16_t kFlowAlleinD = 138;
 static const int16_t kFlowPvX = 60;
 static const int16_t kFlowHubX = 240;
 static const int16_t kFlowGridX = 420;
@@ -89,6 +96,13 @@ static const int16_t kFlowGridValX = 360;
 static const int16_t kFlowGridValY = 118;
 static const int16_t kFlowBatValX = 180;
 static const int16_t kFlowBatValY = 247;
+// The value under the PV when it is the only node: centred (the label is 120 px
+// wide and centred in itself, so its left edge is 240 - 60), and lower than the
+// house's value because there is no battery below it.
+static const int16_t kFlowAlleinValX = 180;
+// 30 px higher than the house's value: the circle is smaller now, and 250 put the
+// number so far below it that the two stopped reading as one group.
+static const int16_t kFlowAlleinValY = 220;
 
 // The three pills are 152 px wide with 6 px between them and 6 px of margin,
 // which fills the 480 px page exactly. Fewer pills are centred as a group: one
@@ -126,7 +140,8 @@ static inline FlowLayout flowLayoutFor(const DeviceCaps &caps) {
   L.pv.visible = true;
   L.pv.x = hubIstPv ? kFlowHubX : kFlowPvX;
   L.pv.y = hubIstPv ? kFlowHubY : kFlowRowY;
-  L.pv.d = hubIstPv ? kFlowHubD : kFlowSideD;
+  L.pv.d = hubIstPv ? (kenneAkku || kenneNetz ? kFlowHubD : kFlowAlleinD)
+                    : kFlowSideD;
 
   L.grid.visible = kenneNetz;
   L.grid.x = kFlowGridX;
@@ -141,7 +156,11 @@ static inline FlowLayout flowLayoutFor(const DeviceCaps &caps) {
   // The connectors all start at the hub's centre: from the house to the three
   // around it, or from the PV node when there is no house.
   const int16_t hubX = kFlowHubX, hubY = kFlowHubY;
-  L.linkPv.visible = true; // the PV is always there
+  // A connector only exists between two nodes. When the PV is the hub there is
+  // nothing to connect it to, so the line is not drawn and the arrow on it goes
+  // with it - an arrow on a link of zero length is a dash with no meaning, and it
+  // was the one leftover of the layout that nobody had looked at.
+  L.linkPv.visible = !hubIstPv;
   L.linkPv.x1 = hubX;
   L.linkPv.y1 = hubY;
   L.linkPv.x2 = L.pv.x;
@@ -167,13 +186,24 @@ static inline FlowLayout flowLayoutFor(const DeviceCaps &caps) {
 
   L.valPv.visible = true;
   L.valPv.gross = hubIstPv;
-  if (hubIstPv) {
+  if (hubIstPv && kenneAkku) {
+    // A battery hangs below the PV node, and with it the vertical line - so the
+    // value keeps the place the house's value had: right of that line, so the
+    // line does not run through the digits.
     L.valPv.x = kFlowHubValX;
     L.valPv.y = kFlowHubValY;
+  } else if (hubIstPv) {
+    // Nothing below the node, so nothing to make room for: the value is the
+    // content of the page and goes centred under it, and lower, because the
+    // space the battery used would otherwise be empty room between the number
+    // and the pill.
+    L.valPv.x = kFlowAlleinValX;
+    L.valPv.y = kFlowAlleinValY;
   } else {
     L.valPv.x = kFlowPvValX;
     L.valPv.y = kFlowPvValY;
   }
+  L.grossPvIco = hubIstPv;
 
   L.valGrid.visible = kenneNetz;
   L.valGrid.x = kFlowGridValX;

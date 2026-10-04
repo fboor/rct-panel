@@ -906,6 +906,21 @@ void RctDriver::setTransport(DeviceTransport *link) { s_link = link; }
 
 void RctDriver::begin(const DeviceConfig &cfg) {
   s_cfg = cfg;
+
+  // What this family can report. Stated here rather than derived from what
+  // happens to arrive: an RCT Power has all four meters and the island flag, and
+  // the panel asks before it draws - so it has to be said.
+  //
+  // It also says it does not sleep: the inverter runs from the grid, so silence
+  // after sunset is a fault on this family and is reported as one.
+  deviceStateMutable().caps = DeviceCaps();
+  DeviceCaps &c = deviceStateMutable().caps;
+  c.houseMeter = true;  // the load meter reads the household
+  c.gridMeter = true;   // and the grid exchange is its own register
+  c.battery = true;     // state of charge answers on a device with a battery
+  c.islandFlag = true;  // prim_sm.island_flag
+  c.faultBits = true;   // four fault words, 128 bits
+  c.sleepsWithoutGeneration = false;
 }
 
 void RctDriver::poll(uint32_t budgetMs) { rctPoll(budgetMs); }

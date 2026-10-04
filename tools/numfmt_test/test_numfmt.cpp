@@ -48,6 +48,21 @@ static std::string lang(double v) {
   return b;
 }
 
+// Two pieces of a fmtPower() answer: the part that is the same in both languages
+// (whole watts, with the sign), and the part that carries the separator (kW).
+static std::string punkt(const char *want) { return want; }
+static std::string langK(const char *mitKomma) {
+  char b[64];
+  // The expected string arrives with a comma; the build's separator replaces it.
+  std::string s(mitKomma);
+  for (size_t i = 0; i < s.size(); i++) {
+    if (s[i] == ',') {
+      s[i] = langDecPoint();
+    }
+  }
+  return s;
+}
+
 int main() {
   std::printf("== Anzeigewerte, die auf null runden ==\n");
 
@@ -136,6 +151,35 @@ int main() {
     char small[4];
     fmtNum(small, sizeof(small), "%.1f kW", -1234.0);
     expect(small, "-12", "Restsinn nach dem Kuerzen");
+  }
+
+  {
+    // fmtPower(): whole watts under 1 kW, kilowatts above it, and the separator
+    // of the language. The row of figures on the overview is the reason: "0,38
+    // kW" next to "380 W" is a row nobody can scan.
+    char b[64];
+    fmtPower(b, sizeof(b), 380.0f);
+    expect(b, punkt("380 W"), "380 W bleiben Watt");
+    fmtPower(b, sizeof(b), 0.0f);
+    expect(b, punkt("0 W"), "0 W");
+    fmtPower(b, sizeof(b), 999.0f);
+    expect(b, punkt("999 W"), "999 W sind noch Watt");
+    fmtPower(b, sizeof(b), 999.5f);
+    expect(b, langK("1,00 kW"), "ab 1000 W wechselt die Einheit, ohne Luecke");
+    fmtPower(b, sizeof(b), 1000.0f);
+    expect(b, langK("1,00 kW"), "1000 W");
+    fmtPower(b, sizeof(b), 5750.0f);
+    expect(b, langK("5,75 kW"), "5750 W");
+    fmtPower(b, sizeof(b), 12345.0f);
+    expect(b, langK("12,35 kW"), "12345 W runden auf zwei Stellen");
+    // Das Vorzeichen bleibt oberhalb der Grenze: negativ heisst hier Bezug, und
+    // das ist eine Information, keine Rundung.
+    fmtPower(b, sizeof(b), -810.0f);
+    expect(b, punkt("-810 W"), "negativ bleibt negativ");
+    fmtPower(b, sizeof(b), -5750.0f);
+    expect(b, langK("-5,75 kW"), "negativ in kW");
+    fmtPower(b, sizeof(b), -0.4f);
+    expect(b, punkt("0 W"), "unter der Grenze faellt das Vorzeichen wie sonst");
   }
 
   std::printf("\n== %d Prüfungen, %d fehlgeschlagen ==\n", g_checks, g_failed);

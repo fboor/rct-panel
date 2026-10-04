@@ -588,6 +588,16 @@ static uint32_t s_apTestUntil = 0; // boot test deadline (ms), 0 = none
 //
 // The sign rule from NumFmt.h applies here too: a value that rounds to zero is
 // shown without its minus.
+// A power on the display: whole watts below 1 kW, kilowatts above it, and the
+// decimal point of the language this firmware was built for. The four values of
+// the overview went through setText() until now, which put a dot in a German
+// build while the energy page beside it writes a comma.
+static void setPower(lv_obj_t *label, float watts) {
+  char buf[48];
+  fmtPower(buf, sizeof(buf), watts);
+  lv_label_set_text(label, buf);
+}
+
 static void setText(lv_obj_t *label, const char *fmt, ...) {
   char buf[64];
   va_list ap;
@@ -1004,9 +1014,7 @@ static void pageBuildOverview(AppPage *p) {
   // The layout of the last device that answered, not of this one: the caps are
   // in the answer and the answer has not come yet. With nothing stored the key
   // is 0xFF, which yields the full layout - the one this page was drawn for.
-  const FlowLayout startL = flowLayoutFor(capsFromKey(s_flowKey));
-  applyFlowLayout(startL, p);
-  s_flowKey = flowCapsKey(capsFromKey(s_flowKey));
+  applyFlowLayout(flowLayoutFor(capsFromKey(s_flowKey)), p);
 }
 
 // ---------------------------------------------------------------------------
@@ -1040,11 +1048,11 @@ static void setNodeShown(lv_obj_t *node, const FlowNode &n) {
 // The icon of a node that becomes the hub is scaled the way the house icon is,
 // with the pivot in the middle - the default pivot is the top left corner and the
 // glyph would grow off to one side.
-static void setNodeIconScale(lv_obj_t *ico, bool gross) {
+static void setNodeIconScale(lv_obj_t *ico, bool gross, int scale = 320) {
   if (ico == nullptr) {
     return;
   }
-  lv_obj_set_style_transform_scale(ico, gross ? 320 : 256, 0); // 256 = 1.0
+  lv_obj_set_style_transform_scale(ico, gross ? scale : 256, 0); // 256 = 1.0
   lv_obj_set_style_transform_pivot_x(ico, LV_PCT(50), 0);
   lv_obj_set_style_transform_pivot_y(ico, LV_PCT(50), 0);
 }
@@ -1079,8 +1087,13 @@ static void setValueShown(lv_obj_t *label, const FlowValue &v) {
   }
   lv_obj_remove_flag(label, LV_OBJ_FLAG_HIDDEN);
   lv_obj_set_pos(label, v.x, v.y);
+  // The gross value is 36 px: it is the content of the page in that layout, and
+  // a scaled 28 px label would have cost nothing but looked like a copy. The
+  // built-in font and not one of the _uml ones - those carry the umlauts the
+  // texts need, and a number with "W" and "kW" has none. That is the one label
+  // that cannot show an umlaut, and it cannot need to.
   lv_obj_set_style_text_font(label,
-                             v.gross ? &lv_font_montserrat_28_uml
+                             v.gross ? &lv_font_montserrat_36
                                      : &lv_font_montserrat_16_uml,
                              0);
 }
@@ -1122,7 +1135,7 @@ static void applyFlowLayout(const FlowLayout &L, AppPage *ov) {
   // icon re-scaled; the house is the hub whenever it is there at all, and the
   // other two are always outer nodes. The percentage inside the battery node
   // needs nothing either - a hidden parent hides its children with it.
-  setNodeIconScale(s_icoPv, L.pv.d == kFlowHubD);
+  setNodeIconScale(s_icoPv, L.grossPvIco, L.pv.d == kFlowAlleinD ? 480 : 320);
 
   setLinkShown(s_linePv, L.linkPv);
   setLinkShown(s_lineGrid, L.linkGrid);
@@ -1131,17 +1144,32 @@ static void applyFlowLayout(const FlowLayout &L, AppPage *ov) {
   // The arrows sit on their connector's midpoint, and the island triangle 25 px
   // above the grid link - computed from the layout so they follow it.
   int16_t cx = 0, cy = 0;
+  // An arrow belongs to a connection: where there is none, there is none to
+  // point along. All three follow the same rule - the first version guarded only
+  // the PV one and left a red arrowhead on the page with no line under it.
+  auto setArrow = [&cx, &cy, ov](lv_obj_t *lbl, const FlowLink &link) {
+    if (lbl == nullptr) {
+      return;
+    }
+    if (!link.visible) {
+      lv_obj_add_flag(lbl, LV_OBJ_FLAG_HIDDEN);
+      return;
+    }
+    flowLinkMidpoint(link, &cx, &cy);
+    lv_obj_remove_flag(lbl, LV_OBJ_FLAG_HIDDEN);
+    placeArrow(lbl, cx, cy);
+  };
   flowLinkMidpoint(L.linkPv, &cx, &cy);
-  if (ov != nullptr && ov->labels[OV_PV_ARROW] != nullptr) {
-    placeArrow(ov->labels[OV_PV_ARROW], cx, cy);
+  if (ov != nullptr) {
+    setArrow(ov->labels[OV_PV_ARROW], L.linkPv);
   }
   flowLinkMidpoint(L.linkGrid, &cx, &cy);
-  if (ov != nullptr && ov->labels[OV_GRID_ARROW] != nullptr) {
-    placeArrow(ov->labels[OV_GRID_ARROW], cx, cy);
+  if (ov != nullptr) {
+    setArrow(ov->labels[OV_GRID_ARROW], L.linkGrid);
   }
   flowLinkMidpoint(L.linkBattery, &cx, &cy);
-  if (ov != nullptr && ov->labels[OV_BAT_ARROW] != nullptr) {
-    placeArrow(ov->labels[OV_BAT_ARROW], cx, cy);
+  if (ov != nullptr) {
+    setArrow(ov->labels[OV_BAT_ARROW], L.linkBattery);
   }
   flowLinkMidpoint(L.linkGrid, &cx, &cy);
   if (ov != nullptr && ov->labels[OV_ISLAND] != nullptr) {
@@ -2345,7 +2373,7 @@ static void refreshCb(lv_timer_t *t) {
   // one the page was built for moves anything.
   {
     const uint8_t key = flowCapsKey(s.caps);
-    if (key != s_flowKey) {
+    if (s.caps.isKnown() && key != s_flowKey) {
       applyFlowLayout(flowLayoutFor(s.caps), &s_pages[PAGE_OVERVIEW]);
       s_flowKey = key;
       flowKeySpeichern(key);
@@ -2470,10 +2498,9 @@ static void refreshCb(lv_timer_t *t) {
       lv_obj_add_flag(ov.labels[OV_ISLAND], LV_OBJ_FLAG_HIDDEN);
     }
     if (has) {
-      float absK = fabsf(pTot) / 1000.0f;
       bool active = fabsf(pTot) >= gridActive;
       if (active) {
-        setText(ov.labels[OV_GRID_VAL], "%.2f kW", absK);
+        setPower(ov.labels[OV_GRID_VAL], pTot);
         lv_obj_set_style_text_color(ov.labels[OV_GRID_VAL], FLOW_RED, 0);
       } else {
         lv_label_set_text(ov.labels[OV_GRID_VAL], dash);
@@ -2499,7 +2526,7 @@ static void refreshCb(lv_timer_t *t) {
 
     // --- PV (panel -> haus) ---
     if (has && pvTotal >= pvActive) {
-      setText(ov.labels[OV_PV_VAL], "%.2f kW", pvTotal / 1000.0f);
+      setPower(ov.labels[OV_PV_VAL], pvTotal);
       lv_obj_set_style_text_color(ov.labels[OV_PV_VAL], FLOW_RED, 0);
       lv_obj_set_style_line_color(s_linePv, FLOW_RED, 0);
       lv_obj_set_style_line_width(s_linePv, 4, 0);
@@ -2518,8 +2545,7 @@ static void refreshCb(lv_timer_t *t) {
       setText(ov.labels[OV_BAT_SOC], "%.0f %%", s.socPct);
       bool active = has && fabsf(pBat) >= batActive;
       if (active) {
-        float absK = fabsf(pBat) / 1000.0f;
-        setText(ov.labels[OV_BAT_VAL], "%.2f kW", absK);
+        setPower(ov.labels[OV_BAT_VAL], pBat);
         lv_obj_set_style_text_color(ov.labels[OV_BAT_VAL], FLOW_RED, 0);
         lv_obj_set_style_line_color(s_lineBat, FLOW_RED, 0);
         lv_obj_set_style_line_width(s_lineBat, 4, 0);
@@ -2545,7 +2571,7 @@ static void refreshCb(lv_timer_t *t) {
 
     // --- Haus (total household demand: Power Sensor + S0 generator) ---
     if (has && house >= 5.0f) {
-      setText(ov.labels[OV_HOUSE_VAL], "%.2f kW", house / 1000.0f);
+      setPower(ov.labels[OV_HOUSE_VAL], house);
       lv_obj_set_style_text_color(ov.labels[OV_HOUSE_VAL], FLOW_RED, 0);
     } else {
       lv_label_set_text(ov.labels[OV_HOUSE_VAL], has ? "0.00 kW" : dash);
