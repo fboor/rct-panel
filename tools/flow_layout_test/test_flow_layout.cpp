@@ -172,7 +172,7 @@ static void testOnlyGeneration() {
   // The band between circle and pill, measured where the value lives: in the
   // container, which sits kFlowFlowY lower than the page the pills are on. Both
   // ends of the band in one coordinate system - 162 and 264, so 213.
-  checkEq(kFlowAlleinValY, 217, "Band zwischen Kreis und Pille");
+  checkEq(kFlowAlleinValY, 222, "Band zwischen Kreis und Pille");
   checkEq(L.valPv.y, (int16_t)((kFlowAlleinY + 160 / 2 + (316 - 35) - 34 / 2) / 2),
           "nur Erzeugung: die Mitte ist gerechnet, nicht geraten");
   // Room for the glyph: 114 px of ink inside 160 px of circle. At 138 px it had
@@ -181,8 +181,9 @@ static void testOnlyGeneration() {
   // And the circle fits under the heading: its top edge is inside the container.
   check(kFlowAlleinY - kFlowAlleinD / 2 >= 0,
         "nur Erzeugung: der Kreis passt unter die Kopfzeile");
-  checkEq(kFlowAlleinY - kFlowAlleinD / 2, 10,
-          "nur Erzeugung: und hat 10 px Luft nach oben");
+  checkEq(kFlowAlleinY - kFlowAlleinD / 2, 20,
+          "nur Erzeugung: und hat 20 px Luft nach oben");
+  checkEq(kFlowAlleinY, 100, "nur Erzeugung: die Mitte des Kreises");
   // Its y is a middle, so the caller puts the top edge half a line above it -
   // a label is placed by its corner, and getting that wrong is what put the
   // number 16 px too low the first time.

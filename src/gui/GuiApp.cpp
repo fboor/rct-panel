@@ -1056,21 +1056,19 @@ static void setNodeShown(lv_obj_t *node, const FlowNode &n) {
 // The icon of a node that becomes the hub is scaled the way the house icon is,
 // with the pivot in the middle - the default pivot is the top left corner and the
 // glyph would grow off to one side.
-// How far the glyph of a font sits above the middle of that font's line box.
-// For lv_font_mdi_icons_136: line_height 114, base_line 6, ofs_y -6. Its ink
-// is 114 px, so it begins 12 px above the top of the line and ends 12 px above
-// the bottom - 12 px above the middle of the line. Centring the label in the
-// circle is therefore not the same as centring the ink in it, and in a 160 px
-// circle 12 px is the difference between standing in it and floating in it.
+// How far the icon's label is moved *down* inside its circle, in px. A negative
+// value moves it up.
 //
-// A number rather than something read out of the font, because the font is a
-// file in the repository and these four numbers are in it; they do not change
-// on their own, and if they ever do, this is where to look.
-//
-// 12 of them are corrected, the remaining 4 are left: the icon is meant to stand
-// a little above the middle of its circle, so that it sits on the circle's lower
-// half the way a house stands on the ground rather than floating in it.
-static const int16_t kIcoInkHoch = 4;
+// The arithmetic, because it is easy to have this backwards: lv_font_mdi_icons_136
+// has line_height 114, base_line 6 and ofs_y -6, so an ink of 114 px begins 12 px
+// above the top of the line and ends 12 px above its bottom - the ink already sits
+// 12 px above the middle of the line, and lv_obj_center() puts the middle of the
+// line in the middle of the circle. So +12 would put the ink exactly in the centre,
+// and each step of looking has gone further up from there: 8 px, then 10 px, which
+// leaves the ink 14 px above the centre of a 160 px circle - high enough that it
+// clearly belongs to the upper part of the node rather than floating in the middle
+// of it.
+static const int16_t kIcoLabelRunter = -14;
 
 static void setNodeIconScale(lv_obj_t *ico, bool gross) {
   if (ico == nullptr) {
@@ -1216,7 +1214,7 @@ static void applyFlowLayout(const FlowLayout &L, AppPage *ov) {
   // drawn in.
   lv_obj_update_layout(s_icoPv);
   lv_obj_center(s_icoPv);
-  lv_obj_set_y(s_icoPv, (int16_t)(lv_obj_get_y(s_icoPv) + kIcoInkHoch));
+  lv_obj_set_y(s_icoPv, (int16_t)(lv_obj_get_y(s_icoPv) + kIcoLabelRunter));
 
   setLinkShown(s_linePv, L.linkPv);
   setLinkShown(s_lineGrid, L.linkGrid);

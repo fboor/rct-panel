@@ -92,11 +92,12 @@ static const int16_t kFlowHubD = 92;   // the house
 // side, and its top edge is at y = 2: the most room the heading above the
 // container (which ends at 35 on the page) allows.
 static const int16_t kFlowAlleinD = 160;
-// 8 px below the hub row's centre. The circle fits under the heading either way
-// (its top edge is at y = 10 now, at y = 2 before), and it reads better with the
-// heading not sitting on it: with nothing else on the page, a circle pinned to the
-// top of it looks like it wants to climb out of the frame.
-static const int16_t kFlowAlleinY = (int16_t)(kFlowHubY + 8);
+// 18 px below the hub row's centre. The circle fits under the heading either way
+// (its top edge is at y = 20), and it reads better the further down it stands:
+// with nothing else on the page, a circle near the top of it looks like it wants
+// to climb out of the frame. Two steps of 8 and 10 px, both from looking at the
+// panel.
+static const int16_t kFlowAlleinY = (int16_t)(kFlowHubY + 18);
 static const int16_t kFlowPvX = 60;
 static const int16_t kFlowHubX = 240;
 static const int16_t kFlowGridX = 420;
@@ -136,8 +137,8 @@ static const int16_t kFlowBatValY = 247;
 // The value under the PV when it is the only node on the page: centred, and in
 // the middle of the empty band between the circle above it and the pill below it.
 // Both ends of the band are in the container, where this value lives too: the
-// circle's lower edge (90 + 160/2 = 170) and the pill's upper edge (316 - 35 -
-// 17 = 264), so its middle is 217. The first version measured the circle in the
+// circle's lower edge (100 + 160/2 = 180) and the pill's upper edge (316 - 35 -
+// 17 = 264), so its middle is 222. The first version measured the circle in the
 // container and the pill on the page and called the result 225 - 12 px too low,
 // because it had added the heading's height to the distance instead of taking it
 // off. It moves with the circle above it, which is the point of measuring.
