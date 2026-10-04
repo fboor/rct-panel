@@ -354,18 +354,31 @@ void handleRoot() {
     b += value;
     b += F("</div></div>");
   };
-  // Sign convention as on the panel and in the manual: net positive = draw
-  // from the grid, negative = feed-in. fmtNumLang: the decimal separator of
-  // this build, and no "-0,00 kW" for a grid power that is a rounding error
-  // below zero.
-  fmtNumLang(v, sizeof(v), "%.2f kW", (double)s.gridExchangeW / 1000.0);
-  card(T_CARD_GRID, v);
+  // One card per quantity the device reports, the same rule as the diagram on
+  // the panel: a card for a measurement that is not being taken shows a number
+  // that is not a measurement. Generation is always there, the other three only
+  // where the device has the meter behind them - and all four until it has
+  // answered once, because an RCT Power is what most of them are.
+  //
+  // Sign convention as on the panel and in the manual: net positive = draw from
+  // the grid, negative = feed-in. fmtNumLang: the decimal separator of this
+  // build, and no "-0,00 kW" for a grid power that is a rounding error below
+  // zero.
+  const bool alleVier = !s.caps.isKnown();
+  if (s.caps.gridMeter || alleVier) {
+    fmtNumLang(v, sizeof(v), "%.2f kW", (double)s.gridExchangeW / 1000.0);
+    card(T_CARD_GRID, v);
+  }
   fmtNumLang(v, sizeof(v), "%.2f kW", (double)ruleGenerationW(s) / 1000.0);
   card(T_CARD_PV, v);
-  fmtNumLang(v, sizeof(v), "%.0f %%", (double)s.socPct);
-  card(T_CARD_BATTERY, v);
-  fmtNumLang(v, sizeof(v), "%.0f W", (double)ruleHouseW(s));
-  card(T_CARD_LOAD, v);
+  if (s.caps.battery || alleVier) {
+    fmtNumLang(v, sizeof(v), "%.0f %%", (double)s.socPct);
+    card(T_CARD_BATTERY, v);
+  }
+  if (s.caps.houseMeter || alleVier) {
+    fmtNumLang(v, sizeof(v), "%.0f W", (double)ruleHouseW(s));
+    card(T_CARD_LOAD, v);
+  }
   b += F("</div>");
 
   // The energy bars of the selected period. The page ships with the cards and

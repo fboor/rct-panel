@@ -67,8 +67,11 @@ td.v{text-align:right;font-variant-numeric:tabular-nums}
 .big{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:4px}
 /* Four values side by side from here up. The grid sets the widths, so there is
    no width in between where the row breaks into three plus one - which is what
-   a minimum width on the cards produced. */
-@media(min-width:560px){.big{grid-template-columns:repeat(4,1fr)}}
+   a minimum width on the cards produced.
+   auto-fit rather than four columns: the panel shows as many cards as the device
+   has meters for, and three cards in a four-column grid would leave a hole in
+   the row instead of spreading out. */
+@media(min-width:560px){.big{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}}
 .card{background:#fff;border:1px solid #dfe3e8;border-radius:8px;padding:11px 10px}
 .card .l{color:#5a6672;font-size:13px}
 .card .n{font-size:21px;font-weight:600;margin-top:2px;white-space:nowrap}
