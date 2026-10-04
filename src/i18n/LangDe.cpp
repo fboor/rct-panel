@@ -216,7 +216,7 @@ const char *const kLang[T_COUNT] = {
     "Netzbezug",       // T_D_TEND_MAINS
     "Unabhängig",      // T_D_TEND_SELF
     "Inaktiv",         // T_D_TEND_INACTIVE
-    "kein Verbrauch",  // T_D_TEND_NOLOAD
+    "Verbrauch",     // T_D_TEND_NOLOAD
     "Entladen",        // T_D_TEND_DISCHARGE
     "Laden",           // T_D_TEND_CHARGE
     "Standby",         // T_D_TEND_STANDBY

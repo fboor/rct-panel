@@ -287,7 +287,8 @@ static inline FlowLayout flowLayoutFor(const DeviceCaps &caps) {
   // One pill per quantity that is drawn: a pill for something the diagram does
   // not show would be saying something about a measurement that is not being
   // taken. "keine Batterie" was true but redundant next to a diagram without a
-  // battery, and "kein Verbrauch" was false - nothing was being measured at all.
+  // battery, and the consumption pill's "nothing is happening" was false - there
+  // was nothing being measured at all.
   uint8_t p = 0;
   if (true) { // the PV always exists
     p |= 1u << FLOW_PILL_PRODUCTION;

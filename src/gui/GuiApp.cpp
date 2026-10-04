@@ -1005,10 +1005,15 @@ static void pageBuildOverview(AppPage *p) {
     // The gap is the same for all three because the glyphs are: every icon in
     // lv_font_mdi_icons_24 has adv_w 384, i.e. 24 px at this size, so the icon
     // ends at 36 whatever it is. The text then starts at 42 - a 6 px gap, which
-    // reads as one group. At 46 the gap was 10 px, and with the two long words
-    // ("kein Verbrauch", "keine Batterie", about 104 px at 14 px) only 6 px were
-    // left at the right edge of a 152 px pill, so those two looked pushed out
-    // while the short one looked centred.
+    // reads as one group. At 46 the gap was 10 px, and with a word of 104 px
+    // ("keine Batterie") only 6 px were left at the right edge of a 152 px pill,
+    // so that one looked pushed out while the short ones looked centred.
+    //
+    // The consumption pill's "nothing happening" text is the row's own word rather
+    // than a sentence about it ("Verbrauch" and not "kein Verbrauch"): the grey
+    // of the pill already says that nothing is happening, the sentence needed the
+    // space, and a pill that says what it is about is the same in all three
+    // states instead of only in the one that is not happening.
     lv_obj_t *ico = makeLabel(btn, pills[i].icon, pills[i].font, FLOW_WHITE);
     lv_obj_align(ico, LV_ALIGN_LEFT_MID, 12, 0);
     p->labels[pills[i].labelIdx] =

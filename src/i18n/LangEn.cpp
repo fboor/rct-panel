@@ -212,7 +212,7 @@ const char *const kLang[T_COUNT] = {
     "Grid draw",    // T_D_TEND_MAINS
     "Standalone",   // T_D_TEND_SELF
     "Inactive",     // T_D_TEND_INACTIVE
-    "no load",      // T_D_TEND_NOLOAD
+    "Load",         // T_D_TEND_NOLOAD
     "Discharging",  // T_D_TEND_DISCHARGE
     "Charging",     // T_D_TEND_CHARGE
     "Standby",      // T_D_TEND_STANDBY

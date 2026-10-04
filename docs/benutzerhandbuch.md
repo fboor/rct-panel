@@ -271,7 +271,7 @@ von drei Zuständen zeigen:
 | Feld | grün | orange | grau |
 |---|---|---|---|
 | Erzeugung (Sonne mit Panel) | deckt den Hausverbrauch | deckt ihn nicht | unter 20 W: „Inaktiv“ |
-| Verbrauch (Stecker) | Unabhängig (kein Netzbezug) | Netzbezug | unter 10 W: „kein Verbrauch“ |
+| Verbrauch (Stecker) | Unabhängig (kein Netzbezug) | Netzbezug | unter 10 W: „Verbrauch“ in grau |
 | Akku (halbvoller Akku) | Laden | Entladen | kein Strom (kein Feld, wenn das Gerät gar keinen Akku hat) |
 
 Der Netzbezug zählt erst ab 20 W als solcher — unterhalb davon regelt das
