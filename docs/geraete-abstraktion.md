@@ -18,10 +18,13 @@ Ausdrücklich im Umfang:
   einer CSV-Spalte. Ein Gerätetyp bekommt ein Kürzel, das Kürzel wandert in den
   Dateinamen, und alle Logs eines Typs liegen nebeneinander.
 
-Was nicht im Umfang ist: Fähigkeiten aushandeln (die bestehenden Flags
-`haveBattery` und `islandKnown` bleiben, wie sie sind), ein zweiter Treiber,
-Modbus-Code, eine eigene Task, Änderungen am CSV-Format oder an der
+Was nicht im Umfang ist: ein zweiter Wechselrichter, ein zweites Protokoll, ein
+eigener Modbus-Code, eine eigene Task, Änderungen am CSV-Format oder an der
 Web-Schnittstelle.
+
+> **Stand heute:** Aus dem zweiten Fahrer ist ein *OpenInverterGateway* geworden,
+> und mit ihm `DeviceCaps` — die Anzeige fragt den Fahrer einmal, was seine Familie
+> kann, und zeichnet nur das. Siehe [„Was danach dazukam"](#was-danach-dazukam).
 
 ## Ausgangslage
 
@@ -106,9 +109,10 @@ und weil die API von mehreren Bauarten benutzt wird.
 | `coreTemp`, `batteryTemp`, `heatSinkTemp`, `nextCalibTs`, `batteryCycles`, `batterySoh` | unverändert | °C, s, Zyklen, % |
 | `islandMode`, `islandKnown`, `haveData`, `haveBattery`, `connected`, `lastUpdateMs` | unverändert | — |
 
-`haveBattery` und `islandKnown` bleiben Flaggen statt Fähigkeiten: sie sagen
-„das Gerät hat noch nicht geantwortet", nicht „das Gerät kann das nicht". Das
-unterscheidet einen zweiten Treiber von einer zweiten Geräteart.
+`haveBattery` und `islandKnown` waren Flaggen statt Fähigkeiten: sie sagen „das
+Gerät hat noch nicht geantwortet", nicht „das Gerät kann das nicht". Für einen
+zweiten Fahrer reicht das nicht, und genau an diesem Unterschied wird ein zweites
+Gerät sichtbar — deshalb gibt es jetzt `DeviceCaps` (siehe unten).
 
 ### Die Regeln gehören in die API
 
@@ -252,14 +256,130 @@ nicht im Flussdiagramm, sondern in den „Heute"-Karten, die ihre Tageszähler
 selbst addierten. Sie war nur deshalb unauffällig, weil sie in derselben Datei
 stand wie die anderen.
 
+## Was danach dazukam
+
+Der Plan ist ausgeführt, und zehn Commits später stand der zweite Fahrer da. Was
+oben noch als „nicht im Umfang" stand, ist jetzt gebaut — bis auf den Namen, den
+das Panel im Log und in der CSV verwendet. Die Reihenfolge war nicht die des
+Plans; sie ergab sich aus dem, was sich beim Bauen als zuerst lösend erwies.
+
+### 1. Der zweite Fahrer: OpenInverterGateway
+
+`src/oig/` mit zwei Teilen, die man trennen muss:
+
+- **`OigFields.h`** — die Feldernamen als Daten. Sie sind aus allen sieben
+  Growatt-Protokollen extrahiert, weil die Modelle verschiedene Namen für
+  dieselbe Größe führen. Das Panel fragt `/status` und liest die Antwort über den
+  Namen; es fragt nicht nach einem Register. Dadurch stimmt die Netzfrequenz auch
+  bei einem Modell, das sie `grid_freq` statt `fac_frequency` nennt.
+- **Die achte Quelle ist ein echtes Gerät.** Ein Growatt MIC 1000 im Test
+  weicht von den sieben Protokollen an zwei Stellen ab: die AC-Leistung heißt
+  `OutputPower` (nicht `AcPower`), und die Erzeugungszähler heißen
+  `TodayGenerateEnergy`/`TotalGenerateEnergy`. Dazu kommen Felder, die es nur bei
+  einem Hybrid gibt — und die-panel-lose Frage, ob **überhaupt ein Akku
+  angeschlossen** ist: der MIC 1000 ohne Akku meldet `BatteryState` 0, `SOC` 0,
+  `ChargePower` 0, `DischargePower` 0 und `BatteryVoltage` 0. Aus „es gibt ein
+  SOC-Feld" folgt also nicht „es gibt einen Akku". Die Regel steht als
+  `oigBatteryPresent()` im Header, damit der Host-Test sie greifen kann, und
+  protokolliert den Rohwert mit.
+- **Die Puffergröße war eine Vermutung und ist gescheitert.** `kOigBodyMax`
+  stand auf 1024, begründet mit „ein String-Wechselrichter meldet rund vierzig
+  Felder". Der MIC 1000 antwortet mit 64 Feldern und 1462 Byte. Die letzten 21
+  Felder — **alle Energiezähler** — fielen hinter der Abschneidegrenze weg, und
+  das Panel zeigte stundenlang „heute 0,00 kWh, gesamt 0,00 kWh" für ein Gerät,
+  das seit Jahren misst. Der Puffer ist jetzt 4096 Byte (3 kB RAM), und eine
+  abgeschnittene Antwort steht als `ABGESCHNITTEN` in der Logzeile, die ohnehin
+  jeden Zyklus läuft.
+- **`OigDriver.cpp`** — der Fahrer. HTTP/1.0 auf dem eingestellten Port (Vorgabe
+  8899), ein `GET /status`, dessen JSON über `Json.h` gelesen wird (header-only,
+  host-testbar, kein Arduino). Kein `chunked`-Decoder, weil der Stick ohne
+  Chunking antwortet.
+
+Das war der Teil mit den echten Überraschungen: Der Stick antwortet auf
+`/status` mit **503**, wenn kein Wechselrichter läuft — also sieht ein wacher
+Ger-stick ohne Wechselrichter von hier aus genauso aus wie ein schlafender. Der
+Fahrer behandelt beides als „schläft" (`DataStatus::Asleep`, der Text sagt
+„schläft" statt „keine Daten"), was ehrlicher ist als eine Anzeige, die eine
+Antwort behauptet, die keine ist. Die Unterscheidung steht als offene Entscheidung
+unten.
+
+### 2. `DeviceCaps`: die Fähigkeiten sind eine Aussage über die Familie
+
+`src/device/DeviceCaps.h`, gesetzt vom Fahrer in `begin()` — nicht aus dem, was
+gerade ankam, sondern aus dem, was die Familie kann. Fünf Fähigkeiten und eine
+Eigenschaft:
+
+| Feld | Bedeutung |
+|---|---|
+| `houseMeter` | einen Hauszähler gibt es (sonst kann das Panel keinen Hauswert zeigen — nicht null, sondern nichts) |
+| `gridMeter` | einen Netzwechselrichter gibt es |
+| `battery` | der Ladezustand antwortet |
+| `islandFlag` | das Insel-Flag ist belegt |
+| `faultBits` | die vier Fehlerworte sind belegt |
+| `sleepsWithoutGeneration` | das Gerät schaltet nachts ohne PV ab (der OIG ja, ein RCT nein — das ist der Unterschied zwischen „schläft" und „hängt") |
+
+Der RCT-Fahrer hat seine Fähigkeiten lange nicht gemeldet und funktionierte nur,
+weil ein leeres `caps` zufällig wie „noch nichts bekannt" gelesen wird — was
+zufällig das volle Layout bedeutet. Das ist genau die Sorte Zufall, die ein
+Gerät mit weniger Zählern sofort verrät, und es ist behoben.
+
+### 3. Das Diagramm folgt den Fähigkeiten
+
+`src/gui/FlowLayout.h`, header-only und ohne LVGL, damit der Host-Test
+`tools/flow_layout_test` (80 Prüfungen) die sechs Fälle prüfen kann. Eine Regel
+erzeugt jeden Aufbau:
+
+> **Der Mittelpunkt ist das Haus, wenn es eines gibt, sonst die PV.**
+
+Daraus folgt der Rest: ohne Haus hängt der Akku an der PV, ohne Akku und ohne
+Netz ist die PV der einzige Knoten und füllt die Seite — 190 px, mit dem Wert in
+der Mitte des Bandes zwischen Kreis und Pille. Was nicht gemessen wird, wird nicht
+gezeichnet: kein Knoten, kein Wert, keine Pille. Kein Pfeil ohne Verbindung.
+
+Vier Fakten werden als **ein Byte** in NVS gemerkt (`gui`/`flowcaps`). Grund: Die
+Fähigkeiten kommen mit der ersten Antwort, etwa zehn Sekunden nach dem Start. Ein
+Diagramm, das sich dann umstellt, sieht auf einem Panel, das man ansieht und
+nicht diagnostiziert, wie ein Fehler aus. Also baut die Seite das Layout des
+letzten Geräts, das geantwortet hat, und ein Gerät, das etwas anderes sagt, wird
+einmal angewandt, protokolliert und für den nächsten Start gemerkt.
+
+### 4. Die Verbrauchsregel ist geräteabhängig — und steht nicht in der API
+
+Das war die eigentlich gefährliche Stelle im Plan: „Hausverbrauch = Lastmessung
+plus S0" gilt nur für einen RCT. Ein Gerät hinter einem Stick hat diese S0-Summe
+nicht. Deshalb steht die Rechnung nicht in der API, sondern in
+`DeviceSemantics` (drei Flaggen, vom Fahrer gesetzt: `loadMeterSeesExternal`,
+`genCounterSeesExternal`, `feedCounterNegative`), und die Zugriffsfunktionen in
+`Rules.h` fragen sie. Ein Fahrer, der die Rechnung selbst macht, kann sie nicht
+vergessen.
+
+### 5. Der Rest, der auffiel
+
+- **Die Zahlform** (`fmtPower()` in `NumFmt.h`): unter 1 kW ganze Watt („380 W“),
+  darüber kW mit zwei Stellen („5,75 kW“), Trennzeichen der Sprache. Die Einheit
+  wird vom **gerundeten** Wert entschieden, damit 999,5 W nicht als „1000 W“
+  gedruckt wird und dieselbe Zahl im nächsten Takt anders aussieht. Der
+  Host-Test hat genau diesen Fehler gefunden.
+- **Das Symbol** bekam eine eigene Schrift in der Größe, in der es gezeichnet
+  wird (`lv_font_mdi_icons_136`): ein 28-px-Zeichen auf 480 % ist ein 134-px-Zeichen
+  aus 28 px Information. Bei 190 px Kreis sind das 38 px Luft auf jeder Seite.
+- **Der Schaltausgang und die Wartung** sind im Web von der Übersicht auf die
+  neue Seite `/einstellungen` gewandert, zusammen mit Gerät und Theme: alles, was
+  etwas verändert, auf eine Seite, auf der niemand Werte abliest. Das Panel hatte
+  vorher keine Stelle, an der man ein Gerät wechseln kann — siehe Entscheidung 1.
+- **Die Karten** im Web folgen denselben Fähigkeiten, die Energiebalken darunter
+  nicht (Entscheidung 5).
+
 ## Was ausdrücklich nicht gebaut wird
 
 - **Kein zweiter Treiber.** Eine Schnittstelle, die man vor dem zweiten
   Anwendungsfall ausbaut, ist zu einem guten Teil geraten. Der Rahmen wird
   trotzdem jetzt gebaut, weil er billig ist und die Ausarbeitung des
   Fahrers dann nicht mehr aufhält.
-- **Kein Fähigkeitsverhandeln.** `haveBattery` und `islandKnown` bleiben das,
-  was sie sind. Ein Gerät ohne Akku ist eine spätere Entscheidung.
+- ~~**Kein Fähigkeitsverhandeln.**~~ **Überholt.** Der Plan wollte es zuerst
+  nicht; mit dem zweiten Fahrer ist `DeviceCaps` gebaut, und der Fahrer meldet in
+  `begin()`, was seine Familie kann. Was *nicht* gebaut ist: eine Verhandlung zur
+  Laufzeit. Die Anzeige fragt einmal, und ein Fahrer ändert seine Antwort nicht.
 - **Keine neue CSV-Spalte, keine Änderung an `/api/*.json`.** Beides ist eine
   Zusage nach außen.
 - **Kein Heap und keine eigene Task** im 10-Sekunden-Takt. LVGL teilt den
@@ -271,18 +391,29 @@ stand wie die anderen.
 
 ## Offene Entscheidungen
 
-1. **Auswahl des Gerätetyps.** Umgesetzt ist die neutrale Beschriftung
-   („Address", „Port", Abschnitt „Inverter options"); ein Feld für den Typ gibt
-   es noch nicht, weil es eine Liste mit einem Eintrag wäre. Es wird eine, sobald
-   es zwei Treiber gibt — und dann ist es eine Zeile in der Fabrik.
+1. ~~**Auswahl des Gerätetyps.**~~ **Erledigt.** Es gibt zwei Fahrer und eine
+   Seite `/einstellungen` mit den Feldern *Gerät* (`RCT` oder
+   `OpenInverterGateway`), *Adresse*, *Port* und *Theme*. Das Portal kennt nur
+   Adresse und Port — der Typ ist Sache des Panels, nicht des Zugangspunkts, weil
+   die Liste der Fahrer mit dem Panel wächst.
 2. **Wie streng ist der Fahrer?** Ein Register, das der RCT nicht kennt,
    antwortet gar nicht; der Fahrer hält den alten Wert und beendet die Runde
    nach der Ruhepause. Für ein anderes Gerät ist „keine Antwort" gegen „0,0 A"
    eine echte Frage, und die Antwort gehört in den Fahrer, nicht in den
    Bildschirm.
-3. **Ob die Geräteart im Portal überhaupt wählbar sein soll.** Wenn ja, ist das
-   eine Liste mit einem Eintrag je implementiertem Fahrer — heute also genau
-   einer. Sobald ein zweiter existiert, ist es eine Zeile in der Fabrik.
+3. ~~**Ob die Geräteart im Portal überhaupt wählbar sein soll.**~~ **Erledigt,
+   anders beantwortet:** nicht im Portal (siehe 1), sondern auf einer eigenen Seite
+   des Panels.
+4. **Was ein schweigendes Gerät bedeutet.** Der OIG-Fahrer kann HTTP 503 nicht
+   von „keine Antwort" unterscheiden: ein wacher, sprechender Stick ohne
+   Wechselrichter sieht aus wie ein schlafender, und beides heißt heute „schläft".
+   Die Unterscheidung gehört in den Fahrer (Statuscode auswerten, ein
+   `answered`-Kennzeichen im Zustand) — nicht in die Anzeige.
+5. **Energiebalken und Verlaufsreihen.** Sie zeigen weiter alle Größen und
+   schreiben für nicht gemessene Zähler Nullzeilen. Das ist bewusst so
+   geblieben: Es sind Zähler, keine Messungen, und „0,0 kWh" bei einem Gerät ohne
+   Hauszähler ist eine Aussage über den Zähler, nicht über das Haus. Wer es
+   trotzdem anders will, braucht eine Entscheidung, keine Vermutung.
 
 ## Aufwand
 

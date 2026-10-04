@@ -3,9 +3,9 @@
 > **Kein Zusammenhang mit der RCT Power GmbH.** Unabhängiges Projekt, ohne
 > Verbindung, Empfehlung oder Unterstützung durch die RCT Power GmbH.
 
-Das RCT Power Panel ist ein Wandpanel, das die Live-Daten Ihres
-RCT-Power-Wechselrichters anzeigt. Es liest die Werte direkt aus dem
-Wechselrichter (TCP, Standard-Port 8899), zeigt sie auf sieben Seiten an und
+Das RCT Power Panel ist ein Wandpanel, das die Live-Daten Ihres Wechselrichters
+anzeigt. Es liest die Werte direkt aus dem Wechselrichter (RCT oder
+OpenInverterGateway, TCP, Standard-Port 8899), zeigt sie auf sieben Seiten an und
 schreibt sie alle fünf Minuten auf eine microSD-Karte auf — so bleiben die
 Messwerte auch dann erhalten, wenn das Panel ausgeschaltet war.
 
@@ -21,7 +21,7 @@ Messwerte auch dann erhalten, wenn das Panel ausgeschaltet war.
 Sie brauchen nur zwei Angaben, sonst nichts weiter zu wissen:
 
 1. den Namen und das Passwort Ihres WLAN,
-2. die IP-Adresse Ihres RCT-Wechselrichters — das Gerät zeigt sie
+2. die IP-Adresse Ihres Wechselrichters — das Gerät zeigt sie
    gelegentlich direkt auf seinem Display an.
 
 Der Port ist einheitlich `8899` und bereits voreingestellt — dort ist
@@ -44,6 +44,10 @@ So sieht es danach aus: Oben die Statusleiste mit dem Verbindungsstatus
 (`aktiv`, grün = alles gut), in der Mitte die aktuelle Seite; unten blättern
 ◀ / ▶ durch die sieben Seiten, ⌂ springt zur Übersicht. Details
 zu den Seiten stehen in Kapitel 3, zur Einrichtung ab Kapitel 1.
+
+Im Browser im Heimnetz finden Sie unter `http://<IP des Panels>/einstellungen`
+Gerätetyp, Adresse, Port und Theme — dort lässt sich das Gerät später wechseln,
+ohne das WLAN neu zu konfigurieren (Kapitel 1.4).
 
 Die Messwerte liegen außerdem auf der SD-Karte und lassen sich später im
 Browser abrufen: IP-Adresse und Code dafür stehen auf der **Service-Seite**
@@ -118,6 +122,27 @@ Bestätigen Sie das Formular. Das Panel speichert die Angaben dauerhaft
 </figure>
 
 ### 1.4 Später erneut konfigurieren
+
+**Im Heimnetz** — auf der Seite `/einstellungen` im Browser:
+
+| Feld | Bedeutung |
+|---|---|
+| Gerät | Wechselrichter **RCT** oder **OpenInverterGateway** |
+| Adresse | IP-Adresse oder Hostname des Geräts |
+| Port | TCP-Port, über den das Gerät antwortet (`8899` bei beiden) |
+| Theme | dunkel oder hell |
+
+Darunter stehen der **Schaltausgang** (Schwelle in Watt, Test) und die
+**Wartung** (Neustart, WLAN zurücksetzen) — beides stand vorher auf der Übersicht
+und steht jetzt hier, weil beides das Panel verändert und man auf der Übersicht
+Werte abliest. Details im Kapitel zum Schaltausgang.
+
+*Speichern* schreibt die Angaben in den NVS-Speicher und startet das Panel neu —
+ohne Zugangspunkt, ohne WLAN-Passwort. Nach dem Wechsel passt sich die Übersicht
+dem Gerät an: ein *OpenInverterGateway* ohne Hauszähler zeigt einen PV-Knoten statt
+des Hauses.
+
+**Im Notfall** — wenn das Panel gar nicht erst im Heimnetz ist:
 
 - Öffnen Sie auf der Seite Service den Button „Setup starten“ — das
   Panel startet daraufhin wieder den Konfigurations-Zugangspunkt.
@@ -213,27 +238,41 @@ Licht aus Sicherheitsgründen immer an.
 
 ### 3.1 Übersicht (Energiefluss)
 
-Das Flussdiagramm bildet die „Energiefluss“-Ansicht des RCT-Portals ab:
+Das Flussdiagramm bildet die „Energiefluss“-Ansicht des RCT-Portals ab — aber es
+zeigt **nur, was das Gerät wirklich misst**. Ein Wechselrichter mit Hauszähler
+bekommt das gewohnte Bild mit vier Knoten und drei Feldern; ein Gerät hinter einem
+*OpenInverterGateway* ohne Hauszähler und ohne Akku bekommt **einen** Knoten: die
+PV, groß in der Mitte, mit ihrem Wert darunter und einem einzigen Feld. Was nicht
+gemessen wird, wird nicht gezeichnet — lieber gar nichts als eine Null, die so
+aussieht, als wäre sie gemessen.
 
-- PV (links): Erzeugung aus Solar-Generator A und B plus optionalem
-  externen S0-Zähler.
-- Haus (Mitte): aktueller Verbrauch. Hinweis: Der Wechselrichter zieht
-  die externe Einspeisung bereits von seiner Lastmessung ab; das Panel
-  addiert den S0-Wert wieder hinzu, sodass hier der tatsächliche
-  Hausverbrauch steht.
-- Netz (rechts): Bezug oder Einspeisung (negativer Wert = Einspeisung).
-- Batterie (unten): Ladezustand in Prozent (im Knoten) und aktuelle
-  Leistung unter dem Knoten.
+- PV: steht links, wenn es einen Hauszähler gibt, sonst in der Mitte. Ohne Haus ist
+  die PV der Mittelpunkt des Diagramms, und wenn es sonst nichts zu zeigen gibt,
+  füllt ihr Knoten die Seite: Erzeugung aus Solar-Generator A und B plus optionalem
+  externem S0-Zähler.
+- Haus: aktueller Verbrauch, in der Mitte, wenn es ihn gibt. Hinweis für den
+  RCT Power: Der Wechselrichter zieht die externe Einspeisung bereits von seiner
+  Lastmessung ab; das Panel addiert den S0-Wert wieder hinzu, sodass hier der
+  tatsächliche Hausverbrauch steht.
+- Netz (rechts): Bezug oder Einspeisung (negativer Wert = Einspeisung). Gibt es
+  den Zähler nicht, gibt es den Knoten nicht.
+- Batterie (unten): Ladezustand in Prozent (im Knoten) und aktuelle Leistung unter
+  dem Knoten. Gibt es keinen Akku, steht keiner im Diagramm.
+
+Die Werte unter den Knoten stehen in ganzen Watt unter 1 kW („380 W“) und in kW
+mit zwei Nachkommastellen darüber („1,23 kW“). Im deutschen Text steht zwischen
+Ziffer und Nachkommastelle ein Komma.
 
 Die Pfeile zwischen den Knoten leuchten rot in Richtung des aktuellen
-Energieflusses. Darunter stehen drei Felder mit Symbol, Text und Farbe, die
-je einen von drei Zuständen zeigen:
+Energieflusses — aber nur dort, wo es eine Verbindung gibt. Darunter stehen **so
+viele Felder, wie das Gerät etwas meldet** (Symbol, Text und Farbe), die je einen
+von drei Zuständen zeigen:
 
 | Feld | grün | orange | grau |
 |---|---|---|---|
 | Erzeugung (Sonne mit Panel) | deckt den Hausverbrauch | deckt ihn nicht | unter 20 W: „Inaktiv“ |
 | Verbrauch (Stecker) | Unabhängig (kein Netzbezug) | Netzbezug | unter 10 W: „kein Verbrauch“ |
-| Akku (halbvoller Akku) | Laden | Entladen | kein Strom, oder gar kein Akku |
+| Akku (halbvoller Akku) | Laden | Entladen | kein Strom (kein Feld, wenn das Gerät gar keinen Akku hat) |
 
 Der Netzbezug zählt erst ab 20 W als solcher — unterhalb davon regelt das
 Gerät um null, und das Vorzeichen ist dann Rauschen. Dieselbe Grenze gilt für
@@ -518,7 +557,8 @@ nehmen Sie die IP-Adresse).
 
 | Adresse | Inhalt |
 |---|---|
-| `/` | Übersicht: Netz, PV, Akku, Karte, Energiebalken, Ausgang, Adresse, Wartung |
+| `/` | Übersicht: eine Karte je Zähler des Geräts (Netz, PV, Akku, Karte), Energiebalken, Geräteangaben |
+| `/einstellungen` | Einstellungen: Gerätetyp, Adresse, Port, Schaltausgang, Theme, Wartung — *Speichern* startet das Panel neu |
 | `/verlauf` | Verlauf: Liniendiagramm über 24 Stunden, Tag, Woche, Monat |
 | `/daten` | Liste der aufgezeichneten CSV-Dateien |
 | `/bilder` | Liste der gespeicherten Screenshots |
@@ -531,18 +571,23 @@ scharf und so groß wie das Fenster, in dem Sie es ansehen.
 
 ### Energie auf der Übersicht
 
-Unter den vier Wertekarten stehen fünf Balken — PV-Erzeugung, Eigenverbrauch,
+Die Karten oben folgen dem Gerät: ein Gerät ohne Hauszähler, Akku oder Netzzähler
+zeigt nur die Karten, für die es Werte gibt. Die fünf Balken darunter stehen
+unabhängig davon immer da — sie sind Zählerstände, keine Messungen, und die Frage
+„misst das Gerät das?“ stellt sich bei einem Zähler nicht.
+
+Unter den Karten stehen fünf Balken — PV-Erzeugung, Eigenverbrauch,
 Netzeinspeisung, Netzbezug, Verbrauch — mit dem Zahlenwert darüber. Darüber
 wählen Sie den Zeitraum: **Tag, Monat, Jahr, Gesamt**. Wortlaut, Farben und
 Reihenfolge sind dieselben wie auf der Panel-Seite *Energie*; rechts oben
 stehen Autarkie und Eigenverbrauchsquote.
 
 Diese Balken werden einmal geladen, wenn Sie die Seite öffnen, und laufen
-**nicht** von selbst weiter. Der Grund ist praktisch: weiter unten auf derselben
-Seite steht das Formular für die Schwelle des Ausgangs, und eine Seite, die sich
-selbst neu lädt, würde überschreiben, was Sie gerade eintippen. Zum
-Aktualisieren genügt ein Neuladen des Browsers. Die Werte sind Zähler, eine
-vor zehn Minuten geladene Seite ist also höchstens zehn Minuten alt.
+**nicht** von selbst weiter. Der Grund war ein Formular zum Eintippen auf
+derselben Seite; es steht inzwischen auf `/einstellungen`, aber das Nachladen ist
+dem trotzdem nicht wert: die Werte sind Zähler, und eine vor zehn Minuten geladene
+Seite ist höchstens zehn Minuten alt. Zum Aktualisieren genügt ein Neuladen des
+Browsers.
 
 > **Wichtig:** Balken und Verlauf rechnen beide aus Zählern, nur aus
 > verschiedenen: die Übersicht aus den Zählern, die das **Gerät** selbst meldet

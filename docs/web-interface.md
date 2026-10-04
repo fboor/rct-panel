@@ -25,7 +25,8 @@ teilen sich Port 80 und das Radio, nie gleichzeitig.
 
 | Route           | Art                | Zweck                                             |
 | --------------- | ------------------ | ------------------------------------------------- |
-| `/`             | GET                | Übersicht: Netz, PV, Akku, Karte, Energiebalken, Ausgang, Adresse, Wartung |
+| `/`             | GET                | Übersicht: eine Karte je Zähler des Geräts, Energiebalken, Geräteangaben |
+| `/einstellungen` | GET / POST       | Gerätetyp, Adresse, Port, Schaltausgang, Theme, Wartung; POST speichert in NVS und startet neu |
 | `/verlauf`      | GET                | 24 h und die Historie: Linien- bzw. Banddiagramm, Zeitraumwahl |
 | `/api/energie.json` | GET            | die Energiezahlen eines Zeitraums als Zahlen (`?zeitraum=tag\|monat\|jahr\|gesamt`) |
 | `/api/verlauf.json` | GET            | der 24-h-Ring aus dem RAM als Zahlen                |
@@ -179,9 +180,22 @@ S0-Zählers. Addiert wird er genau einmal, auf beiden Seiten: im Panel in
 `energyPeriodValues` (`pv += ext; load += ext;`), im Browser in `rpEnergy`
 (`pv = Δpv_a + Δpv_b + Δext`, `load = Δload + Δext`).
 
+### Die Karten folgen dem Gerät
+
+Die Karten (Netz, PV, Akku, Karte; beim RCT Power alle vier) werden aus den
+Fähigkeiten des Geräts
+gebaut, nicht aus einer festen Liste: ein Gerät ohne Hauszähler, Akku oder
+Netzzähler bekommt nur die Karten, für die es Werte gibt. Grund ist dieselbe
+Regel wie auf dem Panel — eine Karte für einen Zähler, den es nicht gibt, wäre
+eine Zahl ohne Aussage.
+
+Das Raster ist `repeat(auto-fit, minmax(140px, 1fr))`, füllt also die Breite mit
+so vielen Karten, wie hineinpassen, und die Karten behalten dieselbe Größe, egal ob
+es vier oder eine ist.
+
 ### Die Energiebalken auf der Übersicht
 
-Unter den vier Karten stehen fünf Balken (Erzeugung, Eigenverbrauch,
+Unter den Karten stehen fünf Balken (Erzeugung, Eigenverbrauch,
 Netzeinspeisung, Netzbezug, Verbrauch) mit dem Wert als Text darüber und einem
 Zeitraumwechsel **Tag | Monat | Jahr | Gesamt** darüber - Wortlaut, Farben und
 Reihenfolge wie auf der Panel-Seite *Energie*.
