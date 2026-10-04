@@ -17,13 +17,11 @@
 //      still feeds the panel instead of dropping it to zero.
 //
 // SPDX-License-Identifier: Apache-2.0
-#include "RctDriver.h"
-
 #include <WiFi.h>
 
 #include "../Diag.h"
 #include "../device/Device.h"
-#include "../device/DeviceDriver.h"
+#include "../device/RctDriver.h"
 #include "../device/Rules.h"
 #include "RctCrc.h"
 
@@ -913,18 +911,3 @@ void RctDriver::begin(const DeviceConfig &cfg) {
 void RctDriver::poll(uint32_t budgetMs) { rctPoll(budgetMs); }
 
 bool RctDriver::connected() const { return dev.connected; }
-
-// ---------------------------------------------------------------------------
-// The factory
-// ---------------------------------------------------------------------------
-
-// One entry per implemented family. A type nobody implements returns nullptr
-// and the panel says so - it does not fall back to a device that is not the one
-// that was configured, because "the panel shows data from another inverter" is
-// worse than "the panel shows no data".
-DeviceDriver *makeDriver(const DeviceConfig &cfg) {
-  if (strcmp(cfg.type, "RCT") == 0) {
-    return new RctDriver();
-  }
-  return nullptr;
-}

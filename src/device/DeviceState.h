@@ -20,6 +20,8 @@
 
 #include <stdint.h>
 
+#include "DeviceCaps.h"
+
 // How this device's numbers have to be read.
 //
 // The panel wants four derived quantities - household consumption, total
@@ -133,14 +135,26 @@ struct DeviceState {
   bool islandMode;
   bool islandKnown;
 
-  bool haveData;     // any value ever received from the device
-  bool haveBattery;  // state of charge ever answered (device has a battery)
-  bool connected;    // link up right now
+  // The device is off on purpose and that is normal: a battery-less inverter
+  // shuts down when there is no generation and answers nothing until morning.
+  // Set by the driver, not by the panel, because only the driver knows that
+  // its family does this - and it is the difference between "wartet" (data is
+  // late) and "schläft" (nobody is going to answer). Without it the panel
+  // would report a fault every night for a device that is doing exactly what it
+  // is built to do.
+  bool asleep;
+
+  bool haveData;    // any value ever received from the device
+  bool haveBattery; // state of charge ever answered (device has a battery)
+  bool connected;   // link up right now
   uint32_t lastUpdateMs; // timestamp of the last received frame
 
   // How this device's numbers have to be read. Set once by the driver at
   // begin() and never changed afterwards.
   DeviceSemantics semantics;
+
+  // What this family can report at all. Set once by the driver at begin().
+  DeviceCaps caps;
 };
 
 #endif // RCT_DEVICE_STATE_H

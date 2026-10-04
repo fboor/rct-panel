@@ -21,10 +21,10 @@
 // for DeviceState and knows nothing about OIDs, escaping or the shared bus.
 //
 // SPDX-License-Identifier: Apache-2.0
-#ifndef RCT_DRIVER_H
-#define RCT_DRIVER_H
+#ifndef RCT_DEVICE_RCT_DRIVER_H
+#define RCT_DEVICE_RCT_DRIVER_H
 
-#include "../device/DeviceDriver.h"
+#include "DeviceDriver.h"
 
 class RctDriver : public DeviceDriver {
 public:
@@ -44,4 +44,4 @@ public:
   const char *typeName() const override { return "RCT"; }
 };
 
-#endif // RCT_DRIVER_H
+#endif // RCT_DEVICE_RCT_DRIVER_H

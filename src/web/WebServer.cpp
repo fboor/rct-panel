@@ -417,12 +417,14 @@ void handleRoot() {
   // exists when the link is up - but it can say that the values are old.
   const DataStatus ds =
       dataStatus(networkConnecting(), s.haveData, s.connected,
-                 dataAgeMs(millis(), s.lastUpdateMs));
+                 dataAgeMs(millis(), s.lastUpdateMs), s.asleep);
   const char *inverterText = tr(T_ROW_INVERTER_NO);
   if (ds == DataStatus::Waiting) {
     inverterText = tr(T_ROW_INVERTER_WAIT);
   } else if (ds == DataStatus::Live) {
     inverterText = tr(T_ROW_INVERTER_OK);
+  } else if (ds == DataStatus::Asleep) {
+    inverterText = tr(T_ROW_INVERTER_ASLEEP);
   }
   row(T_ROW_INVERTER, inverterText);
   // What the device calls itself, second row: whether the panel is talking to

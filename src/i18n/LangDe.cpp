@@ -44,6 +44,7 @@ const char *const kLang[T_COUNT] = {
     "verbunden",                        // T_ROW_INVERTER_OK
     "nicht erreichbar",                 // T_ROW_INVERTER_NO
     "wartet",                           // T_ROW_INVERTER_WAIT
+    "schläft (normal)",                 // T_ROW_INVERTER_ASLEEP
     "Name",                             // T_ROW_INVERTER_NAME
     "Firmware Steuerger&auml;t",        // T_ROW_CONTROLLER
     "Firmware Panel",                   // T_ROW_FW_PANEL
@@ -323,6 +324,7 @@ const char *const kLang[T_COUNT] = {
     "aktiv",         // T_D_BADGE_LIVE
     "verbinde neu",  // T_D_BADGE_RECONNECT
     "wartet",        // T_D_BADGE_WAITING
+    "schläft",       // T_D_BADGE_ASLEEP
 
     // --- Anzeige: die 128 Fehlertexte (Bit n aus fault[0..3].flt)
     "TRAP ausgelöst",                               // T_FAULT_0

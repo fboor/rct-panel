@@ -80,6 +80,7 @@ enum LangId : int {
   T_ROW_INVERTER_OK,
   T_ROW_INVERTER_NO,
   T_ROW_INVERTER_WAIT, // link up, had data, but nothing new for a while
+  T_ROW_INVERTER_ASLEEP, // device off on purpose; hours of silence are normal
   T_ROW_INVERTER_NAME, // what the device calls itself
   T_ROW_CONTROLLER,
   T_ROW_FW_PANEL,
@@ -334,6 +335,7 @@ enum LangId : int {
   T_D_BADGE_LIVE,
   T_D_BADGE_RECONNECT,
   T_D_BADGE_WAITING,
+  T_D_BADGE_ASLEEP, // the device is off on purpose; hours of silence are normal
 
   // --- Anzeige: die 128 Fehlertexte (Bit n aus fault[0..3].flt)
   // Der Index ist das Bit, nach dem der Wechselrichter meldet:

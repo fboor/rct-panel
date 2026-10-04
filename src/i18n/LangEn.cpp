@@ -44,6 +44,7 @@ const char *const kLang[T_COUNT] = {
     "connected",                        // T_ROW_INVERTER_OK
     "not reachable",                    // T_ROW_INVERTER_NO
     "waiting",                          // T_ROW_INVERTER_WAIT
+    "asleep (normal)",                  // T_ROW_INVERTER_ASLEEP
     "Name",                             // T_ROW_INVERTER_NAME
     "Controller firmware",              // T_ROW_CONTROLLER
     "Panel firmware",                   // T_ROW_FW_PANEL
@@ -320,6 +321,7 @@ const char *const kLang[T_COUNT] = {
     "live",          // T_D_BADGE_LIVE
     "reconnecting",  // T_D_BADGE_RECONNECT
     "waiting",       // T_D_BADGE_WAITING
+    "asleep",        // T_D_BADGE_ASLEEP
 
     // --- Anzeige: die 128 Fehlertexte (Bit n aus fault[0..3].flt)
     "TRAP triggered",                                             // T_FAULT_0

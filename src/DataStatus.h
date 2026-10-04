@@ -11,6 +11,7 @@
 //   haveData           a frame has arrived at least once
 //   connected          the TCP link is up right now
 //   dataAgeMs          millis() - lastUpdateMs
+//   asleep             the driver says the device is off on purpose
 //
 // The age threshold is the same one the status line uses, so "wartet" on the
 // badge and "(letzte Messung)" under the switching output always mean the same
@@ -29,6 +30,7 @@ static const uint32_t kDataStaleMs = 60000;
 enum class DataStatus {
   Connecting, // Wi-Fi or the link is still coming up
   NoData,     // link is up, but nothing has ever arrived
+  Asleep,     // the device is off on purpose and this is normal for it
   Reconnect,  // data was there, the stream stopped
   Waiting,    // link is up and we had data - but nothing new for a while
   Live,       // fresh values
@@ -37,9 +39,19 @@ enum class DataStatus {
 // One function, so panel and web cannot drift apart: both call this and only
 // map the result to their own texts and colours.
 inline DataStatus dataStatus(bool networkConnecting, bool haveData,
-                             bool connected, uint32_t dataAgeMs) {
+                             bool connected, uint32_t dataAgeMs,
+                             bool asleep = false) {
   if (networkConnecting) {
     return DataStatus::Connecting;
+  }
+  // Asleep comes before "no data": a battery-less inverter is off every night,
+  // and the first night after configuring one would otherwise report a device
+  // that has never answered - which is the failure this badge exists for. It
+  // needs haveData, so a device that never answered once is still "no data"
+  // however long the driver has given up: only a driver that has seen real
+  // values knows that silence is the device's own doing.
+  if (asleep) {
+    return DataStatus::Asleep;
   }
   if (!haveData) {
     return DataStatus::NoData;
