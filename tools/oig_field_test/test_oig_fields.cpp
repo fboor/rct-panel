@@ -309,6 +309,29 @@ static void testBatteryPresence() {
         "Growatt120 ohne SOC: kein Akku");
 }
 
+// The meter question, which no register answers and only time does. The device
+// used for the test publishes ACPowerToUser and ACPowerToGrid in both cases; what
+// separates them is whether anything but a zero has ever been in them.
+static void testMeterPresence() {
+  // No meter behind the registers: every poll says zero, forever.
+  check(!oigMeterVorhanden(0.0f), "nur Nullen: das ist kein Zaehler");
+  check(oigMeterVorhanden(1.0f), "ein Watt: das ist einer");
+  check(oigMeterVorhanden(0.5f), "ein halber Watt zaehlt auch");
+  check(!oigMeterVorhanden(0.4f), "unter einem halben Watt nicht - das ist Rauschen");
+  // A house that is asleep right now has not lost its meter: the driver keeps the
+  // largest value it has seen, and that is what this takes.
+  check(oigMeterVorhanden(1480.0f), "ein Haus mit 1480 W Spitze hatte einen Zaehler");
+
+  // And the device that answers both ways: the fields exist in either case, so
+  // only the value distinguishes them.
+  const std::string j = answerWith(kMic1000);
+  float v = 0;
+  check(oigNumber(j.c_str(), j.size(), kOigHouse, &v),
+        "MIC1000: das Hausregister gibt es");
+  check(oigNumber(j.c_str(), j.size(), kOigExport, &v),
+        "MIC1000: das Einspeiseregister gibt es auch");
+}
+
 // A key that holds a string is not a measurement. The list must move on instead
 // of reporting a quantity it cannot read.
 static void testStringIsNotAValue() {
@@ -330,6 +353,7 @@ int main() {
   testPlainInverterHasNoMeters();
   testMic1000();
   testBatteryPresence();
+  testMeterPresence();
   testStringIsNotAValue();
 
   printf("%s: %d Prüfungen, %d fehlgeschlagen\n",

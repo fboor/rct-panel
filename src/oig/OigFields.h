@@ -171,6 +171,26 @@ inline bool oigNumber(const char *json, size_t len, const char *const *names,
   return false;
 }
 
+// Is a published meter register a meter at all? A hybrid inverter publishes
+// ACPowerToUser and ACPowerToGrid whether or not a meter is fitted: a MIC 1000
+// without one reports 0 for both, every poll, and nothing in the answer says
+// otherwise - no flag, no state register, nothing. The panel cannot tell that from
+// a house that happens to draw nothing at that moment, and it did: it drew a house
+// node and a grid node full of zeros, which is the one thing the capability layer
+// was built to stop.
+//
+// The difference that does show up in the answer is time. A household draws
+// something within a day - the fridge alone is well past this - and a plant exports
+// something whenever the sun is on it, so a register that has only ever read zero
+// is a register with no meter behind it. hoechsterWertW is the largest absolute
+// value that register has held since boot, and the driver keeps it: a meter that
+// has been seen stays a meter when it reads zero this second.
+//
+// Half a watt is the bar, because a register with a resolution of 1 W that has read
+// anything has read at least one watt, and half a watt leaves room for a register
+// that reports a scaled fraction.
+inline bool oigMeterVorhanden(float hoechsterWertW) { return hoechsterWertW >= 0.5f; }
+
 // Is a battery attached to the device at all - as opposed to the device
 // publishing battery registers, which a hybrid does whether or not one is there.
 //

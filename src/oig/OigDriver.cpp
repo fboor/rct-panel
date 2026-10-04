@@ -50,6 +50,18 @@ static size_t s_bodyOver = 0;
 static DeviceTransport *s_link = nullptr;
 static DeviceConfig s_cfg;
 
+// The largest absolute value the two meter registers have ever shown. A hybrid
+// inverter publishes both whether or not a meter is fitted, and a register that
+// has only ever read zero is a register with nothing behind it - see
+// oigMeterVorhanden(). Kept here so the answer cannot be forgotten: a house that
+// draws nothing this second has not lost its meter.
+static float s_houseMaxW = 0.0f;
+static float s_exportMaxW = 0.0f;
+// Whether the proof has already been announced. A meter does not appear twice in
+// the log.
+static bool s_loggedHouse = false;
+static bool s_loggedGrid = false;
+
 // Connection state, kept here rather than in the state: the peerOpen() question
 // belongs to the transport, and a driver that asked the transport twice per
 // poll would learn nothing new the second time.
@@ -260,11 +272,16 @@ void OigDriver::poll(uint32_t budgetMs) {
   // A model with local-load registers (Growatt307's ACPowerToUser and its
   // EnergyToUserToday) has measured the house; the simplest one has not, and
   // then the household value stays unmeasured rather than zero.
+  // Whether the register is a meter is not the same as whether it exists - see
+  // oigMeterVorhanden(). Both conclusions accumulate from here on: the largest
+  // value each register has ever shown, which is what decides, and never goes back
+  // down. A house that draws nothing this second has not lost its meter.
   float load = 0.0f;
   if (num(kOigHouse, &load)) {
     st.houseW[0] = load;
-    st.caps.houseMeter = true;
+    s_houseMaxW = fmaxf(s_houseMaxW, fabsf(load));
   }
+  st.caps.houseMeter = oigMeterVorhanden(s_houseMaxW);
 
   float toGrid = 0.0f;
   if (num(kOigExport, &toGrid)) {
@@ -273,8 +290,9 @@ void OigDriver::poll(uint32_t budgetMs) {
     // genCounterSeesExternal does not come into it - the meter does not exist on
     // the other side.
     st.gridExchangeW = -toGrid;
-    st.caps.gridMeter = true;
+    s_exportMaxW = fmaxf(s_exportMaxW, fabsf(toGrid));
   }
+  st.caps.gridMeter = oigMeterVorhanden(s_exportMaxW);
 
   // --- Battery -------------------------------------------------------------
   // Whether there IS a battery is a different question from whether the device
@@ -376,6 +394,24 @@ void OigDriver::poll(uint32_t budgetMs) {
   // false, so the panel draws no island triangle and the switching output's
   // island rule reports "unknown" rather than guessing.
   st.caps.islandFlag = false;
+
+  // A meter that proves itself after the first answers is worth a line of its own:
+  // the layout changes when it appears, and the log is where that has to be
+  // explainable. The first line says what the device claims at first sight, this
+  // one says what it has actually shown.
+  if ((st.caps.houseMeter && !s_loggedHouse) ||
+      (st.caps.gridMeter && !s_loggedGrid)) {
+    if (st.caps.houseMeter && !s_loggedHouse) {
+      s_loggedHouse = true;
+      Serial.printf("OIG: ACPowerToUser hat %.0f W gezeigt -> Hauszaehler da\n",
+                    (double)s_houseMaxW);
+    }
+    if (st.caps.gridMeter && !s_loggedGrid) {
+      s_loggedGrid = true;
+      Serial.printf("OIG: ACPowerToGrid hat %.0f W gezeigt -> Netzzaehler da\n",
+                    (double)s_exportMaxW);
+    }
+  }
 
   st.haveData = true;
   st.lastUpdateMs = millis();
