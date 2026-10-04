@@ -335,11 +335,17 @@ void OigDriver::poll(uint32_t budgetMs) {
         st.caps.battery ? " ja" : " nein");
   }
 
+  // The grid quality is in the line because it is the value whose name varies
+  // most between the protocols, and because a stick reporting 49.8 Hz instead of
+  // 50 is worth seeing in a log rather than only on a page nobody opens. A device
+  // that publishes neither shows a zero here - the caps above say why it is
+  // missing, so the two lines together are unambiguous.
   Serial.printf("OIG: DC %.0f W | AC %.0f W | heute %.2f kWh gesamt %.2f kWh | "
-                "%d Felder | Haus%s Netz%s Akku%s\n",
+                "%.1f V %.2f Hz | %d Felder | Haus%s Netz%s Akku%s\n",
                 (double)dcPower, (double)acPower,
                 (double)(st.dayGenWh / 1000.0f),
-                (double)(st.totalGenWh / 1000.0f), (int)s_bodyLen,
+                (double)(st.totalGenWh / 1000.0f), (double)st.gridV[0],
+                (double)st.gridHz[0], (int)s_bodyLen,
                 st.caps.houseMeter ? "j" : "n", st.caps.gridMeter ? "j" : "n",
                 st.caps.battery ? "j" : "n");
 }
