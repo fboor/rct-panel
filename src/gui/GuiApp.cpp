@@ -1064,11 +1064,11 @@ static void setNodeShown(lv_obj_t *node, const FlowNode &n) {
 // above the top of the line and ends 12 px above its bottom - the ink already sits
 // 12 px above the middle of the line, and lv_obj_center() puts the middle of the
 // line in the middle of the circle. So +12 would put the ink exactly in the centre,
-// and each step of looking has gone further up from there: 8 px, then 10 px, then
-// 4 px, which leaves the ink 18 px above the centre of a 170 px circle - high
+// and each step of looking has gone further up from there: 8 px, 10 px, 4 px and
+// 7 px, which leaves the ink 25 px above the centre of a 190 px circle - high
 // enough that it clearly belongs to the upper part of the node rather than floating
 // in the middle of it.
-static const int16_t kIcoLabelRunter = -18;
+static const int16_t kIcoLabelRunter = -25;
 
 static void setNodeIconScale(lv_obj_t *ico, bool gross) {
   if (ico == nullptr) {

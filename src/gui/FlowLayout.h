@@ -88,11 +88,14 @@ static const int16_t kFlowHubD = 92;   // the house
 // The PV as the only node on the page: bigger than a node that has company,
 // because it is then the whole diagram, and big enough for the glyph that goes
 // with it. The glyph's ink is 114 px, so 138 px left 12 px of white inside the
-// circle - the icon looked pressed against the rim - and 160 px gave 23 px, which
-// the panel wanted a little more of. 170 px gives 28 px on each side, and with
-// the centre 18 px below the hub row its top edge is at y = 15: still clear of
-// the heading, which ends at 26 on the page and 9 px above the container.
-static const int16_t kFlowAlleinD = 170;
+// circle - the icon looked pressed against the rim - and every step since has
+// been the panel asking for more of it. 190 px gives 38 px on each side, and with
+// the centre 18 px below the hub row its top edge is at y = 5: still inside the
+// container, which starts 9 px below where the heading ends. 190 is about as far
+// as this goes: the diameter is bounded by the height of the page, and the next
+// 10 px would need the centre at y = 110 to keep its top edge off the frame,
+// which would take the room the value needs out of the band below it.
+static const int16_t kFlowAlleinD = 190;
 // 18 px below the hub row's centre. The circle fits under the heading either way
 // (its top edge is at y = 20), and it reads better the further down it stands:
 // with nothing else on the page, a circle near the top of it looks like it wants
@@ -138,8 +141,11 @@ static const int16_t kFlowBatValY = 247;
 // The value under the PV when it is the only node on the page: centred, and in
 // the middle of the empty band between the circle above it and the pill below it.
 // Both ends of the band are in the container, where this value lives too: the
-// circle's lower edge (100 + 170/2 = 185) and the pill's upper edge (316 - 35 -
-// 17 = 264), so its middle is 224. The first version measured the circle in the
+// circle's lower edge (100 + 190/2 = 195) and the pill's upper edge (316 - 35 -
+// 17 = 264), so its middle is 229. The band is 69 px for a number of 45 - the
+// tightest it gets while the circle still fits, which is why the circle cannot
+// grow further without taking some of the number's air away. The first version
+// measured the circle in the
 // container and the pill on the page and called the result 225 - 12 px too low,
 // because it had added the heading's height to the distance instead of taking it
 // off. It moves with the circle above it, which is the point of measuring.
