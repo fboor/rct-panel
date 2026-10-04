@@ -98,9 +98,26 @@ inline RawPeriod ruleRawPeriod(const DeviceState &s, int period) {
   }
 }
 
-// What one period is worth, in the panel's terms. Own use is generation minus
-// feed-in: everything the device produced that was not fed in was used here -
-// directly, through the external generator, or as charge in the battery.
+// Whether own use can be computed at all. It is a difference of two meters, and
+// a difference needs both of them: a device without a house meter does not know
+// what the house took, and one without a grid meter does not know what came from
+// the grid. Both missing means there is no own consumption to show - not a zero
+// one, and not a hundred per cent of self-sufficiency.
+inline bool ruleOwnKnown(const DeviceState &s) {
+  return s.caps.houseMeter && s.caps.gridMeter;
+}
+
+// What one period is worth, in the panel's terms. Own use is consumption minus
+// grid draw - the energy the house took that did not come from the grid, whether
+// it arrived straight from the array or out of the battery.
+//
+// Counting it on the way out and not on the way in is a decision, and the
+// battery is the reason: what is charged today is used tomorrow, and the two
+// days would otherwise tell different stories about the same kilowatt hours.
+// The price is that the three bars no longer add up - generation, own use and
+// feed-in differ by what is in the battery and what the conversion lost, which
+// is a number the counters simply do not carry. It is not hidden: the bars are
+// five counters and four of them are measured.
 //
 // The external energy goes to both sides when the device's counters exclude
 // it. On the RCT that is what makes an external generator visible at all: it is
@@ -110,7 +127,9 @@ inline RawPeriod ruleRawPeriod(const DeviceState &s, int period) {
 // display code.
 //
 // Own use is clamped at 0: the counters run apart for a moment after a device
-// restart, and a negative bar would be meaningless.
+// restart, and a negative bar would be meaningless. Where the two meters are
+// missing, the value is 0 and ruleOwnKnown() says so - the callers leave the bar
+// out rather than showing a zero that was never measured.
 struct PeriodValues {
   float genWh;
   float ownWh;
@@ -130,7 +149,8 @@ inline PeriodValues rulePeriod(const DeviceState &s, int period) {
                   ? -raw.feedWh
                   : raw.feedWh;
   v.gridDrawWh = raw.gridDrawWh;
-  v.ownWh = v.genWh - v.feedWh > 0.0f ? v.genWh - v.feedWh : 0.0f;
+  const float diff = v.houseWh - v.gridDrawWh;
+  v.ownWh = diff > 0.0f ? diff : 0.0f;
   return v;
 }
 

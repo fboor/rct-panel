@@ -323,6 +323,14 @@ weil ein leeres `caps` zufällig wie „noch nichts bekannt" gelesen wird — wa
 zufällig das volle Layout bedeutet. Das ist genau die Sorte Zufall, die ein
 Gerät mit weniger Zählern sofort verrät, und es ist behoben.
 
+Zwei der Fähigkeiten entscheiden inzwischen auch über **Energiezahlen**, denn
+der Eigenverbrauch ist eine Differenz: `houseMeter − gridMeter` geht als
+`ruleOwnKnown()` in `Rules.h`. Auf dem MIC 1000 (Haus nein, Netz nein) gibt es
+deshalb keinen Eigenverbrauch, keine Autarkie und keine Eigenverbrauchsquote —
+vorher stand dort „100 %" aus einer Differenz zweier Nullen, und die Zeile
+*Verbrauch 0,00 kWh* las sich wie ein Haus, das nichts braucht. Die Anzeigen
+schreiben jetzt einen Strich, und die JSON-Endpunkte liefern `null`.
+
 ### 3. Das Diagramm folgt den Fähigkeiten
 
 `src/gui/FlowLayout.h`, header-only und ohne LVGL, damit der Host-Test

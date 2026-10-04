@@ -45,10 +45,14 @@ struct DeviceCaps {
   bool houseMeter;
 
   // A meter at the grid connection: the value that answers "is energy leaving
-  // or entering the house". Its absence is not an error, it is what a
-  // string inverter without an export meter looks like - the feed-in can then
-  // only be derived from generation minus house, and if there is no house
-  // meter either, not even that.
+  // or entering the house". Its absence is not an error, it is what a string
+  // inverter without an export meter looks like.
+  //
+  // It also decides whether the own consumption exists at all: that figure is
+  // consumption minus grid draw, a difference of two meters, so it needs this
+  // one and houseMeter together - see ruleOwnKnown() in Rules.h. A device
+  // without them has no own consumption, no self-sufficiency and no share, and
+  // the pages write a dash instead of a figure.
   bool gridMeter;
 
   // A battery behind the inverter, with a state of charge. Drives the battery

@@ -21,6 +21,15 @@
 static int g_checks = 0;
 static int g_failed = 0;
 
+static void checkFlag(bool got, bool want, const char *what) {
+  g_checks++;
+  if (got != want) {
+    g_failed++;
+    printf("FAIL  %s: got %s, want %s\n", what, got ? "true" : "false",
+           want ? "true" : "false");
+  }
+}
+
 static void checkNear(float got, float want, const char *what) {
   g_checks++;
   if (got - want > 0.01f || want - got > 0.01f) {
@@ -154,6 +163,9 @@ static void testChartSeries() {
 // month's number on the daily page, so every period is checked.
 static void testPeriods() {
   DeviceState s = makeState(kRct);
+  s.caps.houseMeter = true;
+  s.caps.gridMeter = true;
+  s.caps.battery = true;
   s.dayGenWh = 32500.0f;
   s.dayHouseWh = 21000.0f;
   s.dayFeedInWh = -20100.0f; // measured: negative on the real device
@@ -179,7 +191,8 @@ static void testPeriods() {
   checkNear(d.genWh, 35330.0f, "Tag: Erzeugung = DC + extern");
   checkNear(d.houseWh, 23830.0f, "Tag: Verbrauch = Haus + extern");
   checkNear(d.feedWh, 20100.0f, "Tag: Einspeisung als Betrag");
-  checkNear(d.ownWh, 15230.0f, "Tag: Eigenverbrauch = Erzeugung - Einspeisung");
+  checkNear(d.ownWh, 23830.0f,
+            "Tag: Eigenverbrauch = Verbrauch - Bezug (23830 - 0)");
   checkNear(d.gridDrawWh, 0.0f, "Tag: Bezug wie gemessen");
 
   // The lifetime period reads the two lifetime grid counters, which are carried
@@ -199,6 +212,8 @@ static void testPeriods() {
   // Its feed-in counter arrives positive, which is the same kind of fact about
   // the same kind of device, so it belongs to the same state.
   DeviceState c = makeState(kClean);
+  c.caps.houseMeter = true;
+  c.caps.gridMeter = true;
   c.dayGenWh = 32500.0f;
   c.dayHouseWh = 21000.0f;
   c.dayFeedInWh = 20100.0f;
@@ -208,24 +223,61 @@ static void testPeriods() {
   checkNear(v.houseWh, 21000.0f, "sauberer Zaehler: Verbrauch ohne Zusatz");
   checkNear(v.feedWh, 20100.0f,
             "positives Vorzeichen: Einspeisung bleibt wie sie ist");
-  checkNear(v.ownWh, 12400.0f, "sauberer Zaehler: Eigenverbrauch ohne Zusatz");
+  checkNear(v.ownWh, 21000.0f, "sauberer Zaehler: Eigenverbrauch ohne Zusatz");
 
   // The two signs are independent facts: the same device may report its
-  // feed-in counter negated, and then the magnitude is what went in. Own use
-  // has to come out the same either way - it is generation minus what was fed
-  // in, never generation minus a negative number.
+  // feed-in counter negated, and then the magnitude is what went in. The own
+  // consumption does not read that counter at all, so it has to come out the
+  // same either way.
   c.semantics.feedCounterNegative = true;
   c.dayFeedInWh = -20100.0f;
   checkNear(rulePeriod(c, 0).feedWh, 20100.0f, "verkehrtes Vorzeichen: Betrag");
-  checkNear(rulePeriod(c, 0).ownWh, 12400.0f,
+  checkNear(rulePeriod(c, 0).ownWh, 21000.0f,
             "verkehrtes Vorzeichen: Eigenverbrauch bleibt derselbe");
+
+  // The battery is the reason the own consumption is counted on the way out and
+  // not on the way in: energy that went into the battery today is consumption
+  // tomorrow, and the two days must not tell different stories about the same
+  // kilowatt hours. Generated 12000 Wh, fed in 900 Wh, consumed 8000 Wh, drawn
+  // 1000 Wh: the own consumption is 7000 Wh and not generation minus feed-in.
+  // (kClean is the device whose feed-in counter arrives positive, so it is
+  // written positive here.)
+  DeviceState b = makeState(kClean);
+  b.caps.houseMeter = true;
+  b.caps.gridMeter = true;
+  b.dayGenWh = 12000.0f;
+  b.dayFeedInWh = 900.0f;
+  b.dayHouseWh = 8000.0f;
+  b.dayGridDrawWh = 1000.0f;
+  const PeriodValues bp = rulePeriod(b, 0);
+  checkNear(bp.ownWh, 7000.0f, "Eigenverbrauch = Verbrauch - Bezug");
+  checkNear(bp.genWh - bp.feedWh, 11100.0f,
+            "Erzeugung - Einspeisung waere ein anderer Wert (nur der Vergleich)");
+  checkNear(bp.houseWh - bp.gridDrawWh, bp.ownWh,
+            "Eigenverbrauch ist nie groesser als der Verbrauch");
 
   // Own use is clamped: the counters run apart for a moment after a device
   // restart, and a negative bar would be meaningless.
   DeviceState k = makeState(kClean);
-  k.dayGenWh = 1000.0f;
-  k.dayFeedInWh = 1200.0f;
+  k.caps.houseMeter = true;
+  k.caps.gridMeter = true;
+  k.dayHouseWh = 1000.0f;
+  k.dayGridDrawWh = 1200.0f;
   checkNear(rulePeriod(k, 0).ownWh, 0.0f, "Eigenverbrauch ist bei 0 geklammert");
+
+  // A derived number needs both of its operands measured. A device without a
+  // house meter or without a grid meter has no own consumption - and the caller
+  // asks ruleOwnKnown() so it can leave the figure out instead of showing zero.
+  checkFlag(ruleOwnKnown(s), true, "beide Zaehler da: Eigenverbrauch gibt es");
+  DeviceState ohneHaus = makeState(kClean);
+  ohneHaus.caps.gridMeter = true;
+  checkFlag(ruleOwnKnown(ohneHaus), false, "ohne Hauszaehler: kein Eigenverbrauch");
+  DeviceState ohneNetz = makeState(kClean);
+  ohneNetz.caps.houseMeter = true;
+  checkFlag(ruleOwnKnown(ohneNetz), false, "ohne Netzzaehler: kein Eigenverbrauch");
+  DeviceState ohneBeide = makeState(kClean);
+  checkFlag(ruleOwnKnown(ohneBeide), false,
+            "ohne beide Zaehler: kein Eigenverbrauch und keine Quote");
 }
 
 // A single-phase device has to work without a flag: phases it does not have stay

@@ -296,7 +296,7 @@ Tag | Monat | Jahr | Gesamt:
 | Balken | Farbe | Erklärung |
 |---|---|---|
 | PV Erzeugung | gelb | erzeugte Energie |
-| Eigenverbrauch | grün | erzeugt und selbst genutzt (= PV − Einspeisung, nie negativ) |
+| Eigenverbrauch | grün | vom Haus genommen, was nicht aus dem Netz kam (= Verbrauch − Netzbezug, nie negativ) |
 | Netzeinspeisung | orange | eingespeiste Energie |
 | Netzbezug | rot | aus dem Netz bezogene Energie |
 | Verbrauch | türkis | gesamter Verbrauch |
@@ -304,6 +304,17 @@ Tag | Monat | Jahr | Gesamt:
 Die Balken sind zum größten Wert des gewählten Zeitraums normiert; die
 Werte stehen rechtsbündig über dem jeweiligen Balken (kWh bzw. MWh mit
 Dezimalkomma).
+
+**Der Eigenverbrauch wird beim Entladen gezählt, nicht beim Laden.** Was der
+Akku heute lädt, ist morgen Verbrauch — und die Kennzahl soll für den Tag
+gelten, an dem die Energie im Haus ankommt. Der Preis dafür: Die fünf Balken
+gehen nicht mehr auf, und das ist so gewollt: Die Balken müssen nichts
+gemeinsam abbilden, sie sollen die Situation sinnvoll wiedergeben — und dafür
+werden manche Größen **vor** der Umwandlung gezählt (die Erzeugung an den
+Strings) und andere **danach** (der Verbrauch im Haus). Zwischen *PV
+Erzeugung* und der Summe aus *Eigenverbrauch* und *Netzeinspeisung* liegt
+deshalb, was im Akku liegt und was die Umwandlung gekostet hat; kein Zähler
+führt beides, also steht es auch nirgends.
 
 <figure class="display-shot">
   <img src="../screenshots/screenshot-s2.png" alt="Seite Energie: vier Knöpfe Tag, Monat, Jahr und Gesamt, darunter fünf Zeilen mit Name, Wert und Balken für PV Erzeugung, Eigenverbrauch, Netzeinspeisung, Netzbezug und Verbrauch">
@@ -316,11 +327,22 @@ Die Tageswerte des aktuellen Kalendertags:
 
 - Erzeugt / Eigenverbrauch / Eingespeist (kWh),
 - Verbrauch / Bezug (kWh),
-- Autarkie (%): = 1 − Netzbezug ÷ Hausverbrauch des Tages
-- Eigenverbrauchsquote (%): Anteil der Erzeugung, der selbst genutzt wird.
+- Autarkie (%): = Eigenverbrauch ÷ Verbrauch des Tages, also 1 − Netzbezug ÷ Verbrauch
+- Eigenverbrauchsquote (%): = Eigenverbrauch ÷ (Eigenverbrauch + Netzeinspeisung)
+
+Die beiden Prozentwerte sind **zwei verschiedene Fragen** und haben deshalb
+zwei verschiedene Nenner: Die **Autarkie** fragt, wie viel des eigenen
+Verbrauchs das Haus selbst gedeckt hat — der Nenner ist der Verbrauch. Die
+**Eigenverbrauchsquote** fragt, wie viel von dem, was die Anlage ausgeliefert
+hat, im eigenen Haus blieb — der Nenner ist die Summe aus Eigenverbrauch und
+Einspeisung. Die Akkuladung steht in keinem der beiden, und soll die Quote auch
+nicht verschlechtern; wer um die Mittagszeit lädt, bekommt sie nicht geschenkt.
+
+Am 4. Oktober 2026 waren das 9 988 Wh Eigenverbrauch bei 12 670 Wh
+Einspeisung, also eine Quote von 44,1 % bei 100 % Autarkie.
 
 Hinweis: Entlädt sich die Batterie zur Deckung des Hausbedarfs, zählt diese
-Energie als Eigenverbrauch.
+Energie als Eigenverbrauch — das ist genau der Punkt, an dem gezählt wird.
 
 ### 3.4 24 h Verlauf
 

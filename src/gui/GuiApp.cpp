@@ -35,6 +35,7 @@
 //   +------+------+------+--------+  <- nav bar (left | home | right)
 //
 // SPDX-License-Identifier: MIT
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
@@ -389,7 +390,7 @@ enum EnLabel {
 // refreshed by the 1 Hz timer, the bars are resized there too.
 enum EbLabel {
   EB_VAL_PV = 0,  // PV Erzeugung
-  EB_VAL_SELF,    // Eigenverbrauch (PV − Netzeinspeisung)
+  EB_VAL_SELF,    // Eigenverbrauch (Verbrauch − Netzbezug)
   EB_VAL_FEED,    // Netzeinspeisung
   EB_VAL_GRID,    // Netzbezug
   EB_VAL_LOAD,    // Verbrauch
@@ -785,20 +786,43 @@ static void energyPeriodValues(const DeviceState &s, int period,
 // them as numbers instead of as bars. The web interface asks here, so its JSON
 // and the Energie page cannot report different numbers for the same period.
 //
-// period is 0 day, 1 month, 2 year, 3 total. The percentages follow the Heute
-// page: autarky is what the household covered itself, ownShare is how much of
-// the generation stayed here.
+// period is 0 day, 1 month, 2 year, 3 total.
+//
+// The two percentages are different questions and are answered differently:
+//
+//   Autarkie             = Eigenverbrauch / Verbrauch
+//                       = what the household covered itself
+//   Eigenverbrauchsquote = Eigenverbrauch / (Eigenverbrauch + Einspeisung)
+//                       = of everything the plant handed to the house or to the
+//                         grid, how much went to the house
+//
+// The denominator of the quote is *not* the generation: what went into the
+// battery during the period is neither of the two, and counting it would give a
+// plant that charges at noon a better quote than one that does not. The clamp
+// stays for the same reason it was there: the counters run apart for a moment
+// after a device restart.
+//
+// Both are NaN where the meters they need are not there (ruleOwnKnown()): the
+// caller writes a dash, and the JSON turns NaN into null. "100 %" for a device
+// that measures no consumption would be an answer nobody asked for.
 void guiEnergyPeriod(int period, float wh[5], float *autarky,
                      float *ownShare) {
-  energyPeriodValues(deviceState(), period, wh);
-  const float pv = wh[EB_VAL_PV];
-  const float grid = wh[EB_VAL_GRID];
+  const DeviceState &s = deviceState();
+  energyPeriodValues(s, period, wh);
+  const float own = wh[EB_VAL_SELF];
+  const float feed = wh[EB_VAL_FEED];
   const float load = wh[EB_VAL_LOAD];
-  *autarky = load > 0.0f ? (1.0f - grid / load) * 100.0f : 100.0f;
+  if (!ruleOwnKnown(s)) {
+    *autarky = NAN;
+    *ownShare = NAN;
+    return;
+  }
+  *autarky = load > 0.0f ? own / load * 100.0f : NAN;
   if (*autarky < 0.0f) {
     *autarky = 0.0f;
   }
-  *ownShare = pv > 0.0f ? wh[EB_VAL_SELF] / pv * 100.0f : 0.0f;
+  const float gehabt = own + feed;
+  *ownShare = gehabt > 0.0f ? own / gehabt * 100.0f : NAN;
   if (*ownShare > 100.0f) {
     *ownShare = 100.0f;
   }
@@ -2742,11 +2766,20 @@ static void refreshCb(lv_timer_t *t) {
         maxV = v[i];
       }
     }
+    // What this device does not measure stays a dash. The own consumption is a
+    // difference of two meters and needs both; feed-in and grid draw hang on the
+    // meter at the grid connection, the consumption on the household's own. A
+    // device without them gets neither a figure nor a bar - "0,00 kWh
+    // Verbrauch" would read like a house that uses nothing at all.
+    const bool ownOk = ruleOwnKnown(s);
+    const bool known[ENERGY_ROWS] = {
+        true,                    // PV: the device's own generation counters
+        ownOk, s.caps.gridMeter, s.caps.gridMeter, s.caps.houseMeter};
     for (int i = 0; i < ENERGY_ROWS; i++) {
       // Bars share the scale of the largest value of the period; a small but
       // non-zero value still gets a visible stub.
       int w = 0;
-      if (maxV > 0.0f) {
+      if (maxV > 0.0f && known[i]) {
         w = (int)(v[i] / maxV * (float)EB_BAR_W);
         if (w == 0 && v[i] > 0.0f) {
           w = 3;
@@ -2755,7 +2788,7 @@ static void refreshCb(lv_timer_t *t) {
       if (s_ebarFill[i] && lv_obj_get_width(s_ebarFill[i]) != w) {
         lv_obj_set_width(s_ebarFill[i], w);
       }
-      if (s.haveData) {
+      if (s.haveData && known[i]) {
         setEnergyValue(eb.labels[i], v[i]);
       } else {
         lv_label_set_text(eb.labels[i], "--");
@@ -2771,45 +2804,70 @@ static void refreshCb(lv_timer_t *t) {
     // on this device is the driver's to say (see DeviceSemantics), and the day
     // figures have to agree with the energy page for the same day.
     //
-    // Eigenverbrauch = Erzeugt minus Eingespeist, wie auf der Energie-Seite:
-    // alles, was erzeugt und nicht eingespeist wurde, ist im eigenen Haus
-    // genutzt worden - auch der Teil, der als Akkuladung auf Vorrat liegt. Der
-    // Akku versorgt ausschliesslich das eigene Haus und wird nie zur
-    // Einspeisung benutzt, deshalb zaehlt die Ladung mit; ihre Entnahme
-    // erscheint in einem anderen Zeitraum als Verbrauch, und genau deshalb ist
-    // hier nichts doppelt gezaehlt. NICHT Verbrauch minus Bezug: das laesst die
-    // Akkuladung ausser vor und waere an einem Tag mit Ladebetrieb zu niedrig
-    // (live geprueft: nachts 569 Wh Last bei 0,1 Wh Bezug = 569 Wh aus dem
-    // Akku).
+    // Eigenverbrauch = Verbrauch minus Netzbezug, wie auf der Energie-Seite:
+    // was das Haus ueber die Zeit genommen hat und nicht aus dem Netz bekommen
+    // ist - direkt aus den Strings oder aus dem Akku. Gezaehlt wird beim
+    // Entladen und nicht beim Laden: was heute geladen wird, ist morgen
+    // Verbrauch, und die beiden Tage sollen nicht verschiedene Geschichten
+    // ueber dieselbe Kilowattstunde erzaehlen (Entscheidung des Nutzers).
     const PeriodValues day = rulePeriod(s, 0);
     float gen = day.genWh;         // Erzeugt
     float feed = day.feedWh;       // Eingespeist, als Betrag
     float consumed = day.houseWh;  // Verbrauch
     float gridIn = day.gridDrawWh; // Bezug (grid draw)
     float selfUse = day.ownWh;     // Eigenverbrauch, nie negativ
-    // Autarkie = 1 - Bezug / Verbrauch. No load consumes nothing from the
-    // grid, so the day is fully independent.
-    float autarkie =
-        consumed > 0.0f ? (1.0f - gridIn / consumed) * 100.0f : 100.0f;
+    // Autarkie = Eigenverbrauch / Verbrauch, also dasselbe wie
+    // 1 - Bezug / Verbrauch. Ohne Verbrauch gibt es keine Quote - und ohne
+    // Verbrauchszaehler schon gar nicht.
+    const bool ownOk = ruleOwnKnown(s);
+    float autarkie = consumed > 0.0f ? selfUse / consumed * 100.0f : NAN;
     if (autarkie < 0.0f) autarkie = 0.0f;
-    // Eigenverbrauchsquote = Eigenverbrauch / Erzeugung, begrenzt auf
-    // [0, 100]: mit Erzeugung minus Einspeisung ist das der Anteil der
-    // erzeugten Energie, der im eigenen Haus genutzt wurde, also
-    // 1 - Einspeisung/Erzeugung. Nach einem Geraete-Neustart laufen die
-    // Zaehler kurz phasenversetzt (daher die Klammer oben).
-    float evb = gen > 0.0f ? selfUse / gen * 100.0f : 0.0f;
+    // Eigenverbrauchsquote = Eigenverbrauch / (Eigenverbrauch +
+    // Einspeisung): von allem, was die Anlage dem Haus oder dem Netz gegeben
+    // hat, wie viel im Haus blieb. Die Ladung des Akkus gehoert in keines von
+    // beidem, und soll die Quote nicht verschlechtern. Begrenzt auf [0, 100],
+    // weil nach einem Geraete-Neustart die Zaehler kurz phasenversetzt laufen
+    // (daher die Klammer in rulePeriod).
+    float evb = NAN;
+    if (selfUse + feed > 0.0f) {
+      evb = selfUse / (selfUse + feed) * 100.0f;
+    }
     if (evb > 100.0f) evb = 100.0f;
 
     if (s.haveData) {
       // Portal "Übersicht" boxes: Erzeugt / Eigenverbrauch / Eingespeist
       // rounded to one decimal, the Verbrauch/Bezug counters to two.
+      //
+      // A figure whose counter the device does not have stays a dash, and so
+      // does everything derived from it: on a device without a house meter
+      // "0,00 kWh Verbrauch" would read like a house that uses nothing.
       setText(en.labels[EN_GEN_VAL], "%.1f kWh", gen / 1000.0f);
-      setText(en.labels[EN_SELF_VAL], "%.1f kWh", selfUse / 1000.0f);
+      if (ownOk) {
+        setText(en.labels[EN_SELF_VAL], "%.1f kWh", selfUse / 1000.0f);
+      } else {
+        setText(en.labels[EN_SELF_VAL], "--");
+      }
       setText(en.labels[EN_FEED_VAL], "%.1f kWh", feed / 1000.0f);
-      setText(en.labels[EN_VERB_VAL], "%.2f kWh", consumed / 1000.0f);
-      setText(en.labels[EN_BEZU_VAL], "%.2f kWh", gridIn / 1000.0f);
-      setText(en.labels[EN_AUT_VAL], "%.0f %%", autarkie);
-      setText(en.labels[EN_EVB_VAL], "%.0f %%", evb);
+      if (s.caps.houseMeter) {
+        setText(en.labels[EN_VERB_VAL], "%.2f kWh", consumed / 1000.0f);
+      } else {
+        setText(en.labels[EN_VERB_VAL], "--");
+      }
+      if (s.caps.gridMeter) {
+        setText(en.labels[EN_BEZU_VAL], "%.2f kWh", gridIn / 1000.0f);
+      } else {
+        setText(en.labels[EN_BEZU_VAL], "--");
+      }
+      if (ownOk && autarkie == autarkie) {
+        setText(en.labels[EN_AUT_VAL], "%.0f %%", autarkie);
+      } else {
+        setText(en.labels[EN_AUT_VAL], "--");
+      }
+      if (ownOk && evb == evb) {
+        setText(en.labels[EN_EVB_VAL], "%.0f %%", evb);
+      } else {
+        setText(en.labels[EN_EVB_VAL], "--");
+      }
     } else {
       // Before the first frame of data every value shows "--".
       for (int i = EN_GEN_VAL; i <= EN_EVB_VAL; i += 2) {

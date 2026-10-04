@@ -193,17 +193,34 @@ check(rows[2].v[2] === 4100, 'production of the last row', rows[2].v[2], 4100);
 const span = api.rpSpan(rows, '2026-10-02');
 check(span !== null && span[0] === 0 && span[1] === 2, 'the span of the day',
       String(span), '0,2');
-const en = api.rpEnergy(rows);
+const en = api.rpEnergy(rows, true);
 check(en.values.pv === 23680, 'generated in Wh', en.values.pv, 23680);
 check(en.values.feed === 15890, 'fed in in Wh (the counter is negative)',
       en.values.feed, 15890);
 check(en.values.draw === 1810, 'drawn from the grid in Wh', en.values.draw, 1810);
 check(en.values.load === 3890, 'consumed in Wh', en.values.load, 3890);
-check(en.values.own === 7790, 'own consumption in Wh', en.values.own, 7790);
+// Consumption minus grid draw, not generation minus feed-in: what the battery
+// stored during the period is counted on the day it comes out again.
+check(en.values.own === 2080, 'own consumption in Wh', en.values.own, 2080);
 check(Math.abs(en.autarky - 53.47) < 0.01, 'self-sufficiency',
       en.autarky.toFixed(2), '53.47');
-check(Math.abs(en.ownShare - 32.89) < 0.01, 'own consumption share',
-      en.ownShare.toFixed(2), '32.89');
+// Own use against everything the plant handed to the house or to the grid - and
+// deliberately not against the generation, or charging at noon would improve the
+// quote.
+check(Math.abs(en.ownShare - 11.58) < 0.01, 'own consumption share',
+      en.ownShare.toFixed(2), '11.58');
+
+// A device without the two meters the own consumption is a difference of: no own
+// consumption, no self-sufficiency and no share - three figures nobody measured.
+const enOhne = api.rpEnergy(rows, false);
+check(enOhne.values.own === null, 'without the meters there is no own consumption',
+      String(enOhne.values.own), 'null');
+check(enOhne.autarky === null, 'and no self-sufficiency',
+      String(enOhne.autarky), 'null');
+check(enOhne.ownShare === null, 'and no share',
+      String(enOhne.ownShare), 'null');
+check(enOhne.values.load === 3890, 'while the measured figures stay',
+      enOhne.values.load, 3890);
 
 // A day with no row is not a day with zero energy.
 check(api.rpSpan(rows, '2026-10-01') === null, 'a day without rows', 'null', 'null');
@@ -215,7 +232,7 @@ const csvExt = NAMES.join(',') + '\n' +
                row(T0, [0, 0, 0, 0, 0, 0], {s0: 300}) + '\n' +
                row(T1, [0, 0, 1000, 0, 0, 0], {s0: 300}) + '\n';
 const rowsExt = api.rpRows(csvExt, NAMES, tz);
-const enExt = api.rpEnergy(rowsExt);
+const enExt = api.rpEnergy(rowsExt, true);
 check(enExt.values.pv === 1000, 'external generator is generated energy',
       enExt.values.pv, 1000);
 check(enExt.values.load === 1000, 'external generator is consumed energy',
@@ -235,7 +252,7 @@ check(rowsOld[1].v[2] === 4100, 'the powers of an old row are there',
 // A period that is entirely in the old format: the sums are filled with 0, the
 // way the panel's own reader fills them, so the view stays continuous - and the
 // two rates are left out rather than invented.
-const enOld = api.rpEnergy(rowsOld);
+const enOld = api.rpEnergy(rowsOld, true);
 check(enOld !== null, 'an old period still has an answer', String(enOld), 'object');
 check(enOld.values.pv === 0, 'no generated energy without a counter',
       enOld.values.pv, 0);
@@ -269,7 +286,7 @@ check(rowsGemischt[0].s === null && rowsGemischt[1].s === null,
       String(rowsGemischt[0].s) + '/' + String(rowsGemischt[1].s), 'null/null');
 check(rowsGemischt[2].s !== null, 'the new row has sums',
       String(rowsGemischt[2].s), 'numbers');
-const enGemischt = api.rpEnergy(rowsGemischt);
+const enGemischt = api.rpEnergy(rowsGemischt, true);
 check(enGemischt.sums === true, 'a mixed period has sums to subtract',
       String(enGemischt.sums), 'true');
 check(enGemischt.missing === 1, 'and says that rows are missing them',
@@ -286,6 +303,11 @@ check(enGemischt.values.load === 1890, 'and so is the consumption',
       enGemischt.values.load, 1890);
 check(enGemischt.values.draw === 910, 'and the grid draw',
       enGemischt.values.draw, 910);
+check(enGemischt.values.own === 980, 'and the own consumption with them',
+      enGemischt.values.own, 980);
+check(Math.abs(enGemischt.autarky - 51.85) < 0.01,
+      'and the self-sufficiency follows the same two figures',
+      enGemischt.autarky.toFixed(2), '51.85');
 
 // One row with sums is still no difference - it is the first day after the
 // update, and a counter needs two readings before it says anything.
@@ -293,7 +315,7 @@ const csvEin = NAMES.slice(0, 16).join(',') + '\n' +
                row(T0, null, {l1: 400, g1: 50, bat: 100, soc: 50}) + '\n' +
                row(T0 + 300, [20000, 20000, 5000, 32000, -9000, 8900],
                    {pv_a: 3200, l1: 300, g1: 300, bat: 101, soc: 51}) + '\n';
-const enEin = api.rpEnergy(api.rpRows(csvEin, NAMES, tz));
+const enEin = api.rpEnergy(api.rpRows(csvEin, NAMES, tz), true);
 check(enEin.sums === false, 'a single counter reading gives no difference',
       String(enEin.sums), 'false');
 check(enEin.values.pv === 0, 'and no energy', enEin.values.pv, 0);

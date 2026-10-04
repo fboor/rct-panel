@@ -47,12 +47,37 @@ Energieerzeugung are deactivated there and are skipped).
 | PV Erzeugung    | `#EBD300` gelb  | `e_dc_day[0..1]` · `e_dc_month[0..1]` · `e_dc_year[0..1]` · `e_dc_total[0..1]` |
 | Netzbezug       | `#CA0C0F` rot   | `e_grid_load_day` · `_month` · `_year` · `_total` |
 | Netzeinspeisung | `#F48756` orange| `e_grid_feed_day` · `_month` · `_year` · `_total` |
-| Eigenverbrauch  | `#12A40A` grün  | derived: PV − Netzeinspeisung (clamped ≥ 0)  |
+| Eigenverbrauch  | `#12A40A` grün  | derived: Verbrauch − Netzbezug (clamped ≥ 0)  |
 | Verbrauch       | `#3CBCD4` türkis| `e_load_day` · `_month` · `_year` · `_total` |
 
 Colors are the portal chart palette (visual check against the saved HTML
 during bring-up). Sign convention: all counters are ≥ 0; Eigenverbrauch is the
-only derived value.
+only derived value, and it is a difference of two of them — so a device without
+a house meter or without a grid meter has no Eigenverbrauch at all
+(`ruleOwnKnown()`), and the page writes a dash instead of a figure.
+
+**Counted on the way out, not on the way in** (decision of the user, 2026-10-04).
+Eigenverbrauch is consumption minus grid draw: what the house took that did not
+come from the grid, whether it arrived from the array or out of the battery. The
+reason is the battery — energy charged today is consumed tomorrow, and the two
+days should not tell different stories about the same kilowatt hours. What it
+costs is that the bars no longer add up: generation and (own use + feed-in)
+differ by what is in the battery and what the conversion lost. No counter
+carries that, so nothing shows it. The bars are not meant to add up to one
+figure - they are meant to describe the situation, and some of these figures
+are taken before the conversion and some after it.
+
+The two percentages are two questions and are answered from two different
+denominators:
+
+| Figure | Formula |
+|---|---|
+| Autarkie | Eigenverbrauch ÷ Verbrauch = 1 − Netzbezug ÷ Verbrauch |
+| Eigenverbrauchsquote | Eigenverbrauch ÷ (Eigenverbrauch + Netzeinspeisung) |
+
+The quote's denominator is deliberately **not** the generation: battery charge
+belongs to neither of the two, and counting it would hand a better quote to a
+plant that charges at noon.
 
 ## 3. New RCT OIDs (13 sockets, all FLOAT counters)
 
@@ -80,7 +105,7 @@ yearLoadWh, totalLoadWh, monthFeedInWh, yearFeedInWh, monthGridLoadWh,
 yearGridLoadWh`. The two lifetime grid meters are the pre-existing
 `feedInEnergyWh` (`e_grid_feed_total`) and `loadEnergyWh` (`e_grid_load_total`),
 so no duplicate fields were added. Eigenverbrauch per period is derived in the
-GUI (PV − Einspeisung).
+GUI (Verbrauch − Netzbezug).
 
 Bring-up log (once, on the first poll where all 13 answered), so the wiring can
 be checked without a screen:
@@ -149,8 +174,11 @@ the same color read as noise, the bar is a strong enough signal on its own.
 (day values already simulated). `_drift()` increments the month counters by a
 tiny fraction of the day drift so the totals slowly move, matching the panel's
 10 s / 1 Hz refresh. The seeded numbers are internally consistent — per period
-`Verbrauch = (PV − Einspeisung) + Bezug` — so Eigenverbrauch and Verbrauch do
-not contradict each other on screen. Sim serves 54 objects (was 41).
+`Verbrauch = Eigenverbrauch + Netzbezug`, so that the simulated plant does not
+contradict itself: with a house meter and a grid meter, Eigenverbrauch =
+Verbrauch − Netzbezug is exactly what was simulated. Generation is simulated on
+its own counters and need not match, since the battery absorbs the difference —
+that difference is the whole point of counting on the way out. Sim serves 54 objects (was 41).
 
 ## 6. Implementation status
 

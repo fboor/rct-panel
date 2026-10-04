@@ -274,6 +274,13 @@ void addBarAttrs(String &b) {
   b += tr(T_ERR_LOAD_FAILED);
   b += F("\" data-none=\"");
   b += tr(T_NOTE_NO_DATA);
+  // Whether own consumption exists at all on this device. It is a difference of
+  // two meters, so it needs both - and the period view of the history page
+  // computes its own figures from the file, where only the firmware can say
+  // whether the device has them. The overview does not need the answer: its JSON
+  // carries a null for every figure the device does not measure.
+  b += F("\" data-own=\"");
+  b += ruleOwnKnown(deviceState()) ? '1' : '0';
   b += F("\"");
 }
 
@@ -537,6 +544,13 @@ void handleApiEnergy() {
   float wh[5], autarky, ownShare;
   guiEnergyPeriod(period, wh, &autarky, &ownShare);
 
+  // Own consumption is a difference of two meters and so needs both; consumption
+  // and grid draw are meters in their own right. Where the device has none, the
+  // figure is null and the browser leaves the row out - "0,0 kWh Verbrauch"
+  // would read like a house that uses nothing at all.
+  const DeviceCaps &caps = deviceState().caps;
+  const bool ownOk = ruleOwnKnown(deviceState());
+
   String j;
   j.reserve(320);
   j = '{';
@@ -547,13 +561,25 @@ void handleApiEnergy() {
   j += F("\",\"unit\":\"Wh\",\"values\":{\"pv\":");
   addNum(j, wh[0], 0);
   j += F(",\"own\":");
-  addNum(j, wh[1], 0);
+  if (ownOk) {
+    addNum(j, wh[1], 0);
+  } else {
+    j += F("null");
+  }
   j += F(",\"feed\":");
   addNum(j, wh[2], 0);
   j += F(",\"draw\":");
-  addNum(j, wh[3], 0);
+  if (caps.gridMeter) {
+    addNum(j, wh[3], 0);
+  } else {
+    j += F("null");
+  }
   j += F(",\"load\":");
-  addNum(j, wh[4], 0);
+  if (caps.houseMeter) {
+    addNum(j, wh[4], 0);
+  } else {
+    j += F("null");
+  }
   j += F("},\"autarky\":");
   addNum(j, autarky, 1);
   j += F(",\"ownShare\":");

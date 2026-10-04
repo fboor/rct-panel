@@ -362,7 +362,11 @@ function rpSpan(rows,day){
 // carries the old header with the new rows behind it - on the development card
 // 231 rows with 16 values and 333 with 23 in the same file - and a note taken
 // from the header would claim missing sums for days that have them.
-function rpEnergy(rows){
+// ownOk says whether the device has the two meters the own consumption is a
+// difference of. It comes from the page, because only the firmware knows what
+// the device can measure - and a period without them has no own consumption to
+// show, which is not the same as one of zero.
+function rpEnergy(rows,ownOk){
   var first=-1,last=-1,i,missing=0;
   for(i=0;i<rows.length;i++){
     if(!rows[i].s){missing=1;continue}
@@ -383,10 +387,20 @@ function rpEnergy(rows){
   var load=Math.max(0,s1[3]-s0[3])+ext;
   var feed=Math.abs(s1[4]-s0[4]);
   var grid=Math.max(0,s1[5]-s0[5]);
-  var own=Math.max(0,pv-feed);
+  // Own use is what the house took that did not come from the grid - counted on
+  // the way out of the battery, not on the way in, exactly as the panel counts
+  // it (rulePeriod). The three bars therefore do not add up: generation, own use
+  // and feed-in differ by what is in the battery and what the conversion lost,
+  // and no counter carries that.
+  var own=ownOk?Math.max(0,load-grid):null;
+  // Self-sufficiency is own use against consumption; the share is own use
+  // against everything the plant handed to the house or to the grid. Both go
+  // with their meters, and neither of them is invented.
+  var autarky=(own!==null&&load>0)?Math.max(0,own/load*100):null;
+  var gehabt=(own!==null)?own+feed:0;
+  var ownShare=gehabt>0?Math.min(100,own/gehabt*100):null;
   return {values:{pv:pv,own:own,feed:feed,draw:grid,load:load},
-          autarky:load>0?Math.max(0,1-grid/load)*100:100,
-          ownShare:pv>0?Math.min(100,own/pv*100):0,
+          autarky:autarky,ownShare:ownShare,
           sums:true,missing:missing};
 }
 
@@ -915,10 +929,14 @@ function rpEnergyBars(el,j){
   var keys=rpSplit(el.getAttribute('data-key'));
   var labs=rpSplit(el.getAttribute('data-lab'));
   var rates=rpSplit(el.getAttribute('data-r'));
-  var h='',i,v,mx=0,vals=[];
+  // A row whose figure the device does not measure is left out, not written as
+  // zero: on a device without a house meter "0,0 kWh Verbrauch" reads like a
+  // house that uses nothing.
+  var h='',i,v,mx=0,vals=[],idx=[];
   for(i=0;i<keys.length;i++){
     v=j.values[keys[i]];
-    if(typeof v!=='number'){v=0}
+    if(typeof v!=='number'){continue}
+    idx.push(i);
     vals.push(v);
     if(v>mx){mx=v}
   }
@@ -931,8 +949,8 @@ function rpEnergyBars(el,j){
       +'<div><b>'+rpRate(j.ownShare,sep)+'</b>'+rpEsc(rates[1])+'</div></div>';
   }
   for(i=0;i<vals.length;i++){
-    h+='<div class="bar b'+i+'"><div class="l"><span>'+rpEsc(labs[i]||'')+'</span>'
-      +'<b>'+rpWh(j.values[keys[i]],sep)+'</b></div><div class="t"><div class="f" '
+    h+='<div class="bar b'+idx[i]+'"><div class="l"><span>'+rpEsc(labs[idx[i]]||'')+'</span>'
+      +'<b>'+rpWh(vals[i],sep)+'</b></div><div class="t"><div class="f" '
       +'style="width:'+Math.round(vals[i]/mx*100)+'%"></div></div></div>';
   }
   el.innerHTML=h;
@@ -1092,7 +1110,7 @@ var rpRetryMs=5000;
     if(nx){nx.disabled=days[days.length-1]>=rday()}
     // The energy of the period, and with it the answer to the one question the
     // period cannot answer by itself: are there rows in it without the sums?
-    var e=rows.length?rpEnergy(rows):null;
+    var e=rows.length?rpEnergy(rows,el.getAttribute('data-own')==='1'):null;
     if(per){
       if(e){rpEnergyBars(per,e)}
       else{per.innerHTML='<div class="note">'+rpEsc(empty)+'</div>'}

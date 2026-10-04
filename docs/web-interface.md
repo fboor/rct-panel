@@ -270,9 +270,19 @@ Probe des Zeigers liefern.
 seiner ersten und seiner letzten Zeile** - nicht die Summe von Momentanwerten.
 Das ist genau die Größe, die das Gerät selbst zählt, und sie bleibt über eine
 Lücke hinweg richtig. Der externe Generator zählt zur Erzeugung und zum Verbrauch
-(dieselbe Rechnung wie `energyPeriodValues`), und der Eigenverbrauch ist, was
-geblieben ist: erzeugt minus eingespeist. Die Einspeisezähler kommen am Gerät
-negativ an, deshalb wird der Betrag genommen - an einer Stelle, nicht sechsmal.
+(dieselbe Rechnung wie `energyPeriodValues`). Die Einspeisezähler kommen am
+Gerät negativ an, deshalb wird der Betrag genommen - an einer Stelle, nicht
+sechsmal.
+
+Der **Eigenverbrauch ist Verbrauch minus Netzbezug** - dieselbe Rechnung wie
+`rulePeriod` auf dem Panel, und aus demselben Grund: gezaehlt wird beim Entladen
+und nicht beim Laden, damit ein Tag nicht die Ladung des anderen erzaehlt. Die
+drei Balken gehen deshalb nicht auf; die Differenz ist die Akkuladung plus die
+Umwandlungsverluste, und kein Zaehler fuehrt beides. `rpEnergy()` bekommt dazu
+`ownOk` aus dem Attribut `data-own` der Seite: die Differenz braucht beide
+Zaehler, und ohne sie gibt es keinen Eigenverbrauch, keine Autarkie und keine
+Quote - drei `null`, aus denen der Browser nichts macht. Die **Eigenverbrauchsquote
+hat den Nenner Eigenverbrauch + Einspeisung**, nicht die Erzeugung.
 
 Der S0-Anteil wird **nicht** aus der Momentanleistung hochgerechnet. `ext_total_wh`
 zählt die *Erzeugung* an diesem Eingang, und eine Anlage ohne Erzeugung dort hat
