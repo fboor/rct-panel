@@ -1073,6 +1073,11 @@ static void setNodeShown(lv_obj_t *node, const FlowNode &n) {
 // 7 px, which leaves the ink 25 px above the centre of a 190 px circle - high
 // enough that it clearly belongs to the upper part of the node rather than floating
 // in the middle of it.
+//
+// Only for that one icon and only in that one layout. The 28 px font has an ink of
+// 25 px in a 28 px line, four px above its middle, and it has been drawn centred
+// since the day it arrived; correcting it would move a glyph in a 60 px circle that
+// nobody had complained about, in the one diagram that every device shows.
 static const int16_t kIcoLabelRunter = -25;
 
 static void setNodeIconScale(lv_obj_t *ico, bool gross) {
@@ -1209,17 +1214,22 @@ static void applyFlowLayout(const FlowLayout &L, AppPage *ov) {
     // whole page on a device without meters.
     lv_obj_set_style_text_font(s_icoPv, &lv_font_mdi_icons_136, 0);
     lv_obj_set_style_transform_scale(s_icoPv, 256, 0); // 256 = 1.0
+    // Both fonts change with the layout, and the font is what decides the height
+    // of the label's line box, so the place in the node has to be set again in
+    // both branches. Only this branch moves it afterwards: the offset belongs to
+    // the metrics of the 136 px font and to what the eye asked for on that page.
+    // Applied to the small icon as well it pushed the glyph 6 px towards the top
+    // of its 60 px circle, which is the one place on the panel where everybody
+    // can see that a number belongs to a font and not to a picture.
+    lv_obj_update_layout(s_icoPv);
+    lv_obj_center(s_icoPv);
+    lv_obj_set_y(s_icoPv, (int16_t)(lv_obj_get_y(s_icoPv) + kIcoLabelRunter));
   } else {
     lv_obj_set_style_text_font(s_icoPv, &lv_font_mdi_icons_28, 0);
     setNodeIconScale(s_icoPv, L.grossPvIco);
+    lv_obj_update_layout(s_icoPv);
+    lv_obj_center(s_icoPv);
   }
-  // Both branches change the font, and the font is what decides the height of
-  // the label's line box, so its place in the node has to be set again - and
-  // with the glyph's ink in mind rather than the middle of the line it is
-  // drawn in.
-  lv_obj_update_layout(s_icoPv);
-  lv_obj_center(s_icoPv);
-  lv_obj_set_y(s_icoPv, (int16_t)(lv_obj_get_y(s_icoPv) + kIcoLabelRunter));
 
   setLinkShown(s_linePv, L.linkPv);
   setLinkShown(s_lineGrid, L.linkGrid);
