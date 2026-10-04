@@ -61,6 +61,9 @@ static float s_exportMaxW = 0.0f;
 // the log.
 static bool s_loggedHouse = false;
 static bool s_loggedGrid = false;
+// Whether the household value is being computed rather than measured, for the
+// log line. Not a capability: see the block that sets it.
+static bool s_houseDerived = false;
 
 // Connection state, kept here rather than in the state: the peerOpen() question
 // belongs to the transport, and a driver that asked the transport twice per
@@ -278,10 +281,8 @@ void OigDriver::poll(uint32_t budgetMs) {
   // down. A house that draws nothing this second has not lost its meter.
   float load = 0.0f;
   if (num(kOigHouse, &load)) {
-    st.houseW[0] = load;
     s_houseMaxW = fmaxf(s_houseMaxW, fabsf(load));
   }
-  st.caps.houseMeter = oigMeterVorhanden(s_houseMaxW);
 
   float toGrid = 0.0f;
   if (num(kOigExport, &toGrid)) {
@@ -293,6 +294,35 @@ void OigDriver::poll(uint32_t budgetMs) {
     s_exportMaxW = fmaxf(s_exportMaxW, fabsf(toGrid));
   }
   st.caps.gridMeter = oigMeterVorhanden(s_exportMaxW);
+
+  // The household: a meter if there is one, otherwise nothing.
+  //
+  // There was a third case here for a while - a device that measures what it
+  // delivers on the AC side and its grid exchange, but has no load meter of its
+  // own, where "what it delivers minus what it feeds in" is the household by
+  // physics (oigHausAusAc). It was wrong as it stood, because the subtraction
+  // needed the feed-in register, and on the device that motivated it that
+  // register is the very one that reads nothing: a MIC 1000 without a meter
+  // publishes ACPowerToUser and ACPowerToGrid as permanent zeros. Deciding that a
+  // register is dead and then using it in the household figure in the same breath
+  // is not a computation, it is a contradiction - and the number that comes out
+  // is the inverter's AC output dressed up as a house.
+  //
+  // So the derivation stays in the table, and it is only used where the other half
+  // is a measurement: a live grid exchange plus a measured AC output is a real
+  // subtraction, and a device with neither has a household it does not know.
+  // caps.houseMeter keeps its meaning, "the panel has a household value".
+  s_houseDerived = false;
+  if (oigMeterVorhanden(s_houseMaxW)) {
+    st.houseW[0] = load;
+    st.caps.houseMeter = true;
+  } else if (haveAc && st.caps.gridMeter) {
+    st.houseW[0] = oigHausAusAc(acPower, toGrid);
+    st.caps.houseMeter = true;
+    s_houseDerived = true;
+  } else {
+    st.caps.houseMeter = false;
+  }
 
   // --- Battery -------------------------------------------------------------
   // Whether there IS a battery is a different question from whether the device
@@ -420,11 +450,12 @@ void OigDriver::poll(uint32_t budgetMs) {
   if (!logged) {
     logged = true;
     Serial.printf(
-        "OIG: %s meldet DC %.0f W, AC %.0f W, heute %.2f kWh, Haus%s, "
+        "OIG: %s meldet DC %.0f W, AC %.0f W, heute %.2f kWh, Haus%s%s, "
         "Netz%s, Akku%s - Felder der Antwort bestimmen die Anzeige\n",
         st.deviceName[0] ? st.deviceName : "(ohne Namen)", (double)dcPower,
         (double)acPower, (double)(st.dayGenWh / 1000.0f),
-        st.caps.houseMeter ? " ja" : " nein", st.caps.gridMeter ? " ja" : " nein",
+        st.caps.houseMeter ? " ja" : " nein",
+        s_houseDerived ? " (berechnet)" : "", st.caps.gridMeter ? " ja" : " nein",
         st.caps.battery ? " ja" : " nein");
   }
 

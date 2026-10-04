@@ -191,6 +191,27 @@ inline bool oigNumber(const char *json, size_t len, const char *const *names,
 // that reports a scaled fraction.
 inline bool oigMeterVorhanden(float hoechsterWertW) { return hoechsterWertW >= 0.5f; }
 
+// The household's consumption where there is no load meter of its own: what the
+// inverter delivers on its AC side, minus what it feeds into the grid. With both
+// of those measured it is the household by physics, and the device usually
+// computes the same sum internally.
+//
+// It is only usable where that is true - both halves measured. A device that
+// publishes a feed-in register which never leaves zero has no measurement of its
+// grid connection either, and subtracting a permanent zero from the AC output
+// hands back the AC output under the name "household". See the driver, which
+// checks oigMeterVorhanden() for the grid register before it uses this.
+//
+// Positive is consumption, which is the panel's convention. Clamped at zero,
+// because a device that reports more feed-in than it delivers - a rounding
+// difference, or a load that changed between the two registers - would otherwise
+// produce a household that consumes negative watts, and a negative household is a
+// thing that does not exist.
+inline float oigHausAusAc(float acW, float einspeisungW) {
+  const float rest = acW - einspeisungW;
+  return rest > 0.0f ? rest : 0.0f;
+}
+
 // Is a battery attached to the device at all - as opposed to the device
 // publishing battery registers, which a hybrid does whether or not one is there.
 //

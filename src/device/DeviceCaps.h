@@ -9,7 +9,7 @@
 // the household value is drawing a zero and calling it a measurement.
 //
 // So the driver states its shape once, in caps, and the display asks before it
-// shows. Three rules keep this honest:
+// shows. Four rules keep this honest:
 //
 //   - A flag is about the device family, not about this moment. "No household
 //     meter" is a property of the hardware; "the value is old" is a property of
@@ -20,6 +20,13 @@
 //   - Nothing here decides a number. Whether the household is meter plus the
 //     external generator is DeviceSemantics; whether there is a household meter
 //     at all is this file.
+//   - A derived number needs measured inputs, both of them. "What the inverter
+//     delivers minus what it feeds in" is a household only where both halves are
+//     measurements - and a device whose feed-in register reads zero for ever has
+//     just told us that it has no meter there. Subtracting that zero hands back
+//     the AC output wearing the name of a household, which is a guess with a
+//     number on it. Where we can tell that something is missing, the answer is
+//     that we do not have the value; not a plausible one.
 //
 // SPDX-License-Identifier: MIT
 #ifndef RCT_DEVICE_CAPS_H

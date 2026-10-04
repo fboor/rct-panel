@@ -1075,16 +1075,18 @@ static void setNodeShown(lv_obj_t *node, const FlowNode &n) {
 // above the top of the line and ends 12 px above its bottom - the ink already sits
 // 12 px above the middle of the line, and lv_obj_center() puts the middle of the
 // line in the middle of the circle. So +12 would put the ink exactly in the centre,
-// and each step of looking has gone further up from there: 8 px, 10 px, 4 px and
-// 7 px, which leaves the ink 25 px above the centre of a 190 px circle - high
-// enough that it clearly belongs to the upper part of the node rather than floating
-// in the middle of it.
+// and each step of looking has gone further up from there: 8 px, 10 px, 4 px, 7 px
+// and 12 px, which leaves the ink 37 px above the centre of a 190 px circle. That is
+// the fifth step in one direction and it is where the glyph belongs: the circle is
+// the frame, and an icon in its middle floats between the number below and the
+// empty space above instead of sitting in the upper half, where the eye looks
+// first.
 //
 // Only for that one icon and only in that one layout. The 28 px font has an ink of
 // 25 px in a 28 px line, four px above its middle, and it has been drawn centred
 // since the day it arrived; correcting it would move a glyph in a 60 px circle that
 // nobody had complained about, in the one diagram that every device shows.
-static const int16_t kIcoLabelRunter = -25;
+static const int16_t kIcoLabelRunter = -37;
 
 static void setNodeIconScale(lv_obj_t *ico, bool gross) {
   if (ico == nullptr) {
