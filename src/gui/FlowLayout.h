@@ -88,10 +88,11 @@ static const int16_t kFlowHubD = 92;   // the house
 // The PV as the only node on the page: bigger than a node that has company,
 // because it is then the whole diagram, and big enough for the glyph that goes
 // with it. The glyph's ink is 114 px, so 138 px left 12 px of white inside the
-// circle - the icon looked pressed against the rim. 160 px gives 23 px on each
-// side, and its top edge is at y = 2: the most room the heading above the
-// container (which ends at 35 on the page) allows.
-static const int16_t kFlowAlleinD = 160;
+// circle - the icon looked pressed against the rim - and 160 px gave 23 px, which
+// the panel wanted a little more of. 170 px gives 28 px on each side, and with
+// the centre 18 px below the hub row its top edge is at y = 15: still clear of
+// the heading, which ends at 26 on the page and 9 px above the container.
+static const int16_t kFlowAlleinD = 170;
 // 18 px below the hub row's centre. The circle fits under the heading either way
 // (its top edge is at y = 20), and it reads better the further down it stands:
 // with nothing else on the page, a circle near the top of it looks like it wants
@@ -137,8 +138,8 @@ static const int16_t kFlowBatValY = 247;
 // The value under the PV when it is the only node on the page: centred, and in
 // the middle of the empty band between the circle above it and the pill below it.
 // Both ends of the band are in the container, where this value lives too: the
-// circle's lower edge (100 + 160/2 = 180) and the pill's upper edge (316 - 35 -
-// 17 = 264), so its middle is 222. The first version measured the circle in the
+// circle's lower edge (100 + 170/2 = 185) and the pill's upper edge (316 - 35 -
+// 17 = 264), so its middle is 224. The first version measured the circle in the
 // container and the pill on the page and called the result 225 - 12 px too low,
 // because it had added the heading's height to the distance instead of taking it
 // off. It moves with the circle above it, which is the point of measuring.

@@ -163,7 +163,7 @@ static void testOnlyGeneration() {
   // The only thing the device can report, so bigger than a hub: 138 px.
   check(L.pv.visible && L.pv.x == 240 && L.pv.y == kFlowAlleinY &&
             L.pv.d == kFlowAlleinD,
-        "nur Erzeugung: PV in der Mitte, 160 px gross und 8 px tiefer");
+        "nur Erzeugung: PV in der Mitte, 170 px gross und 18 px tiefer");
   check(L.valPv.gross, "nur Erzeugung: Wert gross");
   // Centred under the node, and in the middle of the band between the circle's
   // lower edge and the pill's upper edge: 151 and 299, so 225.
@@ -172,17 +172,19 @@ static void testOnlyGeneration() {
   // The band between circle and pill, measured where the value lives: in the
   // container, which sits kFlowFlowY lower than the page the pills are on. Both
   // ends of the band in one coordinate system - 162 and 264, so 213.
-  checkEq(kFlowAlleinValY, 222, "Band zwischen Kreis und Pille");
-  checkEq(L.valPv.y, (int16_t)((kFlowAlleinY + 160 / 2 + (316 - 35) - 34 / 2) / 2),
+  checkEq(kFlowAlleinValY, 224, "Band zwischen Kreis und Pille");
+  checkEq(L.valPv.y,
+          (int16_t)((kFlowAlleinY + kFlowAlleinD / 2 + (316 - 35) - 34 / 2) / 2),
           "nur Erzeugung: die Mitte ist gerechnet, nicht geraten");
-  // Room for the glyph: 114 px of ink inside 160 px of circle. At 138 px it had
-  // 12 px on each side and looked pressed against the rim.
-  checkEq(kFlowAlleinD - 114, 46, "nur Erzeugung: 23 px Luft links und rechts");
-  // And the circle fits under the heading: its top edge is inside the container.
+  // Room for the glyph: 114 px of ink inside the circle. 138 px left 12 px on
+  // each side and the icon looked pressed against the rim; 170 px leaves 28.
+  checkEq(kFlowAlleinD - 114, 56, "nur Erzeugung: 28 px Luft links und rechts");
+  // And the circle fits under the heading: its top edge is inside the container,
+  // which starts 9 px below where the heading ends.
   check(kFlowAlleinY - kFlowAlleinD / 2 >= 0,
         "nur Erzeugung: der Kreis passt unter die Kopfzeile");
-  checkEq(kFlowAlleinY - kFlowAlleinD / 2, 20,
-          "nur Erzeugung: und hat 20 px Luft nach oben");
+  checkEq(kFlowAlleinY - kFlowAlleinD / 2, 15,
+          "nur Erzeugung: und hat 15 px Luft nach oben");
   checkEq(kFlowAlleinY, 100, "nur Erzeugung: die Mitte des Kreises");
   // Its y is a middle, so the caller puts the top edge half a line above it -
   // a label is placed by its corner, and getting that wrong is what put the
@@ -193,8 +195,8 @@ static void testOnlyGeneration() {
   checkEq(L.valPv.w, kFlowAlleinValW, "nur Erzeugung: der Wert bekommt 200 px");
   checkEq(L.valPv.w, 200, "nur Erzeugung: 200 px fuer den 36px-Wert");
   checkEq(L.valPv.x, 140, "nur Erzeugung: 200 px mittig auf 240 heisst 140");
-  // The circle is 160, so it is still inside the page horizontally and its
-  // bottom leaves room for the value: 162 + 102 px of band is where it goes.
+  // 170 px is still inside the page, and its bottom leaves a band the value fits
+  // into: 185 to 264 is 79 px for a number of 45.
   check(kFlowAlleinD <= kFlowPageW, "nur Erzeugung: der Kreis passt in die Seite");
   // Its own font at its own size: the 28 px glyph at 480 % was a blur.
   check(L.pvIcoNative, "nur Erzeugung: das PV-Icon aus eigener Schrift, 1:1");
