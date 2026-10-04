@@ -95,6 +95,39 @@ static const char *const kPSPF[] = {"PV1ChargePwr", "PV2ChargePwr", "LineFrequen
                                     "OutFrequency", "GridInVoltage", "OutVoltage",
                                     "BattSOC", "BattVoltage", "InverterStatus",
                                     nullptr};
+
+// A Growatt MIC 1000 behind a stick, field for field out of a real /status: 64
+// names, 1462 bytes. This one is not from the OpenInverterGateway source but off a
+// stick answering on the network, because it is the device the panel is being
+// tested with - and it disagrees with the tables in two ways that no test would
+// have found: it calls the AC output "OutputPower" and the generation counters
+// "TodayGenerateEnergy"/"TotalGenerateEnergy".
+//
+// The battery registers are all in here even though the device has no battery
+// attached: BatteryState, SOC, ChargePower, DischargePower, BatteryVoltage and
+// BatteryTemperature all answer 0. That is the case testBatteryPresence covers.
+static const char *const kMic1000[] = {
+    "ACChargeEnergyToday", "ACChargeEnergyTotal", "ACPowerToGrid",
+    "ACPowerToGridTotal", "ACPowerToUser", "ACPowerToUserTotal",
+    "ActivePowerRate", "BatteryState", "BatteryTemperature", "BatteryVoltage",
+    "BoostTemperature", "ChargeEnergyToday", "ChargeEnergyTotal", "ChargePower",
+    "Cnt", "DischargeEnergyToday", "DischargeEnergyTotal", "DischargePower",
+    "EnergyToGridToday", "EnergyToGridTotal", "EnergyToUserToday",
+    "EnergyToUserTotal", "GridFrequency", "HeapFragmentation", "HeapFree",
+    "HeapMaxAlloc", "HeapMinFree", "Hostname", "INVPowerToLocalLoad",
+    "INVPowerToLocalLoadTotal", "InputPower", "InverterStatus",
+    "InverterTemperature", "L1ThreePhaseGridOutputCurrent",
+    "L1ThreePhaseGridOutputPower", "L1ThreePhaseGridVoltage",
+    "L2ThreePhaseGridOutputCurrent", "L2ThreePhaseGridOutputPower",
+    "L2ThreePhaseGridVoltage", "L3ThreePhaseGridOutputCurrent",
+    "L3ThreePhaseGridOutputPower", "L3ThreePhaseGridVoltage",
+    "LocalLoadEnergyToday", "LocalLoadEnergyTotal", "Mac", "OutputPower",
+    "PV1EnergyToday", "PV1EnergyTotal", "PV1InputCurrent", "PV1InputPower",
+    "PV1Voltage", "PV2EnergyToday", "PV2EnergyTotal", "PV2InputCurrent",
+    "PV2InputPower", "PV2Voltage", "PVEnergyTotal", "SOC", "TWorkTimeTotal",
+    "TemperatureInsideIPM", "TodayGenerateEnergy", "TotalGenerateEnergy",
+    "Uptime", "WifiRSSI", nullptr};
+
 static const char *const kPTLXH[] = {"PV1Power", "PV2Power", "GridFrequency",
                                      "L1ThreePhaseGridVoltage", "BDCSysState",
                                      "TodayEnergyToGrid", "TodayEnergyToUser",
@@ -196,6 +229,86 @@ static void testPlainInverterHasNoMeters() {
   check(oigNumber(h.c_str(), h.size(), kOigSoc, &v), "Growatt307: Ladestand");
 }
 
+// Every quantity the panel draws, read out of that device's own answer. Before
+// these names were added, the AC power, both generation counters and the battery
+// temperature came out as zero on a device that reports all of them.
+static void testMic1000() {
+  const std::string j = answerWith(kMic1000);
+  const char *jt = j.c_str();
+  const size_t n = j.size();
+  float v = 0;
+  struct {
+    const char *const *table;
+    const char *want; // the name this device uses, so the test says which
+    const char *what;
+  } q[] = {
+      {kOigGeneration, "InputPower", "Erzeugung"},
+      {kOigAcPower, "OutputPower", "AC-Leistung"},
+      {kOigVoltage, "L1ThreePhaseGridVoltage", "Netzspannung"},
+      {kOigFrequency, "GridFrequency", "Frequenz"},
+      {kOigHouse, "ACPowerToUser", "Haus"},
+      {kOigExport, "ACPowerToGrid", "Einspeisung"},
+      {kOigEnergyToday, "TodayGenerateEnergy", "Erzeugung heute"},
+      {kOigEnergyTotal, "TotalGenerateEnergy", "Erzeugung gesamt"},
+      {kOigEnergyToGrid, "EnergyToGridToday", "Einspeisung heute"},
+      {kOigEnergyToUser, "EnergyToUserToday", "Haus heute"},
+      {kOigSoc, "SOC", "Ladestand"},
+      {kOigCharge, "ChargePower", "Ladeleistung"},
+      {kOigDischarge, "DischargePower", "Entladeleistung"},
+      {kOigBatteryState, "BatteryState", "Batteriezustand"},
+      {kOigBatteryVoltage, "BatteryVoltage", "Batteriespannung"},
+      {kOigBatteryTemperature, "BatteryTemperature", "Batterietemperatur"},
+      {kOigTemperature, "InverterTemperature", "Gerätetemperatur"},
+      {kOigStatus, "InverterStatus", "Status"},
+  };
+  for (const auto &x : q) {
+    const bool ok = oigNumber(jt, n, x.table, &v);
+    char msg[96];
+    snprintf(msg, sizeof(msg), "MIC1000: %s wird gelesen (%s)", x.what, x.want);
+    check(ok, msg);
+    snprintf(msg, sizeof(msg), "MIC1000: %s heisst dort %s", x.what, x.want);
+    check(ok && strcmp(oigFieldPresent(jt, n, x.table), x.want) == 0, msg);
+  }
+}
+
+// The battery question, which is not the same as the SOC question. This device
+// publishes six battery registers and has no battery attached; a panel that reads
+// "SOC exists" draws a battery node full of zeros, which is the mistake the whole
+// capability layer was built to avoid.
+static void testBatteryPresence() {
+  // The real answer of the device without a battery, with the zeros it sends.
+  const std::string ohne = "{\"BatteryState\":0,\"SOC\":0,\"ChargePower\":0,"
+                           "\"DischargePower\":0,\"BatteryVoltage\":0,"
+                           "\"BatteryTemperature\":0}";
+  float state = -1.0f;
+  check(!oigBatteryPresent(ohne.c_str(), ohne.size(), &state),
+        "MIC1000 ohne Akku: kein Akku, obwohl sechs Batterieregister antworten");
+  checkNearValue(state, 0.0f, "und der Rohwert steht im Protokoll");
+
+  // The same device with one attached: every register answers, the state does not.
+  const std::string mit = "{\"BatteryState\":1,\"SOC\":78,\"ChargePower\":0,"
+                          "\"DischargePower\":540,\"BatteryVoltage\":52.3}";
+  check(oigBatteryPresent(mit.c_str(), mit.size(), &state),
+        "MIC1000 mit Akku: Akku vorhanden");
+  checkNearValue(state, 1.0f, "und der Rohwert steht im Protokoll");
+  // And the power that belongs to it: discharge wins, because a device that
+  // publishes both says nothing on ChargePower while it discharges.
+  float w = 0;
+  check(oigNumber(mit.c_str(), mit.size(), kOigDischarge, &w),
+        "Entladeleistung wird gelesen");
+  check(oigNumber(mit.c_str(), mit.size(), kOigBatteryVoltage, &w),
+        "Batteriespannung wird gelesen");
+
+  // A protocol without a state register keeps the old rule: the registers are the
+  // only answer the device gives.
+  const std::string spf = answerWith(kPSPF);
+  check(oigBatteryPresent(spf.c_str(), spf.size(), &state),
+        "SPF ohne Zustandsregister: ein SOC-Feld gilt als Akku");
+  const std::string p120 = answerWith(kP120);
+  check(!oigBatteryPresent(p120.c_str(), p120.size(), &state),
+        "Growatt120 ohne SOC: kein Akku");
+}
+
 // A key that holds a string is not a measurement. The list must move on instead
 // of reporting a quantity it cannot read.
 static void testStringIsNotAValue() {
@@ -215,6 +328,8 @@ int main() {
   testVoltageOnEveryDevice();
   testGenerationOnEveryDevice();
   testPlainInverterHasNoMeters();
+  testMic1000();
+  testBatteryPresence();
   testStringIsNotAValue();
 
   printf("%s: %d Prüfungen, %d fehlgeschlagen\n",

@@ -25,13 +25,27 @@
 #include "../device/Json.h"
 #include "OigFields.h"
 
-// The stick's answer fits in one buffer with room to spare; a Growatt307 with
-// battery reports around forty fields. 1024 is the point past which something is
-// wrong, and the buffer is static because this runs in the LVGL task and its
-// stack is 8 kB.
-static const size_t kOigBodyMax = 1024;
+// The answer has to fit in one buffer, and how big that is has to be a fact and
+// not a guess. Measured on real sticks: a Growatt1000s answers with 21 fields
+// (about 500 bytes), and a Growatt MIC 1000 - same endpoint, same firmware
+// family, but a hybrid with three-phase registers - with 64 fields and 1462
+// bytes.
+//
+// 1024 was the guess, and it was wrong by exactly the 21 fields that follow the
+// first kilobyte: every energy counter of that device. The panel showed "heute
+// 0.00 kWh, gesamt 0.00 kWh" for a device that had been measuring for years, and
+// nothing said why. So the buffer is four times as big, which is 3 kB of the
+// panel's 320 kB, and a cut answer is now said out loud instead of being parsed
+// as if it were whole.
+//
+// Static because this runs in the LVGL task and its stack is 8 kB.
+static const size_t kOigBodyMax = 4096;
 static char s_body[kOigBodyMax + 1];
 static size_t s_bodyLen = 0;
+// Bytes that arrived after the buffer was full. Counted rather than ignored: a
+// truncated answer parses into a JSON that is still valid as far as it goes, and
+// every quantity past the cut is then missing without a word.
+static size_t s_bodyOver = 0;
 
 static DeviceTransport *s_link = nullptr;
 static DeviceConfig s_cfg;
@@ -81,6 +95,7 @@ static size_t readAnswer(uint32_t budgetMs) {
   size_t total = 0;
   bool headerDone = false;
   s_bodyLen = 0;
+  s_bodyOver = 0;
 
   while ((int32_t)(millis() - started) < (int32_t)budgetMs) {
     while (s_link->available() > 0) {
@@ -95,9 +110,13 @@ static size_t readAnswer(uint32_t budgetMs) {
       if (headerDone) {
         if (s_bodyLen < kOigBodyMax) {
           s_body[s_bodyLen++] = (char)byte;
+        } else {
+          // Over the cap: keep reading and count, because the difference between
+          // "this answer was too big" and "this answer ended here" is worth a
+          // line in the log - and a device that grew a field must not do it
+          // silently.
+          s_bodyOver++;
         }
-        // Over the cap: the answer is not one of ours. Stop reading rather than
-        // growing, and let the body be rejected below.
       } else {
         if (byte == '\r' || byte == '\n') {
           crlf = (uint8_t)(crlf + 1);
@@ -258,22 +277,60 @@ void OigDriver::poll(uint32_t budgetMs) {
   }
 
   // --- Battery -------------------------------------------------------------
-  // The field names differ per protocol: SOC, BattSOC and BatteryPercentage all
-  // occur, all in percent.
+  // Whether there IS a battery is a different question from whether the device
+  // publishes battery registers, and a hybrid inverter answers the second one
+  // with "yes" on a system that has none: a MIC 1000 without a battery reports
+  // BatteryState 0, SOC 0, ChargePower 0, DischargePower 0, BatteryVoltage 0. From
+  // the registers alone the panel would have drawn a battery node and a battery
+  // pill full of zeros - the same mistake as the household meter, one layer down.
+  //
+  // So the state register decides when it exists (zero means none attached, see
+  // OigFields.h for what is and is not documented about that), and only a
+  // protocol without such a register falls back to the old rule "an SOC field
+  // exists". The raw state value goes into the log, so a battery whose value
+  // means something else shows up there instead of in a guess here.
   float soc = 0.0f;
-  if (num(kOigSoc, &soc)) {
-    st.socPct = soc;
-    st.haveBattery = true;
-    st.caps.battery = true;
-    float charge = 0.0f;
-    if (num(kOigCharge, &charge)) {
-      // ChargePower positive is charging; the panel's convention is positive =
-      // discharging.
-      st.batW = -charge;
+  const bool haveSoc = num(kOigSoc, &soc);
+  float bstate = 0.0f;
+  const bool batterieDa = oigBatteryPresent(s_body, s_bodyLen, &bstate);
+  const bool haveState =
+      oigFieldPresent(s_body, s_bodyLen, kOigBatteryState) != nullptr;
+  st.caps.battery = batterieDa;
+  st.haveBattery = batterieDa;
+  if (haveState) {
+    static bool logged = false;
+    if (!logged && haveSoc) {
+      logged = true;
+      Serial.printf("OIG: BatteryState %.0f -> Akku %s\n", (double)bstate,
+                    batterieDa ? "vorhanden" : "nicht vorhanden");
+    }
+  }
+  if (batterieDa) {
+    if (haveSoc) {
+      st.socPct = soc;
+    }
+    // Discharge first: a device that publishes both reports nothing on the
+    // charging register while it discharges, so preferring charge would make a
+    // discharging battery look idle. The stick's sign is already the panel's
+    // (positive = discharging), so nothing is negated here.
+    float entladen = 0.0f;
+    if (num(kOigDischarge, &entladen)) {
+      st.batW = entladen;
+    } else {
+      float charge = 0.0f;
+      if (num(kOigCharge, &charge)) {
+        // ChargePower positive is charging; the panel's convention is positive =
+        // discharging.
+        st.batW = -charge;
+      }
     }
     float volt = 0.0f;
     if (num(kOigBatteryVoltage, &volt)) {
       st.batV = volt;
+    }
+    float btemp = 0.0f;
+    if (num(kOigBatteryTemperature, &btemp)) {
+      st.batteryTemp = btemp;
     }
   }
 
@@ -340,12 +397,17 @@ void OigDriver::poll(uint32_t budgetMs) {
   // 50 is worth seeing in a log rather than only on a page nobody opens. A device
   // that publishes neither shows a zero here - the caps above say why it is
   // missing, so the two lines together are unambiguous.
+  // The length is in bytes, and it used to be labelled "Felder" - which is how a
+  // truncated answer (1024 of 1462) could sit in the log for a whole evening
+  // looking like a field count. If the answer did not fit, that is said here, in
+  // the line that is always written, instead of in a line nobody reads twice.
   Serial.printf("OIG: DC %.0f W | AC %.0f W | heute %.2f kWh gesamt %.2f kWh | "
-                "%.1f V %.2f Hz | %d Felder | Haus%s Netz%s Akku%s\n",
+                "%.1f V %.2f Hz | %d Byte%s | Haus%s Netz%s Akku%s\n",
                 (double)dcPower, (double)acPower,
                 (double)(st.dayGenWh / 1000.0f),
                 (double)(st.totalGenWh / 1000.0f), (double)st.gridV[0],
-                (double)st.gridHz[0], (int)s_bodyLen,
+                (double)st.gridHz[0], (int)(s_bodyLen + s_bodyOver),
+                s_bodyOver > 0 ? ", ABGESCHNITTEN" : "",
                 st.caps.houseMeter ? "j" : "n", st.caps.gridMeter ? "j" : "n",
                 st.caps.battery ? "j" : "n");
 }

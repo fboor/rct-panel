@@ -54,8 +54,12 @@ static const char *const kOigGeneration[] = {"DcPower",     "InputPower",
                                              "PV2Power",     "PV2ChargePwr",
                                              nullptr};
 
-// The AC output, which on a string inverter is what leaves it.
-static const char *const kOigAcPower[] = {"AcPower", "ACPower", nullptr};
+// The AC output, which on a string inverter is what leaves it. OutputPower is the
+// same measurement on the protocol of the MIC 1000, where InputPower is the DC
+// side (and already the generation above) - the pair reads like the two ends of
+// the inverter, which is what it is.
+static const char *const kOigAcPower[] = {"AcPower", "ACPower", "OutputPower",
+                                          nullptr};
 
 // Household load, where the protocol has local-load registers. A plain string
 // inverter has none, and then there is no household meter.
@@ -76,8 +80,36 @@ static const char *const kOigSoc[] = {"SOC", "BattSOC", "BatteryPercentage",
 static const char *const kOigCharge[] = {"ChargePower", "BattPwr", "BattCharge",
                                         "BatteryCharge", nullptr};
 
+// Battery power, positive is discharging - the other end of the same pair, and a
+// separate register on the protocols that publish both. That it is a separate
+// register and not the negated charge value is the point: a device that reports
+// only ChargePower reports nothing at all while it discharges, so a battery that
+// spends the afternoon discharging looks to the panel like one doing nothing.
+static const char *const kOigDischarge[] = {"DischargePower", "BattDischarge",
+                                            "BattDischargePwr", nullptr};
+
+// Is a battery attached at all. A hybrid inverter publishes the battery registers
+// either way - a MIC 1000 without a battery reports BatteryState 0, SOC 0,
+// ChargePower 0, DischargePower 0 and BatteryVoltage 0 - so the existence of a
+// register proves nothing, and this one register is the device's own answer.
+//
+// The values are not documented in the OpenInverterGateway (register 1041, unit
+// NONE, in Growatt124.cpp and Growatt307.cpp), so the rule is deliberately the
+// weak one: zero means none attached, anything else means one is. The driver logs
+// the raw value, so if a real battery reports something unexpected that is in the
+// serial log rather than in a guess in the source.
+static const char *const kOigBatteryState[] = {"BatteryState", "BattState",
+                                               "BatteryConnected", nullptr};
+
 static const char *const kOigBatteryVoltage[] = {"BatteryVoltage", "BattVoltage",
                                                  nullptr};
+
+// Battery temperature, in degrees - its own register, and not the inverter's.
+// TemperatureInsideIPM and BoostTemperature are components of the inverter, not
+// the battery, and mixing them would put a component temperature on the battery
+// page.
+static const char *const kOigBatteryTemperature[] = {"BatteryTemperature",
+                                                     "BattTemperature", nullptr};
 
 // Inverter status, the stick's own summary. 3 is a fault (GrowattTypes.h:
 // GwStatusWaiting / Normal / Fault).
@@ -88,8 +120,15 @@ static const char *const kOigTemperature[] = {"Temperature", "InverterTemperatur
                                               "InverterTemp", nullptr};
 
 // Energy counters, in kWh - the panel counts in Wh.
-static const char *const kOigEnergyToday[] = {"EnergyToday", nullptr};
-static const char *const kOigEnergyTotal[] = {"EnergyTotal", nullptr};
+//
+// TodayGenerateEnergy and TotalGenerateEnergy are the MIC 1000's spelling of the
+// same two counters. PVEnergyTotal comes after them and never before: on some
+// models it is a lifetime figure and on others only one string, and a total that
+// is really half of the total is worse than no total.
+static const char *const kOigEnergyToday[] = {"EnergyToday", "TodayGenerateEnergy",
+                                              nullptr};
+static const char *const kOigEnergyTotal[] = {"EnergyTotal", "TotalGenerateEnergy",
+                                              "PVEnergyTotal", nullptr};
 
 // Feed-in and household energy, where the protocol counts them.
 static const char *const kOigEnergyToGrid[] = {"EnergyToGridToday",
@@ -130,6 +169,34 @@ inline bool oigNumber(const char *json, size_t len, const char *const *names,
     *used = nullptr;
   }
   return false;
+}
+
+// Is a battery attached to the device at all - as opposed to the device
+// publishing battery registers, which a hybrid does whether or not one is there.
+//
+// The state register decides when it exists: zero is "none attached", anything
+// else is "one is" (see kOigBatteryState for what is and is not documented about
+// the values). A protocol without that register falls back to the old rule - an
+// SOC field exists - because there the registers themselves are the only answer
+// the device gives. rawState gets the value that was read, for the log.
+//
+// This is a rule and not a flag, so it lives here where the host test can reach
+// it: a MIC 1000 without a battery publishes SOC, ChargePower, DischargePower,
+// BatteryVoltage and BatteryTemperature, all of them zero, and every one of those
+// registers would otherwise be read as "there is a battery, doing nothing".
+inline bool oigBatteryPresent(const char *json, size_t len, float *rawState) {
+  float state = 0.0f;
+  if (oigNumber(json, len, kOigBatteryState, &state)) {
+    if (rawState != nullptr) {
+      *rawState = state;
+    }
+    return state != 0.0f;
+  }
+  if (rawState != nullptr) {
+    *rawState = 0.0f;
+  }
+  float soc = 0.0f;
+  return oigNumber(json, len, kOigSoc, &soc);
 }
 
 #endif // RCT_OIG_FIELDS_H
