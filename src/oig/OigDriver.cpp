@@ -23,6 +23,7 @@
 #include "../Diag.h"
 #include "../device/Device.h"
 #include "../device/Json.h"
+#include "OigFields.h"
 
 // The stick's answer fits in one buffer with room to spare; a Growatt307 with
 // battery reports around forty fields. 1024 is the point past which something is
@@ -123,16 +124,13 @@ static size_t readAnswer(uint32_t budgetMs) {
   return (headerDone && s_bodyLen > 0 && s_body[0] == '{') ? s_bodyLen : 0;
 }
 
-// One field, with the "the answer says it exists" test the caps need. A key the
-// stick does not publish stays at the value the caller had, which for a value
-// that does not exist means "untouched" - the same as the RCT's last-good rule.
-static bool num(const char *key, float *out) {
-  double v = 0;
-  if (!json::getNumber(s_body, s_bodyLen, key, &v)) {
-    return false;
-  }
-  *out = (float)v;
-  return true;
+// One quantity, with the list of names it can have (OigFields.h). The answer
+// decides which one exists - nothing here knows a protocol, and a quantity the
+// device does not publish keeps the value the caller had, which for a
+// measurement that does not exist means "untouched": the same last-good rule the
+// RCT driver uses.
+static bool num(const char *const *names, float *out) {
+  return oigNumber(s_body, s_bodyLen, names, out);
 }
 
 void OigDriver::setTransport(DeviceTransport *link) { s_link = link; }
@@ -220,10 +218,19 @@ void OigDriver::poll(uint32_t budgetMs) {
   // of the two a model publishes varies, so both are tried and the first that
   // exists is used - and the existence of each is what sets the caps.
   float dcPower = 0.0f, acPower = 0.0f;
-  const bool haveDc = num("DcPower", &dcPower);
-  const bool haveAc = num("AcPower", &acPower);
+  float pv2 = 0.0f;
+  const bool haveDc = num(kOigGeneration, &dcPower);
+  // A two-string device reports its strings one by one (SPF: PV1ChargePwr /
+  // PV2ChargePwr, TLXH: PV1Power / PV2Power), and the second one is added:
+  // stopping at the first name that exists would silently report half.
+  static const char *const kPv2[] = {"PV2ChargePwr", "PV2Power", nullptr};
+  const bool havePv2 = num(kPv2, &pv2);
+  const bool haveAc = num(kOigAcPower, &acPower);
   if (haveDc) {
     st.genW[0] = dcPower;
+    if (havePv2) {
+      st.genW[1] = pv2;
+    }
   }
   if (haveDc || haveAc) {
     st.caps.gridMeter = false; // the inverter's AC power is not the grid meter
@@ -235,13 +242,13 @@ void OigDriver::poll(uint32_t budgetMs) {
   // EnergyToUserToday) has measured the house; the simplest one has not, and
   // then the household value stays unmeasured rather than zero.
   float load = 0.0f;
-  if (num("ACPowerToUser", &load) || num("INVPowerToLocalLoad", &load)) {
+  if (num(kOigHouse, &load)) {
     st.houseW[0] = load;
     st.caps.houseMeter = true;
   }
 
   float toGrid = 0.0f;
-  if (num("ACPowerToGrid", &toGrid)) {
+  if (num(kOigExport, &toGrid)) {
     // The stick reports the feed-in; the panel's sign convention is + = draw
     // from the grid, so a feed-in is negative. And it is a measurement, so
     // genCounterSeesExternal does not come into it - the meter does not exist on
@@ -254,20 +261,18 @@ void OigDriver::poll(uint32_t budgetMs) {
   // The field names differ per protocol: SOC, BattSOC and BatteryPercentage all
   // occur, all in percent.
   float soc = 0.0f;
-  if (num("SOC", &soc) || num("BattSOC", &soc) || num("BatteryPercentage", &soc)) {
+  if (num(kOigSoc, &soc)) {
     st.socPct = soc;
     st.haveBattery = true;
     st.caps.battery = true;
     float charge = 0.0f;
-    if (num("ChargePower", &charge)) {
+    if (num(kOigCharge, &charge)) {
       // ChargePower positive is charging; the panel's convention is positive =
       // discharging.
       st.batW = -charge;
-    } else if (num("BattPwr", &charge)) {
-      st.batW = -charge;
     }
     float volt = 0.0f;
-    if (num("BatteryVoltage", &volt) || num("BattVoltage", &volt)) {
+    if (num(kOigBatteryVoltage, &volt)) {
       st.batV = volt;
     }
   }
@@ -275,37 +280,37 @@ void OigDriver::poll(uint32_t budgetMs) {
   // --- Counters ------------------------------------------------------------
   // The stick's energy fields are kWh; the panel counts in Wh.
   float e = 0.0f;
-  if (num("EnergyToday", &e)) {
+  if (num(kOigEnergyToday, &e)) {
     st.dayGenWh = e * 1000.0f;
   }
-  if (num("EnergyTotal", &e)) {
+  if (num(kOigEnergyTotal, &e)) {
     st.totalGenWh = e * 1000.0f;
   }
-  if (num("EnergyToGridToday", &e)) {
+  if (num(kOigEnergyToGrid, &e)) {
     st.dayFeedInWh = e * 1000.0f;
   }
-  if (num("LocalLoadEnergyToday", &e) || num("EnergyToUserToday", &e)) {
+  if (num(kOigEnergyToUser, &e)) {
     st.dayHouseWh = e * 1000.0f;
   }
 
   // --- Device detail -------------------------------------------------------
   float t = 0.0f;
-  if (num("Temperature", &t) || num("InverterTemperature", &t)) {
+  if (num(kOigTemperature, &t)) {
     st.coreTemp = t;
   }
   float gridV = 0.0f;
-  if (num("GridVoltage", &gridV) || num("AcVoltage", &gridV)) {
+  if (num(kOigVoltage, &gridV)) {
     st.gridV[0] = gridV;
   }
   float gridHz = 0.0f;
-  if (num("GridFrequency", &gridHz) || num("AcFreq", &gridHz)) {
+  if (num(kOigFrequency, &gridHz)) {
     st.gridHz[0] = gridHz;
   }
 
   // A fault register exists on the protocols that have one; InverterStatus is
   // the stick's own summary and 3 means an error (GrowattTypes.h).
   float status = 0.0f;
-  if (num("InverterStatus", &status) && status >= 3.0f) {
+  if (num(kOigStatus, &status) && status >= 3.0f) {
     st.faultBits[0] = 0x1u; // one bit: something is wrong, no detail claimed
     st.caps.faultBits = true;
   }

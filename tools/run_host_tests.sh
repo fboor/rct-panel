@@ -36,6 +36,13 @@
 #                  values with: a flat object of register names, a field set that
 #                  depends on the model, and the answers of the simulator that
 #                  the test data was captured from
+#   oig_field_test the OpenInverterGateway field tables: which of a quantity's
+#                  possible names a device actually publishes, checked against
+#                  the field names of all seven Growatt protocols taken from the
+#                  OIG source. It exists because the grid frequency was missing
+#                  on a real Growatt305 - the driver asked for GridFrequency, the
+#                  device says AcFrequency, and the value stayed 0, which the
+#                  display then showed as if it had been measured
 #   crc_test       the frame checksum: check values computed independently of
 #                  the implementation, plus the padding rule for odd lengths
 #                  that the three-byte extension frame depends on
@@ -67,7 +74,7 @@ set -e
 cd "$(dirname "$0")/.."
 
 fail=0
-for t in device_test relay_test sd_queue_test numfmt_test i18n_test backlight_test badge_test crc_test json_test theme_test json_scan_test jstest; do
+for t in device_test relay_test sd_queue_test numfmt_test i18n_test backlight_test badge_test crc_test json_test theme_test json_scan_test oig_field_test jstest; do
   printf '\n=== %s ===\n' "$t"
   if [ "$t" = "jstest" ]; then
     if command -v node >/dev/null 2>&1; then
