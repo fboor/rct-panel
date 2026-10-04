@@ -222,7 +222,7 @@ void sendMsg(int code, const char *msg) {
   s_server.send(code, "text/html; charset=utf-8", page);
 }
 
-// Navigation strip, shared by the five real pages.
+// Navigation strip, shared by the six real pages.
 void addNav(String &page, const char *current) {
   page += F("<nav>");
   struct {
@@ -232,7 +232,8 @@ void addNav(String &page, const char *current) {
                {"/verlauf", T_NAV_VERLAUF},
                {"/daten", T_NAV_DATA},
                {"/bilder", T_NAV_SHOTS},
-               {"/update", T_NAV_UPDATE}};
+               {"/update", T_NAV_UPDATE},
+               {"/einstellungen", T_NAV_SETTINGS}};
   for (const auto &it : items) {
     page += F("<a href=\"");
     page += it.href;
@@ -327,6 +328,11 @@ void sendNavPage(const char *title, const char *current, const String &body,
 // ---------------------------------------------------------------------------
 // /  Overview
 // ---------------------------------------------------------------------------
+//
+// Read-outs only. The switched output and the maintenance buttons used to be
+// here; they are on the settings page now, because they are forms and this page
+// is what somebody reads values from. What stayed is the device table, the four
+// cards, the energy bars and the history - everything the panel itself shows.
 
 void handleRoot() {
   const DeviceState &s = deviceState();
@@ -463,80 +469,6 @@ void handleRoot() {
   row(T_ROW_ADDR_NAME, s_mdnsStarted ? "rct-panel.local" : "-");
   b += F("</table>");
 
-  // The switched output. Its state belongs with the other read-outs, but
-  // changing the function is a write and therefore behind the code - the same
-  // rule the update follows. The panel display can cycle the function by
-  // tapping, which is the quicker way; this form is where the threshold in
-  // watts goes, and where the test sits next to the thing it tests.
-  b += F("<h2>");
-  b += tr(T_H_OUTPUT);
-  b += F("</h2><table>");
-  {
-    const RelayMode m = relayMode();
-    const bool hasThreshold =
-        (m == RelayMode::GridDraw || m == RelayMode::PvSurplus);
-    row(T_ROW_FUNCTION, relayModeNameLong(m));
-    if (relayTestRunning()) {
-      row(T_ROW_STATE, tr(T_STATE_TEST));
-    } else if (hasThreshold) {
-      snprintf(v, sizeof(v), tr(T_STATE_ON_NOW),
-               relayIsOn() ? tr(T_STATE_ON) : tr(T_STATE_OFF),
-               (int)lroundf(relayTriggerValue()));
-      row(T_ROW_STATE, v);
-    } else {
-      row(T_ROW_STATE, relayIsOn() ? tr(T_STATE_ON) : tr(T_STATE_OFF));
-    }
-  }
-  b += F("</table>");
-  b += F("<div class=\"note\">");
-  b += tr(T_NOTE_OUTPUT);
-  b += F("</div>");
-  b += F("<form action=\"/aktion\" method=\"POST\">");
-  b += F("<input type=\"text\" name=\"code\" inputmode=\"numeric\" "
-         "maxlength=\"4\" placeholder=\"Code\">");
-  b += F("<select name=\"funktion\">");
-  for (int i = 0; i < kRelayModeCount; i++) {
-    b += F("<option value=\"");
-    b += i;
-    b += F("\"");
-    if ((int)relayMode() == i) {
-      b += F(" selected");
-    }
-    b += F(">");
-    b += relayModeNameLong((RelayMode)i);
-    b += F("</option>");
-  }
-  b += F("</select>");
-  b += F("<input type=\"number\" name=\"schwelle\" min=\"0\" max=\"5000\" "
-         "step=\"50\" value=\"");
-  b += relayThreshold();
-  b += F("\" title=\"");
-  b += tr(T_TITLE_THRESHOLD);
-  b += F("\">");
-  b += F("<button class=\"btn\" name=\"was\" value=\"ausgang\">");
-  b += tr(T_BTN_APPLY);
-  b += F("</button> ");
-  b += F("<button class=\"btn gray\" name=\"was\" value=\"test\">");
-  b += tr(T_BTN_TEST);
-  b += F("</button>");
-  b += F("</form>");
-
-  b += F("<h2>");
-  b += tr(T_H_MAINT);
-  b += F("</h2>");
-  b += F("<div class=\"note\">");
-  b += tr(T_NOTE_MAINT);
-  b += F("</div>");
-  b += F("<form action=\"/aktion\" method=\"POST\">");
-  b += F("<input type=\"text\" name=\"code\" inputmode=\"numeric\" "
-         "maxlength=\"4\" placeholder=\"Code\">");
-  b += F("<button class=\"btn gray\" name=\"was\" value=\"neustart\">");
-  b += tr(T_BTN_RESTART);
-  b += F("</button> ");
-  b += F("<button class=\"btn gray\" name=\"was\" value=\"setup\">");
-  b += tr(T_BTN_SETUP);
-  b += F("</button>");
-  b += F("</form>");
   sendNavPage(tr(T_PAGE_ROOT), "/", b, nullptr, true);
 }
 
@@ -1409,6 +1341,270 @@ void handleUpdateDone() {
 // /aktion - screenshot, restart and re-provisioning, all behind the code
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// The settings page
+// ---------------------------------------------------------------------------
+//
+// Where the device is configured, now that there is more than one kind of
+// device. Two fields come from Configuration (device_type/host/port) and one
+// from the GUI (the background theme), and they are stored in the same way: in
+// NVS, before the restart that makes them take effect.
+//
+// Why a restart rather than swapping the driver in place: the driver owns its
+// link, its buffers and the state it has already published, and giving all of
+// that a defined end of life is the part that has to be written once and
+// carefully. A restart does it for free and it is what the firmware update and
+// the settings page then behave alike as: answer first, restart afterwards, so
+// the browser never waits on a device that is going away.
+//
+// Not behind the code: this page changes which device the panel talks to, not
+// what it does with the values. The actions that touch the hardware - firmware
+// write, output test, screenshot, Wi-Fi reset - keep the code, and so does
+// anything that can start a second connection.
+
+// The two sections that moved here from the overview, kept as functions so
+// that both are one block of markup each and neither handler carries the
+// other's.
+// The switched output. Its state belongs with the other read-outs, but changing
+// the function is a write and therefore behind the code - the same rule the
+// update follows. The panel display can cycle the function by tapping, which is
+// the quicker way; this form is where the threshold in watts goes, and where the
+// test sits next to the thing it tests.
+//
+// Moved off the overview with the settings: it is a form, and the overview is
+// for read-outs. The state line is kept - it is the only place in the browser
+// that says what the output is doing right now, and somebody landing on the
+// settings page is exactly the person who wants to know before changing it.
+void addOutputSection(String &b) {
+  char v[48];
+  auto row = [&b, &v](LangId k, const char *value) {
+    b += F("<tr><td class=\"k\">");
+    b += tr(k);
+    b += F("</td><td class=\"v\">");
+    b += value;
+    b += F("</td></tr>");
+  };
+  b += F("<h2>");
+  b += tr(T_H_OUTPUT);
+  b += F("</h2><table>");
+  {
+    const RelayMode m = relayMode();
+    const bool hasThreshold =
+        (m == RelayMode::GridDraw || m == RelayMode::PvSurplus);
+    row(T_ROW_FUNCTION, relayModeNameLong(m));
+    if (relayTestRunning()) {
+      row(T_ROW_STATE, tr(T_STATE_TEST));
+    } else if (hasThreshold) {
+      snprintf(v, sizeof(v), tr(T_STATE_ON_NOW),
+               relayIsOn() ? tr(T_STATE_ON) : tr(T_STATE_OFF),
+               (int)lroundf(relayTriggerValue()));
+      row(T_ROW_STATE, v);
+    } else {
+      row(T_ROW_STATE, relayIsOn() ? tr(T_STATE_ON) : tr(T_STATE_OFF));
+    }
+  }
+  b += F("</table>");
+  b += F("<div class=\"note\">");
+  b += tr(T_NOTE_OUTPUT);
+  b += F("</div>");
+  b += F("<form action=\"/aktion\" method=\"POST\">");
+  b += F("<input type=\"text\" name=\"code\" inputmode=\"numeric\" "
+         "maxlength=\"4\" placeholder=\"Code\">");
+  b += F("<select name=\"funktion\">");
+  for (int i = 0; i < kRelayModeCount; i++) {
+    b += F("<option value=\"");
+    b += i;
+    b += F("\"");
+    if ((int)relayMode() == i) {
+      b += F(" selected");
+    }
+    b += F(">");
+    b += relayModeNameLong((RelayMode)i);
+    b += F("</option>");
+  }
+  b += F("</select>");
+  b += F("<input type=\"number\" name=\"schwelle\" min=\"0\" max=\"5000\" "
+         "step=\"50\" value=\"");
+  b += relayThreshold();
+  b += F("\" title=\"");
+  b += tr(T_TITLE_THRESHOLD);
+  b += F("\">");
+  b += F("<button class=\"btn\" name=\"was\" value=\"ausgang\">");
+  b += tr(T_BTN_APPLY);
+  b += F("</button> ");
+  b += F("<button class=\"btn gray\" name=\"was\" value=\"test\">");
+  b += tr(T_BTN_TEST);
+  b += F("</button>");
+  b += F("</form>");
+
+}
+
+// Restart and Wi-Fi reset. Nothing here changes what the panel shows; both stop
+// it and start it again, which is why they belong at the end of the settings
+// rather than on a page somebody reads values from.
+void addMaintSection(String &b) {
+  b += F("<h2>");
+  b += tr(T_H_MAINT);
+  b += F("</h2>");
+  b += F("<div class=\"note\">");
+  b += tr(T_NOTE_MAINT);
+  b += F("</div>");
+  b += F("<form action=\"/aktion\" method=\"POST\">");
+  b += F("<input type=\"text\" name=\"code\" inputmode=\"numeric\" "
+         "maxlength=\"4\" placeholder=\"Code\">");
+  b += F("<button class=\"btn gray\" name=\"was\" value=\"neustart\">");
+  b += tr(T_BTN_RESTART);
+  b += F("</button> ");
+  b += F("<button class=\"btn gray\" name=\"was\" value=\"setup\">");
+  b += tr(T_BTN_SETUP);
+  b += F("</button>");
+  b += F("</form>");
+}
+
+void handleSettingsPage() {
+  String b;
+  b.reserve(2200);
+
+  addOutputSection(b);
+
+  b += F("<h2>");
+  b += tr(T_H_SET_DEVICE);
+  b += F("</h2><div class=\"note\">");
+  b += tr(T_NOTE_RESTART);
+  b += F("</div><form action=\"/einstellungen\" method=\"POST\">");
+
+  b += F("<label for=\"typ\">");
+  b += tr(T_LBL_DEVICE_TYPE);
+  b += F("</label><select id=\"typ\" name=\"typ\">");
+  // The option list is the list of implemented drivers, not a copy of it: one
+  // entry per family the factory knows. A type nobody implements cannot be
+  // chosen here, which is the point - the page cannot offer a device family the
+  // firmware has no driver for.
+  {
+    struct {
+      const char *id;
+      LangId label;
+    } types[] = {{"RCT", T_OPT_TYPE_RCT}, {"OIG", T_OPT_TYPE_OIG}};
+    for (const auto &ty : types) {
+      const bool on = strcmp(device_type, ty.id) == 0;
+      b += F("<option value=\"");
+      b += ty.id;
+      b += F("\"");
+      if (on) {
+        b += F(" selected");
+      }
+      b += F(">");
+      b += tr(ty.label);
+      b += F("</option>");
+    }
+  }
+  b += F("</select>");
+
+  char esc[48];
+  b += F("<label for=\"host\">");
+  b += tr(T_LBL_DEVICE_HOST);
+  b += F("</label><input type=\"text\" id=\"host\" name=\"host\" value=\"");
+  escape(device_host, esc, sizeof(esc));
+  b += esc;
+  b += F("\">");
+  b += F("<label for=\"port\">");
+  b += tr(T_LBL_DEVICE_PORT);
+  b += F("</label><input type=\"text\" id=\"port\" name=\"port\" inputmode="
+         "numeric\" value=\"");
+  escape(device_port, esc, sizeof(esc));
+  b += esc;
+  b += F("\">");
+
+  b += F("<h2>");
+  b += tr(T_H_SET_THEME);
+  b += F("</h2><label for=\"theme\">");
+  b += tr(T_LBL_THEME);
+  b += F("</label><select id=\"theme\" name=\"theme\">");
+  b += guiThemeHell() ? F("<option value=\"hell\" selected>hell</option>")
+                      : F("<option value=\"hell\">hell</option>");
+  b += guiThemeHell() ? F("<option value=\"dunkel\">dunkel</option>")
+                      : F("<option value=\"dunkel\" selected>dunkel</option>");
+  b += F("</select>");
+
+  b += F("<button class=\"btn\">");
+  b += tr(T_BTN_SAVE);
+  b += F("</button></form>");
+
+  addMaintSection(b);
+  sendNavPage(tr(T_PAGE_SETTINGS), "/einstellungen", b);
+}
+
+// Copy a form field into a settings buffer, refusing anything that does not fit.
+// The values end up in NVS and in the request the driver builds, so the length
+// is checked here against the size the struct declares rather than copied
+// optimistically: a field longer than its buffer would be written past its end.
+static bool copyField(const String &in, char *dst, size_t cap) {
+  if (in.length() >= cap) {
+    return false;
+  }
+  strlcpy(dst, in.c_str(), cap);
+  return true;
+}
+
+void handleSettingsSave() {
+  // The type is checked against the list the page offered, not against anything
+  // free: a hand-made request could otherwise name a family no driver implements,
+  // and the panel would come up with no device at all - a setting that looks
+  // saved and is not.
+  const String typ = s_server.arg("typ");
+  if (typ != "RCT" && typ != "OIG") {
+    sendMsg(400, tr(T_ERR_BAD_TYPE));
+    return;
+  }
+
+  const String host = s_server.arg("host");
+  if (host.length() == 0) {
+    sendMsg(400, tr(T_ERR_BAD_HOST));
+    return;
+  }
+
+  // The port is a number in a range, checked as a number and not as a string:
+  // atoi() reads "80abc" as 80, and a driver that then connects to a port the
+  // person did not type is worse than a refusal.
+  const String portStr = s_server.arg("port");
+  char *end = nullptr;
+  const long port = strtol(portStr.c_str(), &end, 10);
+  if (end == portStr.c_str() || *end != '\0' || port < 1 || port > 65535) {
+    sendMsg(400, tr(T_ERR_BAD_PORT));
+    return;
+  }
+
+  char portText[6];
+  snprintf(portText, sizeof(portText), "%ld", port);
+
+  // Into the globals first, all of them, and only then into NVS: a save that
+  // refuses one field must not have written the others, and the log line below
+  // names what is about to take effect.
+  if (!copyField(typ, device_type, sizeof(device_type)) ||
+      !copyField(host, device_host, sizeof(device_host)) ||
+      !copyField(portText, device_port, sizeof(device_port))) {
+    sendMsg(400, tr(T_ERR_BAD_HOST));
+    return;
+  }
+
+  // The theme is stored by the GUI, which owns the flag and the walk over the
+  // objects that exist - so the form and the Service page's button are the same
+  // two calls and cannot drift apart.
+  guiSetTheme(s_server.arg("theme") == "hell");
+
+  saveConfig();
+  Serial.printf("Web: Einstellungen gespeichert - Typ %s, %s:%s, %s\n",
+                device_type, device_host, device_port,
+                guiThemeHell() ? "hell" : "dunkel");
+
+  // Answer before restarting, as everywhere else that stops the device: the
+  // browser gets the confirmation while there is still a server to send it.
+  sendMsg(200, tr(T_OK_SAVED));
+  delay(500);
+  webStop();
+  ESP.restart();
+}
+
 void handleAction() {
   if (!codeOk()) {
     Serial.println(F("Web: Aktion abgelehnt (kein passender Code)"));
@@ -1521,6 +1717,8 @@ void webStart() {
   s_server.on(UriBraces("/bilder/{}"), HTTP_GET, handleShotFile);
   s_server.on(Uri("/update"), HTTP_GET, handleUpdatePage);
   s_server.on(Uri("/update"), HTTP_POST, handleUpdateDone, handleUpdateUpload);
+  s_server.on(Uri("/einstellungen"), HTTP_GET, handleSettingsPage);
+  s_server.on(Uri("/einstellungen"), HTTP_POST, handleSettingsSave);
   s_server.on(Uri("/aktion"), HTTP_POST, handleAction);
   s_server.onNotFound(handleNotFound);
   s_server.begin();

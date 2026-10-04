@@ -49,6 +49,18 @@ bool guiShotRunning();
 // period is 0 day, 1 month, 2 year, 3 total.
 void guiEnergyPeriod(int period, float wh[5], float *autarky, float *ownShare);
 
+// Set the background theme from outside: hell = true for the light page.
+//
+// Both halves happen here - the flag and the walk over what already exists - and
+// the choice is stored, so it survives the restart that follows a settings save.
+// The web interface's settings page uses this, which is why the button on the
+// Service page and the form in the browser cannot disagree: they are the same
+// two calls, in the same order.
+void guiSetTheme(bool hell);
+
+// The background theme currently shown.
+bool guiThemeHell();
+
 // The 24 h ring, oldest point first, for the web interface's chart.
 // guiHistoryPoints() is how many points the ring holds at the moment (288 once
 // it has been full for a day, fewer right after a restart). False from

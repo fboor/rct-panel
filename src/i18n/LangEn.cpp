@@ -21,11 +21,13 @@ const char *const kLang[T_COUNT] = {
     "Data",                             // T_NAV_DATA
     "Pictures",                         // T_NAV_SHOTS
     "Update",                           // T_NAV_UPDATE
+    "Settings",                         // T_NAV_SETTINGS
     "RCT Power Panel",                  // T_PAGE_ROOT
     "History",                          // T_PAGE_VERLAUF
     "Data",                             // T_PAGE_DATA
     "Pictures",                         // T_PAGE_SHOTS
     "Update",                           // T_PAGE_UPDATE
+    "Settings",                         // T_PAGE_SETTINGS
     "Home page",                        // T_MSG_TO_HOME
     "lang=\"en\"",                       // T_HTML_LANG
 
@@ -135,12 +137,30 @@ const char *const kLang[T_COUNT] = {
     "panel stays usable while it is being written and restarts afterwards. If "
     "an update goes wrong, the panel carries on with the previous firmware.",
                                                       // T_NOTE_FIRMWARE
+
+    // --- web: the settings page --------------------------------------------
+    "Inverter",                         // T_H_SET_DEVICE
+    "Display",                          // T_H_SET_THEME
+    "Type",                             // T_LBL_DEVICE_TYPE
+    "Address",                          // T_LBL_DEVICE_HOST
+    "Port",                             // T_LBL_DEVICE_PORT
+    "Background",                       // T_LBL_THEME
+    "RCT Power (TCP 8899)",             // T_OPT_TYPE_RCT
+    "OpenInverterGateway (HTTP 80)",    // T_OPT_TYPE_OIG
+    "Save",                             // T_BTN_SAVE
+    "The settings are stored permanently. The panel restarts so that the "
+    "chosen driver and the new address take effect.",
+                                                      // T_NOTE_RESTART
+    "Saved. The panel is restarting.",  // T_OK_SAVED
+    "Unknown device type.",             // T_ERR_BAD_TYPE
+    "Please enter an address.",         // T_ERR_BAD_HOST
+    "Please enter a number from 1 to 65535.",  // T_ERR_BAD_PORT
+
+    // --- web: the answers to an action ---------------------------------------
     "Firmware written. The panel is restarting now.",   // T_OK_FW_WRITTEN
     "The update was not carried out. Please try again.",  // T_ERR_FW_NOTRUN
     "The update could not be completed. The old firmware keeps running.",
                                                         // T_ERR_FW_END
-
-    // --- web: the answers to an action ---------------------------------------
     "The panel is restarting.",         // T_OK_RESTART
     "The panel is starting Wi-Fi setup (network: RCT-Panel).",  // T_OK_SETUP
     "Applied. The panel shows the new function on the Service page.",

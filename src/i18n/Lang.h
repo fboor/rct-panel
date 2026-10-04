@@ -53,6 +53,7 @@ enum LangId : int {
   T_NAV_DATA,
   T_NAV_SHOTS,
   T_NAV_UPDATE,
+  T_NAV_SETTINGS,
   // "RCT Power Panel" is the product name and is the same in both languages;
   // it is still an ID, so a build that wants another name has one place to
   // change it in.
@@ -61,6 +62,7 @@ enum LangId : int {
   T_PAGE_DATA,
   T_PAGE_SHOTS,
   T_PAGE_UPDATE,
+  T_PAGE_SETTINGS,
   T_MSG_TO_HOME,
   // The complete <html lang> attribute, including the attribute itself.
   T_HTML_LANG,
@@ -155,6 +157,23 @@ enum LangId : int {
   T_H_FIRMWARE,
   T_BTN_FW_WRITE,
   T_NOTE_FIRMWARE,
+
+  // --- web: the settings page (see handleSettingsPage) -----------------
+  T_H_SET_DEVICE,
+  T_H_SET_THEME,
+  T_LBL_DEVICE_TYPE,
+  T_LBL_DEVICE_HOST,
+  T_LBL_DEVICE_PORT,
+  T_LBL_THEME,
+  T_OPT_TYPE_RCT,
+  T_OPT_TYPE_OIG,
+  T_BTN_SAVE,
+  T_NOTE_RESTART,
+  T_OK_SAVED,
+  T_ERR_BAD_TYPE,
+  T_ERR_BAD_HOST,
+  T_ERR_BAD_PORT,
+
   T_OK_FW_WRITTEN,
   T_ERR_FW_NOTRUN,
   T_ERR_FW_END,

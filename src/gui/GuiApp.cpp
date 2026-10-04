@@ -1558,6 +1558,18 @@ static void themeCb(lv_event_t *e) {
   themeWechseln();
 }
 
+// The web interface's settings page, which stores the choice. Same two calls as
+// the button, in the same order - so there is no second code path that could
+// forget to store it or to walk the tree.
+void guiSetTheme(bool hell) {
+  if (hell == s_hell) {
+    return; // already there; do not walk the tree for nothing
+  }
+  themeWechseln();
+}
+
+bool guiThemeHell() { return s_hell; }
+
 static void pageBuildService(AppPage *p) {
   lv_obj_t *root = p->root;
 

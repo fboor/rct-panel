@@ -21,11 +21,13 @@ const char *const kLang[T_COUNT] = {
     "Daten",                            // T_NAV_DATA
     "Bilder",                           // T_NAV_SHOTS
     "Update",                           // T_NAV_UPDATE
+    "Einstellungen",                    // T_NAV_SETTINGS
     "RCT Power Panel",                  // T_PAGE_ROOT
     "Verlauf",                          // T_PAGE_VERLAUF
     "Daten",                            // T_PAGE_DATA
     "Bilder",                           // T_PAGE_SHOTS
     "Update",                           // T_PAGE_UPDATE
+    "Einstellungen",                    // T_PAGE_SETTINGS
     "Zur Startseite",                   // T_MSG_TO_HOME
     "lang=\"de\"",                       // T_HTML_LANG
 
@@ -138,19 +140,38 @@ const char *const kLang[T_COUNT] = {
     "Das Panel bleibt w&auml;hrend des Schreibens bedienbar und startet "
     "danach neu. L&auml;uft ein Update schief, startet das Panel mit der "
     "bisherigen Firmware weiter.",                              // T_NOTE_FIRMWARE
+
+    // --- web: the settings page --------------------------------------------
+    "Wechselrichter",                   // T_H_SET_DEVICE
+    "Darstellung",                      // T_H_SET_THEME
+    "Typ",                              // T_LBL_DEVICE_TYPE
+    "Adresse",                          // T_LBL_DEVICE_HOST
+    "Port",                             // T_LBL_DEVICE_PORT
+    "Hintergrund",                      // T_LBL_THEME
+    "RCT Power (TCP 8899)",             // T_OPT_TYPE_RCT
+    "OpenInverterGateway (HTTP 80)",    // T_OPT_TYPE_OIG
+    "Speichern",                        // T_BTN_SAVE
+    "Die Einstellungen werden dauerhaft gespeichert. Das Panel startet neu, "
+    "damit der gew&auml;hlte Treiber und die neue Adresse wirksam werden.",
+                                                      // T_NOTE_RESTART
+    "Gespeichert. Das Panel startet neu.",          // T_OK_SAVED
+    "Unbekannter Ger&auml;tetyp.",                   // T_ERR_BAD_TYPE
+    "Bitte eine Adresse eingeben.",                  // T_ERR_BAD_HOST
+    "Bitte eine Zahl von 1 bis 65535 eingeben.",     // T_ERR_BAD_PORT
+
+    // --- web: the answers to an action ---------------------------------------
     "Firmware geschrieben. Das Panel startet jetzt neu.",  // T_OK_FW_WRITTEN
     "Das Update wurde nicht ausgef&uuml;hrt. Bitte erneut versuchen.",
                                                       // T_ERR_FW_NOTRUN
     "Das Update liess sich nicht abschliessen. Die alte Firmware "
     "l&auml;uft weiter.",                                       // T_ERR_FW_END
-
-    // --- web: the answers to an action ---------------------------------------
     "Das Panel startet neu.",            // T_OK_RESTART
     "Das Panel startet das WLAN-Setup (Zugang: RCT-Panel).",    // T_OK_SETUP
     "&Uuml;bernommen. Das Panel zeigt die neue Funktion auf der Seite Service.",
                                                         // T_OK_APPLIED
     "Test laeuft: 5 s ein, 5 s aus, zweimal.",             // T_OK_TEST_RUN
     "Ein Test laeuft bereits.",                           // T_ERR_TEST_RUNNING
+
     "Der Code stimmt nicht. Er steht auf der Panel-Seite Service.", // T_ERR_CODE
     "Es l&auml;uft schon eine Aufnahme, oder es steckt keine SD-Karte im "
     "Panel.",                                           // T_ERR_SHOT_RUNNING
