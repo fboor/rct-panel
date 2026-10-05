@@ -1,135 +1,133 @@
-# Den Wechselrichter austauschbar machen
+# Making the inverter replaceable
 
-## Worum es geht
+## What this is about
 
-Das Panel spricht über genau ein Protokoll mit genau einem Gerät: dem RCT Power,
-60 Register über TCP auf Port 8899. Die Abstraktion, um die es hier geht,
-versteckt **diese eine Implementierung** hinter einer API, die alle übrigen
-Bauteile aufrufen: GUI, Weboberfläche, Schaltausgang, CSV-Logger, Verlauf.
+The panel speaks exactly one protocol to exactly one device: the RCT Power, 60
+registers over TCP on port 8899. The abstraction described here hides **that one
+implementation** behind an API that all the other components call: GUI, web
+interface, switched output, CSV logger, history.
 
-Ausdrücklich im Umfang:
+Explicitly in scope:
 
-- **Eine** Implementierung, nämlich RCT. Kein zweiter Wechselrichter wird
-  geschrieben, geraten oder vorbereitet.
-- **Verschiedene Transporte sollen möglich sein**, aber keiner wird umgesetzt.
-  Hinter der Schnittstelle liegt eine TCP-Anbindung; die Schnittstelle ist so
-  gebaut, dass eine serielle später dazukommt, ohne die Fahrerseite anzufassen.
-- **Die Herkunft der Daten steht im Dateinamen** (`RCT-202610.csv`), nicht in
-  einer CSV-Spalte. Ein Gerätetyp bekommt ein Kürzel, das Kürzel wandert in den
-  Dateinamen, und alle Logs eines Typs liegen nebeneinander.
+- **One** implementation, namely RCT. No second inverter is written, guessed at or
+  prepared.
+- **Different transports should be possible**, but none is implemented. Behind the
+  interface sits a TCP connection; the interface is built so that a serial one can
+  be added later without touching the driver side.
+- **The origin of the data is in the file name** (`RCT-202610.csv`), not in a CSV
+  column. A device type gets an abbreviation, the abbreviation travels into the
+  file name, and all logs of one type sit side by side.
 
-Was nicht im Umfang ist: ein zweiter Wechselrichter, ein zweites Protokoll, ein
-eigener Modbus-Code, eine eigene Task, Änderungen am CSV-Format oder an der
-Web-Schnittstelle.
+Not in scope: a second inverter, a second protocol, own Modbus code, a task of its
+own, changes to the CSV format or to the web interface.
 
-> **Stand heute:** Aus dem zweiten Fahrer ist ein *OpenInverterGateway* geworden,
-> und mit ihm `DeviceCaps` — die Anzeige fragt den Fahrer einmal, was seine Familie
-> kann, und zeichnet nur das. Siehe [„Was danach dazukam"](#was-danach-dazukam).
+> **Where this stands today:** the second driver became an
+> *OpenInverterGateway*, and with it `DeviceCaps` — the display asks the driver
+> once what its family can do and draws only that. See
+> [“What came after”](#what-came-after).
 
-## Ausgangslage
+## Starting point
 
-Fünf Stellen lesen `rctState`, und keine davon kennt das Protokoll:
+Five places read `rctState`, and none of them knows the protocol:
 
-| Verbraucher | Was er braucht | Code |
+| Consumer | What it needs | Code |
 |---|---|---|
-| GUI: Übersicht, Verlauf, Energie, Gerät, Service | fast alles | `GuiApp.cpp`, `refreshCb()` |
-| Weboberfläche (6 Seiten, 2 JSON-Endpunkte) | fast alles | `WebServer.cpp`, `handleRoot()` |
-| Schaltausgang (4 Regeln) | Netz, Fehlerbits, Insel | `Relay.cpp`, `ruleWantsOn()` |
-| CSV-Zeile (23 Spalten, alle 5 min) | Leistungen, Temperaturen, Fehlermaske | `sdlog.cpp`, `sdLogSample()` |
-| Selbstauskunft über das Datenalter | `haveData`, `connected`, `lastUpdateMs` | `DataStatus.h` |
+| GUI: overview, history, energy, device, service | almost everything | `GuiApp.cpp`, `refreshCb()` |
+| Web interface (6 pages, 2 JSON endpoints) | almost everything | `WebServer.cpp`, `handleRoot()` |
+| Switched output (4 rules) | grid, fault bits, island | `Relay.cpp`, `ruleWantsOn()` |
+| CSV row (23 columns, every 5 min) | powers, temperatures, fault mask | `sdlog.cpp`, `sdLogSample()` |
+| Self-report on the data age | `haveData`, `connected`, `lastUpdateMs` | `DataStatus.h` |
 
-Kein Verbraucher baut einen Frame, prüft eine CRC oder kennt eine OID. Die
-Protokollkenntnis liegt in `RctClient.cpp` — der Ort ist also richtig, nur das
-`RCT` steckt im Namen und in der Datei.
+No consumer builds a frame, checks a CRC or knows an OID. The protocol knowledge
+sits in `RctClient.cpp` — so the place is right, only the `RCT` is in the name and
+in the file.
 
-Was an *Rückständen* hängt, sind die Regeln. „Haus = Lastzähler + externer
-Ertrag" (weil der Lastzähler des RCT den S0-Ertrag nicht sieht) steht an
-**fünf Stellen im C++** (`WebServer.cpp` `loadSum`, `GuiApp.cpp` dreimal,
-`CsvRow.h` `toSample`) und einsechsmal im Browser. „Erzeugung = zwei Strings +
-S0" an vier Stellen im C++ und einer im Browser — und im Verlauf *ohne* S0,
-was ohne Kommentar wie ein Fehler aussieht. Die Vorzeichen (Netz + = Bezug,
-Batterie + = Entladung, PV ≥ 0) sind gemessen und stehen in Kommentaren neben
-den Feldern. Diese Regeln gehören in die API, denn sie sind Anlagenlogik und
-keine Gerätelogik.
+What *residue* hangs on are the rules. “House = load meter + external yield”
+(because the RCT's load meter does not see the S0 yield) stands at **five places
+in the C++** (`WebServer.cpp` `loadSum`, `GuiApp.cpp` three times, `CsvRow.h`
+`toSample`) and six times in the browser. “Generation = two strings + S0” at four
+places in the C++ and one in the browser — and in the history *without* S0, which
+without a comment looks like a bug. The signs (grid + = import, battery + =
+discharge, PV ≥ 0) are measured and stand in comments next to the fields. These
+rules belong in the API, because they are plant logic and not device logic.
 
-Drei weitere Stellen nennen das Gerät beim Namen:
+Three further places name the device outright:
 
-| Stelle | Was |
+| Place | What |
 |---|---|
-| `sdlog.cpp`, `updatePath()` und `sdWorkerReadHistory()` | `\"/hist/RCT-%s.csv\"`, dreimal als Zeichenkette |
-| `Configuration.h` | `extern char rct_host[41]`, `rct_port[6]`, NVS-Schlüssel `rct_host`/`rct_port` |
-| Verzeichnis und Dateinamen | `src/rct/RctClient.{h,cpp}`, `RctTypes.h`, `RctCrc.h` |
+| `sdlog.cpp`, `updatePath()` and `sdWorkerReadHistory()` | `"/hist/RCT-%s.csv"`, three times as a string |
+| `Configuration.h` | `extern char rct_host[41]`, `rct_port[6]`, NVS keys `rct_host`/`rct_port` |
+| Directory and file names | `src/rct/RctClient.{h,cpp}`, `RctTypes.h`, `RctCrc.h` |
 
-## Die API
+## The API
 
-Vier neue Bausteine, ein verschobener. Namen: englisch wie im übrigen Code,
-das Wort „Gerät" ist im Panel ohnehin der Wechselrichter (Seite „Gerät").
+Four new building blocks, one moved one. Names: English like the rest of the code;
+in the panel “device” is the inverter anyway (page “Gerät”).
 
 ```
-  GUI · Web · Relay · CSV · Verlauf
+  GUI · Web · Relay · CSV · history
               ▲   deviceState(), devicePoll(), deviceLoadW(), …
   ┌───────────┴────────────────────────────────────────────┐
-  │ src/device/    DeviceState.h   die neutralen Werte      │
-  │                DeviceDriver.h  die Fahrerschnittstelle  │
-  │                DeviceTransport.h die Transportschnittst. │
-  │                Device.cpp      Fabrik, poll, Präfix     │
+  │ src/device/    DeviceState.h    the neutral values       │
+  │                DeviceDriver.h   the driver interface     │
+  │                DeviceTransport.h the transport interface │
+  │                Device.cpp       factory, poll, prefix    │
   ├─────────────────────────────────────────────────────────┤
   │ src/rct/       RctDriver.{h,cpp}, RctCrc.h              │
   └─────────────────────────────────────────────────────────┘
 ```
 
-| Datei | Inhalt |
+| File | Content |
 |---|---|
-| `src/device/DeviceState.h` | der heutige `RctSnapshot` mit geräteneutralen Namen, als `deviceState()` erreichbar |
-| `src/device/DeviceDriver.h` | die Fahrerschnittstelle (rein virtuell) |
-| `src/device/DeviceTransport.h` | die Transportschnittstelle (rein virtuell) |
-| `src/device/Device.cpp` | Fabrik, `devicePoll()`, `deviceTypePrefix()`, die Regelfunktionen |
-| `src/rct/RctDriver.{h,cpp}` | die heutige `RctClient.cpp`, als Treiber gegen die Transportschnittstelle |
+| `src/device/DeviceState.h` | today's `RctSnapshot` with device-neutral names, reachable as `deviceState()` |
+| `src/device/DeviceDriver.h` | the driver interface (pure virtual) |
+| `src/device/DeviceTransport.h` | the transport interface (pure virtual) |
+| `src/device/Device.cpp` | factory, `devicePoll()`, `deviceTypePrefix()`, the rule functions |
+| `src/rct/RctDriver.{h,cpp}` | today's `RctClient.cpp`, as a driver against the transport interface |
 
-### `DeviceState`: die neutralen Namen
+### `DeviceState`: the neutral names
 
-Die Feldnamen sind der eigentliche Inhalt der Abstraktion — sie sagen, *was*
-gemessen wird, nicht welches Register es liefert. Die Einheit steckt im Namen,
-weil sie zwischen den Feldern wechselt (ein Zähler in Wh, eine Leistung in W)
-und weil die API von mehreren Bauarten benutzt wird.
+The field names are the actual content of the abstraction — they say *what* is
+measured, not which register delivers it. The unit is in the name, because it
+changes between the fields (a counter in Wh, a power in W) and because the API is
+used by several kinds of device.
 
-| heute (`RctSnapshot`) | neu (`DeviceState`) | Einheit |
+| today (`RctSnapshot`) | new (`DeviceState`) | unit |
 |---|---|---|
-| `gridPower[3]`, `gridPowerSum` | `gridW[3]`, `gridExchangeW` (+ = Bezug) | W |
+| `gridPower[3]`, `gridPowerSum` | `gridW[3]`, `gridExchangeW` (+ = import) | W |
 | `gridVoltage[3]`, `gridFrequency[3]` | `gridV[3]`, `gridHz[3]` | V, Hz |
 | `loadPower[3]` | `houseW[3]` | W |
 | `pvPower[2]` | `genW[2]` (A, B) | W |
-| `s0Power` | `extW` (externer Ertrag, der RCT liest ihn am S0) | W |
+| `s0Power` | `extW` (external yield, which the RCT reads at S0) | W |
 | `batteryPower`, `batteryVoltage`, `batteryCurrent`, `batterySoc` | `batW`, `batV`, `batA`, `socPct` | W, V, A, % |
-| `dayPvWh`, `monthPvWh`, … 14 Zähler | `dayGenWh`, `monthGenWh`, … | Wh |
+| `dayPvWh`, `monthPvWh`, … 14 counters | `dayGenWh`, `monthGenWh`, … | Wh |
 | `feedInEnergyWh`, `gridDrawTotalWh` | `feedInTotalWh`, `gridDrawTotalWh` | Wh |
-| `dayExtWh`, … und die `Plain`-Variante | `dayExtWh`, … | Wh |
-| `batteryStatus`, `faultBits[4]` | unverändert | Bitfeld |
-| `deviceName`, `firmwareVersion` | unverändert | Text |
-| `coreTemp`, `batteryTemp`, `heatSinkTemp`, `nextCalibTs`, `batteryCycles`, `batterySoh` | unverändert | °C, s, Zyklen, % |
-| `islandMode`, `islandKnown`, `haveData`, `haveBattery`, `connected`, `lastUpdateMs` | unverändert | — |
+| `dayExtWh`, … and the `Plain` variant | `dayExtWh`, … | Wh |
+| `batteryStatus`, `faultBits[4]` | unchanged | bit field |
+| `deviceName`, `firmwareVersion` | unchanged | text |
+| `coreTemp`, `batteryTemp`, `heatSinkTemp`, `nextCalibTs`, `batteryCycles`, `batterySoh` | unchanged | °C, s, cycles, % |
+| `islandMode`, `islandKnown`, `haveData`, `haveBattery`, `connected`, `lastUpdateMs` | unchanged | — |
 
-`haveBattery` und `islandKnown` waren Flaggen statt Fähigkeiten: sie sagen „das
-Gerät hat noch nicht geantwortet", nicht „das Gerät kann das nicht". Für einen
-zweiten Fahrer reicht das nicht, und genau an diesem Unterschied wird ein zweites
-Gerät sichtbar — deshalb gibt es jetzt `DeviceCaps` (siehe unten).
+`haveBattery` and `islandKnown` were flags instead of capabilities: they say "the
+device has not answered yet", not "the device cannot do this". For a second driver
+that is not enough, and exactly at this difference a second device becomes
+visible — hence `DeviceCaps` now exists (see below).
 
-### Die Regeln gehören in die API
+### The rules belong in the API
 
-Weil sie an fünf Stellen stehen, werden sie Funktionen der Abstraktion und
-landen in `src/device/Rules.h` — header-only und ohne Arduino, im Stil von
-`DataStatus.h`, damit sie der Host-Test prüfen kann:
+Because they stand in five places, they become functions of the abstraction and
+land in `src/device/Rules.h` — header-only and without Arduino, in the style of
+`DataStatus.h`, so the host test can check them:
 
 ```cpp
-float deviceGridExchangeW();   // Netz, + = Bezug
+float deviceGridExchangeW();   // grid, + = import
 float deviceGenerationW();     // genW[0] + genW[1] + extW
 float deviceHouseW();          // houseW[0..2] + extW
-float deviceBatteryW();        // + = Entladung
+float deviceBatteryW();        // + = discharge
 ```
 
-Der Verlauf behält seine eigene Rechnung (`toSample`: Erzeugung ohne S0, S0 als
-eigene Reihe), denn das ist eine bewusste Ausnahme und keine vergessene
-Stelle.
+The history keeps its own computation (`toSample`: generation without S0, S0 as
+its own series), because that is a deliberate exception and not a forgotten spot.
 
 ### `DeviceDriver`
 
@@ -137,21 +135,21 @@ Stelle.
 class DeviceDriver {
 public:
   virtual ~DeviceDriver() = default;
-  // Einmalig. Eigene Puffer, kein Heap, keine Task.
+  // Once. Own buffers, no heap, no task.
   virtual void begin(const DeviceConfig &cfg) = 0;
-  // Genau ein Abruf, höchstens budgetMs lang. Muss alte Werte halten, wenn
-  // ein Register fehlt, und in dieser Zeit den Yield-Hook aufrufen.
+  // Exactly one retrieval, at most budgetMs long. Must hold old values when a
+  // register is missing, and call the yield hook within that time.
   virtual void poll(uint32_t budgetMs) = 0;
   virtual bool connected() const = 0;
-  virtual const char *typeName() const = 0;   // "RCT" - auch der Dateiname
+  virtual const char *typeName() const = 0;   // "RCT" - also the file name
 };
 ```
 
-Die Zeitbedingung ist der Teil, der nicht verhandelbar ist: `rctParse()` läuft
-im LVGL-Task und blockiert dort bis zu 4 s; gerettet wird das über
-`rctSetYieldHook()`, den `main.cpp` mit `displayLooper()+lv_tick_inc` belegt.
-Ein zweiter Fahrer, der das nicht tut, friert das Panel ein — deshalb steht es
-im Vertrag und nicht in einer Kopfzeile.
+The time condition is the part that is not negotiable: `rctParse()` runs in the
+LVGL task and blocks there for up to 4 s; what saves it is `rctSetYieldHook()`,
+which `main.cpp` fills with `displayLooper()+lv_tick_inc`. A second driver that
+does not do this freezes the panel — which is why it is in the contract and not in
+a header comment.
 
 ### `DeviceTransport`
 
@@ -159,286 +157,276 @@ im Vertrag und nicht in einer Kopfzeile.
 class DeviceTransport {
 public:
   virtual ~DeviceTransport() = default;
-  // Millisekunden-Zeitbasis für alle Wartezeiten: eine serielle Schnittstelle
-  // rechnet ihre Frame-Pausen aus der Baudrate, nicht aus einem Socket.
+  // Millisecond timebase for all waits: a serial interface computes its frame
+  // pauses from the baud rate, not from a socket.
   virtual bool open(const char *host, const char *port, uint32_t timeoutMs) = 0;
   virtual size_t write(const uint8_t *buf, size_t n) = 0;
   virtual int available() = 0;
   virtual int read() = 0;
-  virtual bool peerOpen() = 0;   // TCP: Socket lebt; RS485: immer true
+  virtual bool peerOpen() = 0;   // TCP: socket alive; RS485: always true
   virtual void close() = 0;
 };
 ```
 
-Der Schnittstelle folgen vier Eigenschaften, damit eine RS485-Variante später
-nichts an der Fahrerseite ändern muss:
+Four properties follow the interface, so that an RS485 variant later does not have
+to change anything on the driver side:
 
-- **Bytes, keine Frames.** Rahmen, CRC, Adressierung und Antwortsammlung
-  gehören dem Fahrer, nicht dem Transport. Ein Modbus-RTU-Rahmen (Adresse,
-  Funktionscode, Register, CRC16, 3,5 Zeichen Pause) ist eine andere
-  Rahmensprache als der RCT-Bus mit Escaping — die muss nebeneinander bestehen
-  können.
-- **`peerOpen()` statt `connected()`.** Beim TCP ist „die Verbindung ist
-  zu" eine Meldung des Sockets und ein eigener Fehlerfall (`RctClient` stoppt
-  den Socket darauf). Bei RS485 gibt es das nicht.
-- **Millisekunden statt eigener Zeitbasis** in der Schnittstelle, damit der
-  Fahrer seine Wartefenster selbst rechnen kann.
-- **DE/RE gehört in den Transport**, nicht in den Fahrer: das Umschalten der
-  Senderichtung ist eine Eigenschaft des elektrischen Anschlusses. Diese
-  Schnittstelle hat dafür bewusst keine Methode — sie kommt mit der
-  Implementierung dazu, nicht als Leerstelle.
+- **Bytes, not frames.** Framing, CRC, addressing and answer collection belong to
+  the driver, not to the transport. A Modbus RTU frame (address, function code,
+  register, CRC16, 3.5 character pause) is a different framing language from the
+  RCT bus with escaping — both have to be able to coexist.
+- **`peerOpen()` instead of `connected()`.** With TCP, “the connection is down” is
+  a report from the socket and a separate error case (`RctClient` stops the socket
+  on it). With RS485 that does not exist.
+- **Milliseconds instead of a timebase of its own** in the interface, so that the
+  driver can compute its wait windows itself.
+- **DE/RE belongs in the transport**, not in the driver: switching the transmit
+  direction is a property of the electrical connection. This interface
+  deliberately has no method for it — it arrives with the implementation, not as
+  an empty slot.
 
-### Konfiguration
+### Configuration
 
-`DeviceConfig { char type[12]; char host[41]; char port[6]; }`, aus NVS:
+`DeviceConfig { char type[12]; char host[41]; char port[6]; }`, from NVS:
 
-| Schlüssel | Bedeutung | Rückfall |
+| Key | Meaning | Fallback |
 |---|---|---|
-| `device` | Gerätetyp, heute immer `RCT` | `RCT` |
-| `device_host` | Adresse des Geräts | `rct_host` |
-| `device_port` | Port | `rct_port` |
+| `device` | device type, today always `RCT` | `RCT` |
+| `device_host` | address of the device | `rct_host` |
+| `device_port` | port | `rct_port` |
 
-Der Rückfall ist Pflicht, nicht Kosmetik: ein Panel, das beim Update seine
-Adresse verliert, hat danach keinen Wechselrichter mehr, und das fällt
-unangenehm auf. Die alten Schlüssel werden ein Release lang gelesen, nicht
-mehr geschrieben.
+The fallback is a requirement, not cosmetics: a panel that loses its address on
+update has no inverter afterwards, and that is noticed unpleasantly. The old keys
+are read for one release, no longer written.
 
-## Der Dateiname als Gerätenachweis
+## The file name as proof of the device
 
-`deviceTypePrefix()` liefert `"RCT"`, aus `RctDriver::typeName()`. Der Logger
-baut daraus den Pfad, an zwei Stellen statt an einer mit hartem Text:
+`deviceTypePrefix()` delivers `"RCT"`, from `RctDriver::typeName()`. The logger
+builds the path from it, in two places instead of one with hard-coded text:
 
 ```cpp
 snprintf(path, sizeof(path), "/hist/%s-%s.csv", deviceTypePrefix(), key);
 ```
 
-Damit liegen die Logs zweier Gerätetypen nebeneinander und die Zuordnung
-steckt im Namen. Eine Spalte im CSV wäre dafür nicht nötig — und wäre
-schädlich, weil sie das Format änderte, das die alte Historie noch lesen muss.
+Thus the logs of two device types sit side by side and the assignment is in the
+name. A column in the CSV would not be needed for that — and would be harmful,
+because it would change a format that the old history still has to be able to
+read.
 
-Ein Nebeneffekt, den man kennen muss: der Verlaufssucher liest
-`<Typ>-<Monat>.csv` und `<Typ>-<Monat davor>.csv`. Nach einem Wechsel des
-Gerätetyps findet er die alten Dateien nicht, und der 24-Stunden-Verlauf hat
-eine Lücke am Umstelltag. Das ist richtig so: die Zeilen zweier Geräte in
-einem Diagramm wären falsch, und der Dateiname ist genau das, woran man es
-sehen kann. Der Uptime-Name ohne Uhr (`UPT-<tage>.csv`) bleibt wie er ist, ohne
-Präfix — solange die Uhr nicht gültig ist, ist der Typ im Namen noch nicht
-wahr.
+A side effect one has to know: the history finder reads `<type>-<month>.csv` and
+`<type>-<month before>.csv`. After a device type change it does not find the old
+files, and the 24-hour history has a gap on the day of the change. That is correct:
+the rows of two devices in one diagram would be wrong, and the file name is
+exactly what one can see it on. The uptime name without a clock (`UPT-<days>.csv`)
+stays as it is, without a prefix — as long as the clock is not valid, the type in
+the name is not true yet.
 
-## Schrittfolge
+## Step order
 
-Alle fünf Schritte sind gebaut (Commits `2be46e5`, `cfc1d42` und der Fahrer-
-und Transport-Commit). Kein Schritt hat verändert, was auf dem Display steht;
-geprüft wurde das über beide Builds und die Host-Tests, nicht über ein Foto vom
-Panel.
+All five steps are built (commits `2be46e5`, `cfc1d42` and the driver and transport
+commit). No step changed what stands on the display; that was verified with both
+builds and the host tests, not with a photo of the panel.
 
-| Schritt | Inhalt | Nachweis |
+| Step | Content | Proof |
 |---|---|---|
-| **1. Namen** | `DeviceState.h` mit neutralen Feldern, `deviceState()` als Zugriff; alle fünf Verbraucher umgestellt. Reines Umbenennen, kein Verhalten. | beide Builds grün, Host-Tests grün |
-| **2. Regeln** | `Rules.h` mit den Zugriffsfunktionen plus Vorzeichentabelle; `loadSum()` und die fünf Doppelungen sterben, der Verlauf behält seine Ausnahme. `tools/device_test` prüft beide Gerätearten. | 42 Prüfungen grün |
-| **3. Transport** | `DeviceTransport` + `TcpTransport`; die `WiFiClient`-Belange wandern aus `RctClient.cpp` in den Transport. Rein mechanisch, das Byte-Protokoll bleibt unangetastet. | `crc_test` grün, Gerät unverändert erreichbar |
-| **4. Fahrer** | `DeviceDriver` + Fabrik; `RctClient.cpp` wird `RctDriver.cpp`; `main.cpp` ruft `devicePoll()`. | beide Builds grün |
-| **5. Typ im Namen** | `deviceTypeName()` im Logger (zwei Stellen), NVS `device_type`/`device_host`/`device_port` mit Rückfall auf `rct_host`/`rct_port`. | neue Datei heißt weiter `RCT-202610.csv` |
+| **1. Names** | `DeviceState.h` with neutral fields, `deviceState()` as the access; all five consumers converted. Pure renaming, no behaviour. | both builds green, host tests green |
+| **2. Rules** | `Rules.h` with the access functions plus a sign table; `loadSum()` and the five duplicates die, the history keeps its exception. `tools/device_test` checks both kinds of device. | 42 checks green |
+| **3. Transport** | `DeviceTransport` + `TcpTransport`; the `WiFiClient` concerns move out of `RctClient.cpp` into the transport. Purely mechanical, the byte protocol stays untouched. | `crc_test` green, device still reachable |
+| **4. Driver** | `DeviceDriver` + factory; `RctClient.cpp` becomes `RctDriver.cpp`; `main.cpp` calls `devicePoll()`. | both builds green |
+| **5. Type in the name** | `deviceTypeName()` in the logger (two places), NVS `device_type`/`device_host`/`device_port` with fallback to `rct_host`/`rct_port`. | the new file is still called `RCT-202610.csv` |
 
-Schritt 1 war der große Diff (Feldnamen in `GuiApp.cpp`, `WebServer.cpp`,
-`sdlog.cpp`) und trotzdem der unkritischste: der Compiler findet jede Stelle,
-und es ändert sich keine Zahl.
+Step 1 was the big diff (field names in `GuiApp.cpp`, `WebServer.cpp`,
+`sdlog.cpp`) and nevertheless the least critical: the compiler finds every spot,
+and no number changes.
 
-Ein Punkt aus der Liste hat sich beim Bauen als größer erwiesen als gedacht:
-die doppelte Periodenrechnung. `energyPeriodValues()` in C++ und `rpEnergy()`
-im Browser machen dasselbe aus unterschiedlichen Quellen, und beide mussten an
-die Regel angehängt werden — der C++-Teil über `rulePeriod()`, der
-Browser-Teil über die Zeilen, die er aus dem CSV liest. Die Regel steht jetzt
-an beiden Stellen einmal statt zweimal.
+One item from the list turned out bigger while building it: the duplicated period
+computation. `energyPeriodValues()` in C++ and `rpEnergy()` in the browser do the
+same thing from different sources, and both had to be hung on the rule — the C++
+part through `rulePeriod()`, the browser part through the rows it reads from the
+CSV. The rule now stands once in each place instead of twice.
 
-Ein Detail, das erst beim Bauen auffiel: die sechste Kopie der Hausregel war
-nicht im Flussdiagramm, sondern in den „Heute"-Karten, die ihre Tageszähler
-selbst addierten. Sie war nur deshalb unauffällig, weil sie in derselben Datei
-stand wie die anderen.
+A detail that only showed up while building: the sixth copy of the house rule was
+not in the flow diagram but in the “Heute” cards, which added up their daily
+counters themselves. It was inconspicuous only because it stood in the same file
+as the others.
 
-## Was danach dazukam
+## What came after
 
-Der Plan ist ausgeführt, und zehn Commits später stand der zweite Fahrer da. Was
-oben noch als „nicht im Umfang" stand, ist jetzt gebaut — bis auf den Namen, den
-das Panel im Log und in der CSV verwendet. Die Reihenfolge war nicht die des
-Plans; sie ergab sich aus dem, was sich beim Bauen als zuerst lösend erwies.
+The plan is executed, and ten commits later the second driver stands. What stood
+above as “out of scope” is now built — except for the name the panel uses in the
+log and in the CSV. The order was not the plan's; it arose from what turned out to
+be the first thing that unlocked something else.
 
-### 1. Der zweite Fahrer: OpenInverterGateway
+### 1. The second driver: OpenInverterGateway
 
-`src/oig/` mit zwei Teilen, die man trennen muss:
+`src/oig/` with two parts that have to be kept apart:
 
-- **`OigFields.h`** — die Feldernamen als Daten. Sie sind aus allen sieben
-  Growatt-Protokollen extrahiert, weil die Modelle verschiedene Namen für
-  dieselbe Größe führen. Das Panel fragt `/status` und liest die Antwort über den
-  Namen; es fragt nicht nach einem Register. Dadurch stimmt die Netzfrequenz auch
-  bei einem Modell, das sie `grid_freq` statt `fac_frequency` nennt.
-- **Die achte Quelle ist ein echtes Gerät.** Ein Growatt MIC 1000 im Test
-  weicht von den sieben Protokollen an zwei Stellen ab: die AC-Leistung heißt
-  `OutputPower` (nicht `AcPower`), und die Erzeugungszähler heißen
-  `TodayGenerateEnergy`/`TotalGenerateEnergy`. Dazu kommen Felder, die es nur bei
-  einem Hybrid gibt — und die-panel-lose Frage, ob **überhaupt ein Akku
-  angeschlossen** ist: der MIC 1000 ohne Akku meldet `BatteryState` 0, `SOC` 0,
-  `ChargePower` 0, `DischargePower` 0 und `BatteryVoltage` 0. Aus „es gibt ein
-  SOC-Feld" folgt also nicht „es gibt einen Akku". Die Regel steht als
-  `oigBatteryPresent()` im Header, damit der Host-Test sie greifen kann, und
-  protokolliert den Rohwert mit.
-- **Die Puffergröße war eine Vermutung und ist gescheitert.** `kOigBodyMax`
-  stand auf 1024, begründet mit „ein String-Wechselrichter meldet rund vierzig
-  Felder". Der MIC 1000 antwortet mit 64 Feldern und 1462 Byte. Die letzten 21
-  Felder — **alle Energiezähler** — fielen hinter der Abschneidegrenze weg, und
-  das Panel zeigte stundenlang „heute 0,00 kWh, gesamt 0,00 kWh" für ein Gerät,
-  das seit Jahren misst. Der Puffer ist jetzt 4096 Byte (3 kB RAM), und eine
-  abgeschnittene Antwort steht als `ABGESCHNITTEN` in der Logzeile, die ohnehin
-  jeden Zyklus läuft.
-- **`OigDriver.cpp`** — der Fahrer. HTTP/1.0 auf dem eingestellten Port (Vorgabe
-  8899), ein `GET /status`, dessen JSON über `Json.h` gelesen wird (header-only,
-  host-testbar, kein Arduino). Kein `chunked`-Decoder, weil der Stick ohne
-  Chunking antwortet.
+- **`OigFields.h`** — the field names as data. They are extracted from all seven
+  Growatt protocols, because the models carry different names for the same
+  quantity. The panel asks `/status` and reads the answer by name; it does not ask
+  for a register. That way the grid frequency is also right on a model that calls
+  it `grid_freq` instead of `fac_frequency`.
+- **The eighth source is a real device.** A Growatt MIC 1000 in the test differs
+  from the seven protocols in two places: the AC power is called `OutputPower`
+  (not `AcPower`), and the generation counters are called
+  `TodayGenerateEnergy`/`TotalGenerateEnergy`. On top of that come fields that
+  only exist on a hybrid — and the panel-less question of whether **a battery is
+  connected at all**: the MIC 1000 without a battery reports `BatteryState` 0,
+  `SOC` 0, `ChargePower` 0, `DischargePower` 0 and `BatteryVoltage` 0. So “there is
+  an SOC field” does not follow as “there is a battery”. The rule stands as
+  `oigBatteryPresent()` in the header so the host test can reach it, and it logs
+  the raw value along with it.
+- **The buffer size was a guess and it failed.** `kOigBodyMax` stood at 1024,
+  argued with “a string inverter reports about forty fields”. The MIC 1000 answers
+  with 64 fields and 1462 bytes. The last 21 fields — **all the energy counters**
+  — fell behind the truncation limit, and the panel showed “today 0.00 kWh, total
+  0.00 kWh” for hours on a device that has been measuring for years. The buffer is
+  now 4096 bytes (3 kB RAM), and a truncated answer stands as `ABGESCHNITTEN` in
+  the log line that runs every cycle anyway.
+- **`OigDriver.cpp`** — the driver. HTTP/1.0 on the configured port (default
+  8899), a `GET /status` whose JSON is read with `Json.h` (header-only,
+  host-testable, no Arduino). No `chunked` decoder, because the stick answers
+  without chunking.
 
-Das war der Teil mit den echten Überraschungen: Der Stick antwortet auf
-`/status` mit **503**, wenn kein Wechselrichter läuft — also sieht ein wacher
-Ger-stick ohne Wechselrichter von hier aus genauso aus wie ein schlafender. Der
-Fahrer behandelt beides als „schläft" (`DataStatus::Asleep`, der Text sagt
-„schläft" statt „keine Daten"), was ehrlicher ist als eine Anzeige, die eine
-Antwort behauptet, die keine ist. Die Unterscheidung steht als offene Entscheidung
-unten.
+That was the part with the real surprises: the stick answers `/status` with
+**503** when no inverter is running — so from here an awake stick without an
+inverter looks exactly like a sleeping one. The driver treats both as “sleeps”
+(`DataStatus::Asleep`, the text says “schläft” instead of “keine Daten”), which is
+more honest than a display that claims an answer that is not one. The distinction
+stands as open decision 4 below.
 
-### 2. `DeviceCaps`: die Fähigkeiten sind eine Aussage über die Familie
+### 2. `DeviceCaps`: capabilities are a statement about the family
 
-`src/device/DeviceCaps.h`, gesetzt vom Fahrer in `begin()` — nicht aus dem, was
-gerade ankam, sondern aus dem, was die Familie kann. Fünf Fähigkeiten und eine
-Eigenschaft:
+`src/device/DeviceCaps.h`, set by the driver in `begin()` — not from what just
+arrived but from what the family can do. Five capabilities and one property:
 
-| Feld | Bedeutung |
+| Field | Meaning |
 |---|---|
-| `houseMeter` | einen Hauszähler gibt es (sonst kann das Panel keinen Hauswert zeigen — nicht null, sondern nichts) |
-| `gridMeter` | einen Netzwechselrichter gibt es |
-| `battery` | der Ladezustand antwortet |
-| `islandFlag` | das Insel-Flag ist belegt |
-| `faultBits` | die vier Fehlerworte sind belegt |
-| `sleepsWithoutGeneration` | das Gerät schaltet nachts ohne PV ab (der OIG ja, ein RCT nein — das ist der Unterschied zwischen „schläft" und „hängt") |
+| `houseMeter` | there is a household meter (otherwise the panel cannot show a household value — not zero, but nothing) |
+| `gridMeter` | there is a meter at the grid connection |
+| `battery` | the state of charge answers |
+| `islandFlag` | the island flag is backed |
+| `faultBits` | the four fault words are backed |
+| `sleepsWithoutGeneration` | the device switches itself off at night without PV (the OIG does, an RCT does not — that is the difference between “sleeps” and “is stuck”) |
 
-Der RCT-Fahrer hat seine Fähigkeiten lange nicht gemeldet und funktionierte nur,
-weil ein leeres `caps` zufällig wie „noch nichts bekannt" gelesen wird — was
-zufällig das volle Layout bedeutet. Das ist genau die Sorte Zufall, die ein
-Gerät mit weniger Zählern sofort verrät, und es ist behoben.
+The RCT driver long did not report its capabilities and worked only because an
+empty `caps` happened to read as “nothing known yet” — which happened to mean the
+full layout. That is exactly the kind of coincidence a device with fewer meters
+gives away at once, and it is fixed.
 
-Zwei der Fähigkeiten entscheiden inzwischen auch über **Energiezahlen**, denn
-der Eigenverbrauch ist eine Differenz: `houseMeter − gridMeter` geht als
-`ruleOwnKnown()` in `Rules.h`. Auf dem MIC 1000 (Haus nein, Netz nein) gibt es
-deshalb keinen Eigenverbrauch, keine Autarkie und keine Eigenverbrauchsquote —
-vorher stand dort „100 %" aus einer Differenz zweier Nullen, und die Zeile
-*Verbrauch 0,00 kWh* las sich wie ein Haus, das nichts braucht. Die Anzeigen
-schreiben jetzt einen Strich, und die JSON-Endpunkte liefern `null`.
+Two of the capabilities now also decide about **energy figures**, because own
+consumption is a difference: `houseMeter − gridMeter` enters `Rules.h` as
+`ruleOwnKnown()`. On the MIC 1000 (house no, grid no) there is therefore no own
+consumption, no self-sufficiency and no own-consumption share — before, “100 %”
+stood there out of a difference of two zeros, and the line *Verbrauch 0,00 kWh*
+read like a house that needs nothing. The displays now write a dash, and the JSON
+endpoints deliver `null`.
 
-### 3. Das Diagramm folgt den Fähigkeiten
+### 3. The diagram follows the capabilities
 
-`src/gui/FlowLayout.h`, header-only und ohne LVGL, damit der Host-Test
-`tools/flow_layout_test` (80 Prüfungen) die sechs Fälle prüfen kann. Eine Regel
-erzeugt jeden Aufbau:
+`src/gui/FlowLayout.h`, header-only and without LVGL, so that the host test
+`tools/flow_layout_test` (80 checks) can check the six cases. One rule generates
+every layout:
 
-> **Der Mittelpunkt ist das Haus, wenn es eines gibt, sonst die PV.**
+> **The centre is the house, if there is one; otherwise the PV.**
 
-Daraus folgt der Rest: ohne Haus hängt der Akku an der PV, ohne Akku und ohne
-Netz ist die PV der einzige Knoten und füllt die Seite — 190 px, mit dem Wert in
-der Mitte des Bandes zwischen Kreis und Pille. Was nicht gemessen wird, wird nicht
-gezeichnet: kein Knoten, kein Wert, keine Pille. Kein Pfeil ohne Verbindung.
+Everything else follows: without a house the battery hangs on the PV, without a
+battery and without a grid the PV is the only node and fills the page — 190 px,
+with the value in the middle of the band between the circle and the pill. What is
+not measured is not drawn: no node, no value, no pill. No arrow without a
+connection.
 
-Vier Fakten werden als **ein Byte** in NVS gemerkt (`gui`/`flowcaps`). Grund: Die
-Fähigkeiten kommen mit der ersten Antwort, etwa zehn Sekunden nach dem Start. Ein
-Diagramm, das sich dann umstellt, sieht auf einem Panel, das man ansieht und
-nicht diagnostiziert, wie ein Fehler aus. Also baut die Seite das Layout des
-letzten Geräts, das geantwortet hat, und ein Gerät, das etwas anderes sagt, wird
-einmal angewandt, protokolliert und für den nächsten Start gemerkt.
+Four facts are remembered as **one byte** in NVS (`gui`/`flowcaps`). Reason: the
+capabilities arrive with the first answer, about ten seconds after start. A
+diagram that rearranges itself then looks like a bug on a panel that one looks at
+rather than diagnoses. So the page builds the layout of the last device that
+answered, and a device that says something else is applied once, logged and
+remembered for the next start.
 
-### 4. Die Verbrauchsregel ist geräteabhängig — und steht nicht in der API
+### 4. The consumption rule is device-dependent — and is not in the API
 
-Das war die eigentlich gefährliche Stelle im Plan: „Hausverbrauch = Lastmessung
-plus S0" gilt nur für einen RCT. Ein Gerät hinter einem Stick hat diese S0-Summe
-nicht. Deshalb steht die Rechnung nicht in der API, sondern in
-`DeviceSemantics` (drei Flaggen, vom Fahrer gesetzt: `loadMeterSeesExternal`,
-`genCounterSeesExternal`, `feedCounterNegative`), und die Zugriffsfunktionen in
-`Rules.h` fragen sie. Ein Fahrer, der die Rechnung selbst macht, kann sie nicht
-vergessen.
+That was the actually dangerous spot in the plan: “house consumption = load
+measurement plus S0” only holds for an RCT. A device behind a stick has no such
+S0 sum. Hence the computation does not stand in the API but in `DeviceSemantics`
+(three flags, set by the driver: `loadMeterSeesExternal`,
+`genCounterSeesExternal`, `feedCounterNegative`), and the access functions in
+`Rules.h` ask them. A driver that does the computation itself cannot forget it.
 
-### 5. Der Rest, der auffiel
+### 5. The rest that showed up
 
-- **Die Zahlform** (`fmtPower()` in `NumFmt.h`): unter 1 kW ganze Watt („380 W“),
-  darüber kW mit zwei Stellen („5,75 kW“), Trennzeichen der Sprache. Die Einheit
-  wird vom **gerundeten** Wert entschieden, damit 999,5 W nicht als „1000 W“
-  gedruckt wird und dieselbe Zahl im nächsten Takt anders aussieht. Der
-  Host-Test hat genau diesen Fehler gefunden.
-- **Das Symbol** bekam eine eigene Schrift in der Größe, in der es gezeichnet
-  wird (`lv_font_mdi_icons_136`): ein 28-px-Zeichen auf 480 % ist ein 134-px-Zeichen
-  aus 28 px Information. Bei 190 px Kreis sind das 38 px Luft auf jeder Seite.
-- **Der Schaltausgang und die Wartung** sind im Web von der Übersicht auf die
-  neue Seite `/einstellungen` gewandert, zusammen mit Gerät und Theme: alles, was
-  etwas verändert, auf eine Seite, auf der niemand Werte abliest. Das Panel hatte
-  vorher keine Stelle, an der man ein Gerät wechseln kann — siehe Entscheidung 1.
-- **Die Karten** im Web folgen denselben Fähigkeiten, die Energiebalken darunter
-  nicht (Entscheidung 5).
+- **The number format** (`fmtPower()` in `NumFmt.h`): whole watts below 1 kW
+  (“380 W”), kilowatts with two decimals above (“5.75 kW”), separator of the
+  language. The unit is decided by the **rounded** value, so that 999.5 W is not
+  printed as “1000 W” and the same number does not look different in the next
+  tick. The host test found exactly this error.
+- **The icon** got a font of the size in which it is drawn
+  (`lv_font_mdi_icons_136`): a 28 px glyph at 480 % is a 134 px glyph made from 28
+  px of information. With a 190 px circle that leaves 38 px of air on each side.
+- **The switched output and the maintenance** moved in the web interface from the
+  overview to the new `/einstellungen` page, together with device and theme:
+  everything that changes something onto a page where nobody reads values. The
+  panel previously had no place at which one could change a device — see decision
+  1.
+- **The cards** in the web follow the same capabilities, the energy bars below
+  them do not (decision 5).
 
-## Was ausdrücklich nicht gebaut wird
+## What is deliberately not built
 
-- **Kein zweiter Treiber.** Eine Schnittstelle, die man vor dem zweiten
-  Anwendungsfall ausbaut, ist zu einem guten Teil geraten. Der Rahmen wird
-  trotzdem jetzt gebaut, weil er billig ist und die Ausarbeitung des
-  Fahrers dann nicht mehr aufhält.
-- ~~**Kein Fähigkeitsverhandeln.**~~ **Überholt.** Der Plan wollte es zuerst
-  nicht; mit dem zweiten Fahrer ist `DeviceCaps` gebaut, und der Fahrer meldet in
-  `begin()`, was seine Familie kann. Was *nicht* gebaut ist: eine Verhandlung zur
-  Laufzeit. Die Anzeige fragt einmal, und ein Fahrer ändert seine Antwort nicht.
-- **Keine neue CSV-Spalte, keine Änderung an `/api/*.json`.** Beides ist eine
-  Zusage nach außen.
-- **Kein Heap und keine eigene Task** im 10-Sekunden-Takt. LVGL teilt den
-  Task mit dem Fahrer; dieselbe Absicherung wie heute gilt. Fällt ein Gerät
-  später wirklich mit Push, ist das die eine Stelle, an der sich etwas ändert
-  — und dann ist `RowQueue` aus der SD-Historie das vorhandene Muster.
-- **Keine Umbenennung der 23 CSV-Spalten.** Die Legacy-Regel erlaubt nur
-  Anhängen.
+- **No second driver.** An interface that is designed before the second use case
+  is largely guesswork. The frame is nevertheless built now, because it is cheap
+  and it no longer holds up the detailed work on the driver.
+- ~~**No capability negotiation.**~~ **Superseded.** The plan did not want it
+  first; with the second driver `DeviceCaps` is built, and the driver reports in
+  `begin()` what its family can do. What is *not* built: a negotiation at runtime.
+  The display asks once, and a driver does not change its answer.
+- **No new CSV column, no change to `/api/*.json`.** Both are promises to the
+  outside.
+- **No heap and no task of its own** in the 10-second cycle. LVGL shares the task
+  with the driver; the same safeguard as today holds. If a device really pushes
+  later, that is the one place where something changes — and then `RowQueue` from
+  the SD history is the pattern that already exists.
+- **No renaming of the 23 CSV columns.** The legacy rule allows appending only.
 
-## Offene Entscheidungen
+## Open decisions
 
-1. ~~**Auswahl des Gerätetyps.**~~ **Erledigt.** Es gibt zwei Fahrer und eine
-   Seite `/einstellungen` mit den Feldern *Gerät* (`RCT` oder
-   `OpenInverterGateway`), *Adresse*, *Port* und *Theme*. Das Portal kennt nur
-   Adresse und Port — der Typ ist Sache des Panels, nicht des Zugangspunkts, weil
-   die Liste der Fahrer mit dem Panel wächst.
-2. **Wie streng ist der Fahrer?** Ein Register, das der RCT nicht kennt,
-   antwortet gar nicht; der Fahrer hält den alten Wert und beendet die Runde
-   nach der Ruhepause. Für ein anderes Gerät ist „keine Antwort" gegen „0,0 A"
-   eine echte Frage, und die Antwort gehört in den Fahrer, nicht in den
-   Bildschirm.
-3. ~~**Ob die Geräteart im Portal überhaupt wählbar sein soll.**~~ **Erledigt,
-   anders beantwortet:** nicht im Portal (siehe 1), sondern auf einer eigenen Seite
-   des Panels.
-4. **Was ein schweigendes Gerät bedeutet.** Der OIG-Fahrer kann HTTP 503 nicht
-   von „keine Antwort" unterscheiden: ein wacher, sprechender Stick ohne
-   Wechselrichter sieht aus wie ein schlafender, und beides heißt heute „schläft".
-   Die Unterscheidung gehört in den Fahrer (Statuscode auswerten, ein
-   `answered`-Kennzeichen im Zustand) — nicht in die Anzeige.
-5. **Energiebalken und Verlaufsreihen.** Sie zeigen weiter alle Größen und
-   schreiben für nicht gemessene Zähler Nullzeilen. Das ist bewusst so
-   geblieben: Es sind Zähler, keine Messungen, und „0,0 kWh" bei einem Gerät ohne
-   Hauszähler ist eine Aussage über den Zähler, nicht über das Haus. Wer es
-   trotzdem anders will, braucht eine Entscheidung, keine Vermutung.
+1. ~~**Selection of the device type.**~~ **Done.** There are two drivers and a
+   `/einstellungen` page with the fields *Gerät* (`RCT` or `OpenInverterGateway`),
+   *Adresse*, *Port* and *Theme*. The portal knows only address and port — the
+   type is a matter of the panel, not of the access point, because the list of
+   drivers grows with the panel.
+2. **How strict is the driver?** A register the RCT does not know is not answered
+   at all; the driver holds the old value and ends the round after the rest
+   period. For another device “no answer” versus “0.0 A” is a real question, and
+   the answer belongs in the driver, not on the screen.
+3. ~~**Whether the device type should be selectable in the portal at all.**~~
+   **Done, answered differently:** not in the portal (see 1), but on a page of
+   the panel.
+4. **What a silent device means.** The OIG driver cannot distinguish HTTP 503 from
+   “no answer”: an awake, speaking stick without an inverter looks like a sleeping
+   one, and both mean “sleeps” today. The distinction belongs in the driver
+   (evaluate the status code, an `answered` flag in the state) — not in the
+   display.
+5. **Energy bars and history series.** They still show all quantities and write
+   zero rows for counters that are not measured. That was kept deliberately: they
+   are counters, not measurements, and “0.0 kWh” on a device without a household
+   meter is a statement about the counter, not about the house. Anyone who wants
+   it otherwise needs a decision, not a guess.
 
-## Aufwand
+## Effort
 
-| Schritt | Größenordnung |
+| Step | Order of magnitude |
 |---|---|
-| 1. Namen | mittel, rein mechanisch |
-| 2. Regeln | klein, plus Test |
-| 3. Transport | klein, rein mechanisch |
-| 4. Fahrer | klein bis mittel |
-| 5. Typ im Namen | klein |
+| 1. Names | medium, purely mechanical |
+| 2. Rules | small, plus a test |
+| 3. Transport | small, purely mechanical |
+| 4. Driver | small to medium |
+| 5. Type in the name | small |
 
-## Literatur
+## References
 
-- Registerübersicht des RCT: `https://rctclient.readthedocs.io/en/latest/`
-  (die OID-Tabelle in `RctDriver.cpp` stammt von dort).
-- `src/rct/RctClient.cpp` ist ein Port des `RctParser` aus Energy2Shelly_ESP
-  (Apache 2.0). Diese Herkunft gehört zum Fahrer und wandert mit ihm in
-  `NOTICE`, wenn die Datei umzieht.
-- `docs/sd-history.md` beschreibt das Format, das die Namensänderung nicht
-  anfassen darf.
+- RCT register overview: `https://rctclient.readthedocs.io/en/latest/` (the OID
+  table in `RctDriver.cpp` comes from there).
+- `src/rct/RctClient.cpp` is a port of the `RctParser` from Energy2Shelly_ESP
+  (Apache 2.0). This origin belongs to the driver and travels with it into
+  `NOTICE` when the file moves.
+- `docs/sd-history.md` describes the format that the name change must not touch.
