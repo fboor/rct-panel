@@ -460,7 +460,7 @@ check(api.rpFmtDate('2026-10-02', '{Y}-{M}-{D}') === '2026-10-02', 'English date
   let interval = null;
   const el = {
     attributes: {
-      'data-col': 'ca0c0f,a45ee5,3ec97a,2e93e5,f0a202,ffea00',
+      'data-col': 'e63946,a45ee5,3ec97a,7a8ca0,f0a202,ffea00',
       'data-lab': 'Netz|Verbrauch|PV|EXT|Akku|SOC',
       'data-dfmt': '{D}.{M}.{Y}',
       'data-sfmt': '{D}.{M}.',
@@ -587,7 +587,7 @@ check(api.rpFmtDate('2026-10-02', '{Y}-{M}-{D}') === '2026-10-02', 'English date
   tip.parentNode = chartDiv;
   const el = {
     attributes: {
-      'data-col': 'ca0c0f,a45ee5,3ec97a,2e93e5,f0a202,ffea00',
+      'data-col': 'e63946,a45ee5,3ec97a,7a8ca0,f0a202,ffea00',
       'data-lab': 'Netz|Verbrauch|PV|EXT|Akku|SOC',
       'data-dfmt': '{D}.{M}.{Y}', 'data-sfmt': '{D}.{M}.',
       'data-sep': ',', 'data-none': 'keine Messwerte',
