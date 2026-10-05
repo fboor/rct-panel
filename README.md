@@ -67,13 +67,13 @@ the board.
 
 | File | For whom |
 |---|---|
-| [`docs/benutzerhandbuch.pdf`](docs/benutzerhandbuch.pdf) | the installation: connection, pages, settings, CSV format, troubleshooting (German) |
+| [`docs/benutzerhandbuch.pdf`](docs/benutzerhandbuch.pdf) | the installation: connection, pages, settings, CSV format, troubleshooting — the only German document, because it is the one that is read (German) |
 | [`docs/hardware.md`](docs/hardware.md) | pin map, bring-up checklist, quirks, open questions |
 | [`docs/relay.md`](docs/relay.md) | the switching output and the ten-minute data deadline |
 | [`docs/sd-history.md`](docs/sd-history.md) | the CSV format and the SD logger |
 | [`docs/energy-page.md`](docs/energy-page.md) | the totals page and its arithmetic |
 | [`docs/web-interface.md`](docs/web-interface.md) | the web interface: its routes, the two JSON endpoints, the browser-drawn charts and their limits |
-| [`docs/geraete-abstraktion.md`](docs/geraete-abstraktion.md) | plan for supporting a second inverter: where the coupling is, which rules are duplicated, and what has to be decided first (German) |
+| [`docs/geraete-abstraktion.md`](docs/geraete-abstraktion.md) | plan for supporting a second inverter: where the coupling is, which rules are duplicated, the second driver, `DeviceCaps` and the open decisions |
 
 ## License
 
