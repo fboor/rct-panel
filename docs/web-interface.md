@@ -1,102 +1,101 @@
-# Web-Oberfläche im Normalbetrieb
+# Web interface in normal operation
 
-Zusätzlich zum Einrichtungs-Portal (WLAN „RCT-Panel“, 192.168.4.1) bringt das
-Panel im Normalbetrieb einen eigenen Webserver auf Port 80: Statusseite mit
-Energiebalken, Verlauf mit Diagrammen, CSV-Daten und Screenshots von der
-SD-Karte, Firmware-Update per Upload.
+In addition to the setup portal (Wi-Fi "RCT-Panel", 192.168.4.1) the panel runs
+its own web server on port 80 in normal operation: status page with energy bars,
+history with charts, CSV data and screenshots from the SD card, firmware update by
+upload.
 
-## Warum ein eigener Server statt WiFiManager
+## Why an own server instead of WiFiManager
 
-Der Einrichtungsweg bleibt WiFiManager, aber die Seiten im Normalbetrieb sind
-eigene. Grund: `WiFiManager` hält seinen Server in einem privaten
-`std::unique_ptr<WM_WebServer>` (`WiFiManager.h`), der Root-Handler lässt sich
-also nicht ersetzen. Im Portal-Modus liefert `/` das **WLAN-Formular**, und
-dessen Absenden ruft `connectWifi()` - ein normales Aufrufen von `192.168.x.x`
-würde das Panel damit aus dem Heimnetz werfen. Ein eigener Server umgeht das,
-ohne der Bibliothek etwas zu patchen.
+The setup path stays WiFiManager, but the pages in normal operation are our own.
+Reason: `WiFiManager` keeps its server in a private
+`std::unique_ptr<WM_WebServer>` (`WiFiManager.h`), so the root handler cannot be
+replaced. In portal mode `/` delivers the **Wi-Fi form**, and submitting it calls
+`connectWifi()` — a normal call to `192.168.x.x` would thereby throw the panel out
+of the home network. An own server avoids that without patching anything into the
+library.
 
-Zweite Bedingung aus derselben Quelle: `startConfigPortal()` prüft nur
-`configPortalActive`; ein fremder Server auf Port 80 stört es nicht. Deshalb
-ruft `startProvisioningAp()` / `restartProvisioning()` in
-`src/config/Configuration.cpp` vorher `webStop()` auf - die beiden Server
-teilen sich Port 80 und das Radio, nie gleichzeitig.
+Second condition from the same source: `startConfigPortal()` only checks
+`configPortalActive`; a foreign server on port 80 does not disturb it. Hence
+`startProvisioningAp()` / `restartProvisioning()` in
+`src/config/Configuration.cpp` call `webStop()` beforehand — the two servers share
+port 80 and the radio, never at the same time.
 
-## Routen
+## Routes
 
-| Route           | Art                | Zweck                                             |
-| --------------- | ------------------ | ------------------------------------------------- |
-| `/`             | GET                | Übersicht: eine Karte je Zähler des Geräts, Energiebalken, Geräteangaben |
-| `/einstellungen` | GET / POST       | Gerätetyp, Adresse, Port, Schaltausgang, Theme, Wartung; POST speichert in NVS und startet neu |
-| `/verlauf`      | GET                | 24 h und die Historie: Linien- bzw. Banddiagramm, Zeitraumwahl |
-| `/api/energie.json` | GET            | die Energiezahlen eines Zeitraums als Zahlen (`?zeitraum=tag\|monat\|jahr\|gesamt`) |
-| `/api/verlauf.json` | GET            | der 24-h-Ring aus dem RAM als Zahlen                |
-| `/daten`        | GET                | Liste der CSV-Dateien in `/hist`                    |
-| `/daten/<name>` | GET                | eine CSV-Datei, `?tail=<bytes>` für die letzten n Bytes |
-| `/bilder`       | GET                | Liste der Screenshots in `/shot`                   |
-| `/bilder/<name>`| GET                | ein Screenshot (BMP)                               |
-| `/update`       | GET / POST         | Firmware-Update                                    |
-| `/aktion`       | POST               | `was=neustart`, `was=setup`, `was=ausgang`, `was=test`, `was=bild` (alle mit Code) |
+| Route              | Kind           | Purpose                                              |
+| ------------------ | -------------- | ---------------------------------------------------- |
+| `/`                | GET            | Overview: one card per meter of the device, energy bars, device details |
+| `/einstellungen` | GET / POST    | Device type, address, port, switched output, theme, maintenance; POST saves to NVS and restarts |
+| `/verlauf`        | GET            | 24 h and the history: line or band chart, period selection |
+| `/api/energie.json` | GET          | the energy figures of one period as numbers (`?zeitraum=tag\|monat\|jahr\|gesamt`) |
+| `/api/verlauf.json` | GET          | the 24 h ring from RAM as numbers                     |
+| `/daten`           | GET            | list of the CSV files in `/hist`                      |
+| `/daten/<name>`    | GET            | one CSV file, `?tail=<bytes>` for the last n bytes    |
+| `/bilder`          | GET            | list of the screenshots in `/shot`                    |
+| `/bilder/<name>`   | GET            | one screenshot (BMP)                                  |
+| `/update`          | GET / POST     | Firmware update                                       |
+| `/aktion`          | POST           | `was=neustart`, `was=setup`, `was=ausgang`, `was=test`, `was=bild` (all with the code) |
 
-Alles andere: 404-Seite.
+Everything else: 404 page.
 
-## Was ohne Code geht und was nicht
+## What works without the code and what does not
 
-Lesen (Übersicht, Listen, Dateien) ist offen - das ist der Zweck der Seite.
-Alles, was das Panel verändert, verlangt den 4-stelligen Code:
+Reading (overview, lists, files) is open — that is the purpose of the page.
+Everything that changes the panel requires the 4-digit code:
 
-* Firmware-Update (`/update`)
-* Neustart (`/aktion`)
-* WLAN neu einrichten (`/aktion`)
-* Funktion und Schwelle des Schaltausgangs (`/aktion?was=ausgang`)
-* Test des Schaltausgangs (`/aktion?was=test`)
-* Screenshot auslösen (`/aktion?was=bild`)
+* firmware update (`/update`)
+* restart (`/aktion`)
+* setting up Wi-Fi again (`/aktion`)
+* function and threshold of the switched output (`/aktion?was=ausgang`)
+* test of the switched output (`/aktion?was=test`)
+* triggering a screenshot (`/aktion?was=bild`)
 
-Der Code wird bei jedem Start neu gezogen (`esp_random()`), steht auf der
-Panel-Seite **Service** und ist dort tippbar: ein neuer Code ziehen, wenn jemand
-mitlesen konnte. Er ist in NVS **nicht** gespeichert, überlebt also keinen
-Neustart - das ist Absicht, ein alter Code soll nicht aus einem Logbuch
-wiederverwendbar sein.
+The code is drawn anew on every start (`esp_random()`), stands on the panel's
+**Service** page and can be entered there: draw a new one if somebody could read
+it. It is **not** stored in NVS and therefore does not survive a restart — that is
+deliberate, an old code should not be reusable out of a logbook.
 
-Der Code wird vor dem Schreiben geprüft, nicht danach: das Formular auf
-`/update` stellt das Code-Feld **vor** das Datei-Feld, weil der WebServer die
-Parts der Reihenfolge nach auswertet. Bei `UPLOAD_FILE_START` ist das Feld also
-schon da, und ein falscher Code schreibt kein Byte in den Flash.
+The code is checked **before** anything is written, not afterwards: the form on
+`/update` puts the code field **before** the file field, because the web server
+evaluates the parts in order. At `UPLOAD_FILE_START` the field is therefore
+already there, and a wrong code does not write a single byte to flash.
 
-## Die Diagrammseiten: der Browser zeichnet
+## The chart pages: the browser draws
 
-**Das Panel zeichnet nichts.** Es liefert Zahlen, der Browser malt daraus Balken
-und Linien. Grund ist der Speicher, nicht die Bequemlichkeit:
+**The panel draws nothing.** It delivers numbers, the browser turns them into bars
+and lines. The reason is memory, not convenience:
 
-| Ressource                        | Wert                              |
-| -------------------------------- | --------------------------------- |
-| interner Heap im Betrieb         | 120 764 Byte frei                 |
-| PSRAM                            | 7 588 299 Byte frei               |
-| Flash                            | 5,9 MB frei                       |
-| Karte                            | ~470 kB/s gemessen                |
-| ganze Monatsdatei streamen       | geht heute, rund 3 s              |
+| Resource                    | Value                          |
+| --------------------------- | ------------------------------ |
+| internal heap in operation  | 120 764 bytes free             |
+| PSRAM                       | 7 588 299 bytes free           |
+| Flash                       | 5.9 MB free                    |
+| card                        | ~470 kB/s measured             |
+| streaming a whole month file | works today, around 3 s        |
 
-Ein serverseitig gerendertes Bild wäre ein Zeichenpuffer plus PNG-Kodierung
-(~0,5 MB PSRAM) und mehrere Sekunden Rechenzeit pro Aufruf. Auf einem Gerät mit
-480 × 480 Pixeln zusätzlich sinnlos, denn die Diagramme sind so scharf und so
-groß wie das Fenster, in dem man sie ansieht.
+A server-rendered image would be a draw buffer plus PNG encoding (~0.5 MB PSRAM)
+and several seconds of compute per call. On a device with 480 × 480 pixels that is
+pointless besides, because the charts are as sharp and as large as the window you
+look at them in.
 
-Die Messung oben ist vom 2.10.2026; sie steht im Boot-Protokoll, mit dem
-`stall`-Zähler daneben, weil das die einzige Zahl ist, die sich bei jeder
-Änderung an dieser Stelle sofort bewegt.
+The measurement above is from 2026-10-02; it is in the boot log, with the `stall`
+counter next to it, because that is the only number here that moves immediately
+with every change.
 
-### Zwei Endpunkte, beide aus dem RAM
+### Two endpoints, both from RAM
 
-`/api/energie.json?zeitraum=tag|monat|jahr|gesamt` liefert die fünf
-Energiewerte eines Zeitraums und die beiden Prozente:
+`/api/energie.json?zeitraum=tag|monat|jahr|gesamt` delivers the five energy values
+of a period and the two percentages:
 
 ```json
 {"tz":"CET-1CEST,M3.5.0,M10.5.0/3","period":"day","unit":"Wh",
- "values":{"pv":23680,"own":7790,"feed":15890,"draw":1810,"load":3890},
- "autarky":53.5,"ownShare":32.9}
+ "values":{"pv":23680,"own":2080,"feed":15890,"draw":1810,"load":3890},
+ "autarky":53.5,"ownShare":11.6}
 ```
 
-`/api/verlauf.json` liefert den 24-h-Ring, den die Panel-Seite *24 h Verlauf*
-zeichnet:
+`/api/verlauf.json` delivers the 24 h ring that the panel page *24 h Verlauf*
+draws:
 
 ```json
 {"tz":"...","points":288,"series":["grid","load","pv","ext","battery","soc"],
@@ -105,497 +104,474 @@ zeichnet:
  "from":1790875294,"to":1790884294}
 ```
 
-Vier Regeln dazu, jede davon eine Stelle, an der etwas schiefgehen kann:
+Four rules with that, each one a place where something can go wrong:
 
-1. **Ganzzahlig, ohne Exponent.** Die Zähler des Geräts sind ganze Wattstunden;
-   `snprintf("%g")` hätte aus einer kleinen Zahl `1e-05` gemacht. Die
-   Formatierung steht in `src/web/Json.h`, ohne Arduino-Abhängigkeit, und ist in
-   `tools/json_test` geprüft.
-2. **`null` statt `nan`.** Ein NaN erreicht `snprintf` als `nan`, und daran
-   bleibt ein JSON-Parser stehen - auch der Rest der Antwort wäre weg.
-3. **`tz` ist die POSIX-Regel, kein Versatz.** Das Panel stellt seine Zeit mit
-   `configTzTime(kTimeZone, …)` (`src/config/Configuration.h`), also mit
-   Sommerzeit. Ein fester Versatz wäre ab dem letzten Sonntag im Oktober eine
-   Stunde falsch, und die Tagesgrenzen der ganzen Historie verschöben sich genau
-   dann um einen Tag. Der Browser rechnet die Regel selbst aus; die Rechnung ist
-   in `tools/jstest` gegen Prüfwerte aus Pythons `zoneinfo` geprüft (jede sechste
-   Stunde von 2026 und jede Stunde um beide Umstelltage).
-4. **`data` ist flach und in Ringordnung**, ältester Punkt zuerst. Eine Lücke ist
-   `null` und keine Sechser aus Nullen - so bricht die Linie dort, wo nichts
-   gemessen wurde, statt über eine Zeit zu gehen, in der nichts passiert ist.
+1. **Integers, no exponent.** The device's counters are whole watt-hours;
+   `snprintf("%g")` would have made `1e-05` out of a small number. The formatting
+   stands in `src/web/Json.h`, without Arduino dependency, and is checked in
+   `tools/json_test`.
+2. **`null` instead of `nan`.** A NaN reaches `snprintf` as `nan`, and a JSON
+   parser stops on it — the rest of the answer would be gone with it.
+3. **`tz` is the POSIX rule, not an offset.** The panel sets its time with
+   `configTzTime(kTimeZone, …)` (`src/config/Configuration.h`), so with daylight
+   saving. A fixed offset would be an hour wrong from the last Sunday in October
+   on, and the day boundaries of the whole history would shift by exactly one day
+   then. The browser computes the rule itself; the computation is checked in
+   `tools/jstest` against values from Python's `zoneinfo` (every sixth hour of 2026
+   and every hour around both changeover days).
+4. **`data` is flat and in ring order**, oldest point first. A gap is `null` and
+   not six zeros — that way the line breaks where nothing was measured instead of
+   crossing a period in which nothing happened.
 
-Die Zahlen kommen aus denselben Rechnungen, die die Anzeigeseiten füllen:
-`guiEnergyPeriod()` ruft `energyPeriodValues()`, `guiHistoryPoint()` liest den
-Ring, den `histPush()` schreibt. Seite und JSON können deshalb nicht
-auseinanderlaufen - dieselbe Disziplin wie `src/DataStatus.h` für das Badge auf
-Panel und Web.
+The numbers come from the same computations that fill the display pages:
+`guiEnergyPeriod()` calls `energyPeriodValues()`, `guiHistoryPoint()` reads the
+ring that `histPush()` writes. Page and JSON therefore cannot drift apart — the
+same discipline as `src/DataStatus.h` for the badge on panel and web.
 
-Der Ring wird Punkt für Punkt gelesen, nicht kopiert: 288 × 6 Werte plus
-Zeitstempel wären 8 kB RAM für eine einzige Anfrage, und die Antwort ist danach
-weg. Die JSON-Antwort selbst ist ein `String` mit einer einzigen Reservierung
-für die ganze Länge. Gemessen an einer gefüllten Antwort aus dem RAM: **16 kB**
-für den Ring (288 Punkte, `?k=` nur gegen den Cache), **163 Byte** für die
-Energiewerte. Beides geht in einem Ruck über das WLAN; der Aufwand liegt
-eher im Formatieren als im Senden.
+The ring is read point by point, not copied: 288 × 6 values plus timestamp would
+be 8 kB of RAM for a single request, and the answer is gone afterwards. The JSON
+answer itself is a `String` with a single reservation for the whole length.
+Measured on a filled answer from RAM: **16 kB** for the ring (288 points, `?k=`
+only against the cache), **163 bytes** for the energy values. Both go over Wi-Fi
+in one go; the effort is more in formatting than in sending.
 
-### Dieselbe Zahl auf beiden Seiten
+### The same number on both sides
 
-Beide Seiten rechnen aus Zählern, nicht aus Momentanwerten — nur aus
-verschiedenen:
+Both sides compute from counters, not from momentary values — only from different
+ones:
 
-* die **Übersicht** liest die Zähler, die das Gerät selbst meldet
-  (`energy.e_dc_*`, `e_load_*`, `e_feed_*`, `e_grid_*`) — Tag, Monat, Jahr und
-  Lebensdauer, so wie der Wechselrichter sie führt;
-* die **Verlauf-Seite** bildet die Differenz dieser Zähler in der
-  aufgezeichneten Datei zwischen der ersten und der letzten Zeile des Zeitraums.
+* the **overview** reads the counters the device reports itself
+  (`energy.e_dc_*`, `e_load_*`, `e_feed_*`, `e_grid_*`) — day, month, year and
+  lifetime, as the inverter keeps them;
+* the **history page** forms the difference of these counters in the recorded file
+  between the first and the last row of the period.
 
-Innerhalb eines Tages nennen beide dasselbe. Gemessen am 3.10.2026 um 01:52:
-Übersicht 709 Wh Verbrauch für den Tag, Datei 603 Wh bis zur letzten Probe von
-01:38 — die 106 Wh sind die vierzehn Minuten dazwischen.
+Within one day both name the same. Measured on 2026-10-03 at 01:52: overview
+709 Wh consumption for the day, file 603 Wh up to the last sample at 01:38 — the
+106 Wh are the fourteen minutes in between.
 
-Zwei Fälle, in denen sie auseinandergehen, und beide liegen an der Datei, nicht
-an der Anzeige:
+Two cases in which they diverge, and both lie in the file, not in the display:
 
-* **Ein Zeitraum, in dem die Datei am Rand keine Zeile hat.** Die Differenz
-  beginnt dann mit der ersten und endet mit der letzten Probe, nicht mit dem
-  Tagesanfang. Auf der Entwicklerkarte ist das für den Oktober der Fall: die
-  Monatsdatei beginnt am 1.10. um 19:21 (die Karte war davor nicht in diesem
-  Format), der Monatszähler des Geräts deckt den ganzen Monat — 35 184 Wh gegen
-  23 684 Wh Differenz in der Datei.
-* **Ein Monat, dessen erste Zeilen noch im alten Format sind** — siehe den
-  nächsten Abschnitt.
+* **A period in which the file has no row at the edge.** The difference then
+  starts with the first and ends with the last sample, not with the beginning of
+  the day. On the development card that is the case for October: the month file
+  begins on 2026-10-01 at 19:21 (the card was not in this format before), the
+  device's month counter covers the whole month — 35 184 Wh against 23 684 Wh of
+  difference in the file.
+* **A month whose first rows are still in the old format** — see the next section.
 
-Der S0-Anteil wird **nicht** aus der Momentanleistung hochgerechnet.
-`ext_total_wh` zählt die *Erzeugung* an diesem Eingang, und eine Anlage ohne
-Erzeugung dort hat schlicht keinen Anteil an den Summen - auch wenn die Linie EXT
-im Diagramm den Verbrauch am selben Eingang zeigt
-(`io_board.s0_external_power`, ein Momentanwert). Auf dem Entwicklergerät ist das
-genau so: über 30 h und 338 Proben keine einzige Änderung an `ext_total_wh`
-(fest bei 1 545 861 Wh), während `s0` in 117 Proben ungleich null war.
+The S0 share is **not** extrapolated from the momentary power. `ext_total_wh`
+counts the *generation* at that input, and a plant without generation there simply
+has no share in the sums — even though the EXT line in the chart shows the
+consumption at the same input (`io_board.s0_external_power`, a momentary value). On
+the development device that is exactly so: over 30 h and 338 samples not a single
+change of `ext_total_wh` (fixed at 1 545 861 Wh), while `s0` was non-zero in 117
+samples.
 
-Dass die Summe den S0 **enthält**, ist an den Lebensdauerzahlen abzulesen: die
-Summe des Geräts liegt um genau 1 545 860 Wh über der Summe der beiden
-CSV-Stränge `pv_a_total_wh + pv_b_total_wh`, also um den Betrag des
-S0-Zählers. Addiert wird er genau einmal, auf beiden Seiten: im Panel in
-`energyPeriodValues` (`pv += ext; load += ext;`), im Browser in `rpEnergy`
+That the sum **contains** the S0 can be read off the lifetime counters: the
+device's total sits exactly 1 545 860 Wh above the sum of the two CSV strings
+`pv_a_total_wh + pv_b_total_wh`, that is by the amount of the S0 counter. It is
+added exactly once, on both sides: in the panel in `energyPeriodValues`
+(`pv += ext; load += ext;`), in the browser in `rpEnergy`
 (`pv = Δpv_a + Δpv_b + Δext`, `load = Δload + Δext`).
 
-### Die Karten folgen dem Gerät
+### The cards follow the device
 
-Die Karten (Netz, PV, Akku, Karte; beim RCT Power alle vier) werden aus den
-Fähigkeiten des Geräts
-gebaut, nicht aus einer festen Liste: ein Gerät ohne Hauszähler, Akku oder
-Netzzähler bekommt nur die Karten, für die es Werte gibt. Grund ist dieselbe
-Regel wie auf dem Panel — eine Karte für einen Zähler, den es nicht gibt, wäre
-eine Zahl ohne Aussage.
+The cards (grid, PV, battery, card; on an RCT Power all four) are built from the
+capabilities of the device, not from a fixed list: a device without household
+meter, battery or grid meter gets only the cards for which there are values. The
+reason is the same rule as on the panel — a card for a meter that does not exist
+would be a number without meaning.
 
-Das Raster ist `repeat(auto-fit, minmax(140px, 1fr))`, füllt also die Breite mit
-so vielen Karten, wie hineinpassen, und die Karten behalten dieselbe Größe, egal ob
-es vier oder eine ist.
+The grid is `repeat(auto-fit, minmax(140px, 1fr))`, so it fills the width with as
+many cards as fit, and the cards keep the same size whether there are four or one.
 
-### Die Energiebalken auf der Übersicht
+### The energy bars on the overview
 
-Unter den Karten stehen fünf Balken (Erzeugung, Eigenverbrauch,
-Netzeinspeisung, Netzbezug, Verbrauch) mit dem Wert als Text darüber und einem
-Zeitraumwechsel **Tag | Monat | Jahr | Gesamt** darüber - Wortlaut, Farben und
-Reihenfolge wie auf der Panel-Seite *Energie*.
+Below the cards stand five bars (generation, own consumption, feed-in, grid draw,
+consumption) with the value as text above them and a period switch **Tag | Monat |
+Jahr | Gesamt** above that — wording, colours and order as on the panel page
+*Energie*.
 
-Sie werden **einmal** geholt, nicht nachgeladen. Grund: weiter unten auf derselben
-Seite steht das Formular für die Schwelle des Schaltausgangs, und eine Seite, die
-sich selbst neu lädt, überschreibt, was jemand gerade eintippt. Die Werte sind
-Zähler, eine Seite von vor zehn Minuten ist im schlimmsten Fall zehn Minuten alt,
-und das Nachladen ist ein Fingertipp.
+They are fetched **once**, not reloaded. Reason: further down on the same page
+stands the form for the switched output's threshold, and a page that reloads itself
+overwrites what somebody is typing. The values are counters, a page from ten
+minutes ago is at worst ten minutes old, and reloading is one tap.
 
-### Die Verlauf-Seite
+### The history page
 
-Vier Bereiche, ein Zustand:
+Four areas, one state:
 
-* **24 h** aus `/api/verlauf.json`, ohne Kartenzugriff. Aktualisiert sich selbst
-  alle 5 s - anders als die Übersicht ist auf dieser Seite nichts, was jemand
-  eintippt, und die neueste Probe kommt alle fünf Minuten.
-* **Tag** aus derselben Monatsdatei, als Linie: 288 Punkte, eine Probe alle fünf
-  Minuten, eine fehlende Probe eine Lücke in der Linie.
-* **Woche** und **Monat** als **Band je Tag** (Tagesminimum bis Tagesmaximum).
-  Fünf-Minuten-Punkte über einen Monat als Linie durch Punkte wären eine
-  erfundene Genauigkeit; ein Band sagt, was der Tag wirklich hergegeben hat. Die
-  sechs Bänder stehen nebeneinander statt übereinander, sonst verdeckten sie
-  sich gegenseitig. Ein Tag, für den die Datei keine Zeile hat, bekommt weder
-  Band noch Beschriftung; die Beschriftung unten zählt die Tage, **die es gibt**,
-  nicht die Plätze - sonst stünden bei zwei fehlenden Tagen zwei Daten
-  übereinander.
+* **24 h** from `/api/verlauf.json`, without card access. Updates itself every
+  5 s — unlike the overview there is nothing on this page that somebody types into,
+  and the newest sample comes every five minutes.
+* **Day** from the same month file, as a line: 288 points, one sample every five
+  minutes, a missing sample a gap in the line.
+* **Week** and **month** as a **band per day** (daily minimum to daily maximum).
+  Five-minute points over a month as a line through points would be an invented
+  precision; a band says what the day really delivered. The six bands stand side by
+  side instead of on top of each other, otherwise they would hide each other. A day
+  for which the file has no row gets neither band nor label; the label at the
+  bottom counts the days **that exist**, not the slots — otherwise two missing days
+  in a month would put two dates on top of each other.
 
-Dazu ein Navigator (‹ ›) über die Zeiträume, mit dem Datum in der Mitte. Die
-Woche beginnt am Montag, weil das der deutsche Sprachgebrauch ist; das
-Jahresdatum steht in der Mitte nur dann, wenn es sich ändert.
+On top a navigator (‹ ›) over the periods, with the date in the middle. The week
+begins on Monday, because that is the German usage; the year appears in the middle
+only when it changes.
 
-### Der Zeiger auf dem Diagramm
+### The pointer on the chart
 
-`rpChart()` bekommt aus `/api/verlauf.json` je Probe `{t, v[6]}` (Linie) bzw.
-`{t, lo[6], hi[6]}` (Band) und rechnet daraus die Skalen `xOf`, `yOf`, `ySoc`.
-Alles, was der Zeiger danach noch braucht, legt sie als `rpCtx` **auf das
-Element** — nicht in einen Abschlussbereich: der Zeichner wird alle 5 s neu
-gebaut, der Zeiger nicht.
+`rpChart()` gets `{t, v[6]}` per sample (line) respectively `{t, lo[6], hi[6]}`
+(band) from `/api/verlauf.json` and computes the scales `xOf`, `yOf`, `ySoc` from
+it. Everything the pointer needs afterwards, it puts as `rpCtx` **on the element**
+— not into a closure: the drawing is rebuilt every 5 s, the pointer is not.
 
-* Die Zeigerposition läuft durch `svg.getScreenCTM().inverse()`, nicht durch eine
-  Division mit der Breite. Der SVG behält sein Verhältnis und ist auf 380 px
-  gedeckelt, sitzt auf einem breiten Schirm also mittig mit Rand; eine Division
-  wäre dort um ein halbes Diagramm daneben.
-* Das Fadenkreuz wird **einmal je Zeichnung** als `<g>` mit einer Linie und je
-  einem Punkt pro Linie angelegt (`createElementNS`, weil ein Stück Markup als
-  HTML in einen SVG eingesetzt außerhalb der Zeichnung landet) und danach nur noch
-  **bewegt**. Ein Umbau kann dann nur noch Attribute ändern, es kann sich nichts
-  aufhäufen, und Weggehen ist ein `display="none"` an der Gruppe statt einer Suche
-  im Zeichner nach dem, was wieder weg muss.
-* Der Zeiger wird über einen **einzelnen, an `document` hängenden**
-  `pointermove` bedient; ein Listener je Zeichner würde alle 5 s mit seinem
-  Element sterben. Das Verlassen kommt über `pointerout`, **nicht** über
-  `pointerleave` — das Ereignis steigt nicht auf, ein Listener auf `document`
-  sähe es nur beim Verlassen des Fensters, und das Fadenkreuz stünde danach für
-  immer über dem Diagramm. Ausgenommen sind zwei Fälle: `relatedTarget` (der
-  Zeiger ist nur von einem Element auf ein anderes gewandert; das `pointermove`
-  darüber erledigt es) und `pointerType == 'touch'` (nach dem Tippen ist der
-  Zeiger weg, und die Werte müssen stehen bleiben, bis wieder getippt wird).
-* Ein Wert, den es in dieser Probe nicht gibt, **bekommt keinen Punkt** und in
-  der Box einen Strich. Ein Punkt auf dem letzten bekannten Wert wäre eine Zahl,
-  die niemand gemessen hat.
+* The pointer's position goes through `svg.getScreenCTM().inverse()`, not through a
+  division by the width. The SVG keeps its proportions and is capped at 380 px, so
+  on a wide screen it sits centred with margins; a division would be half a chart
+  off there.
+* The crosshair is built **once per drawing** as a `<g>` with one line and one dot
+  per line (`createElementNS`, because a piece of markup inserted as HTML into an
+  SVG lands outside the drawing) and afterwards only **moved**. A redraw can then
+  only change attributes, nothing can pile up, and going away is a `display="none"`
+  on the group instead of a search through the drawing for what has to be removed
+  again.
+* The pointer is served by a **single `pointermove` hung on `document`**; a
+  listener per drawing would die every 5 s with its element. Leaving is caught on
+  `pointerout`, **not** on `pointerleave` — the event does not bubble, a listener
+  on `document` would only see it when the pointer leaves the window, and the
+  crosshair would then stand over the chart for good. Two cases are excepted:
+  `relatedTarget` (the pointer only walked from one element to another; the
+  `pointermove` handles that) and `pointerType == 'touch'` (after a tap the
+  pointer is gone and the values have to stay until the next tap).
+* A value that does not exist in that sample **gets no dot** and a dash in the
+  box. A dot at the last known value would be a number nobody measured.
 
-Der Test dafür steht in `tools/jstest` (Block „the crosshair under the pointer")
-mit gestubbtem DOM: hundert Zeigerbewegungen müssen **eine** Gruppe im Zeichner
-hinterlassen, und das Neuzeichnen muss eine neue Gruppe mit dem Fadenkreuz an der
-Probe des Zeigers liefern.
+The test for this stands in `tools/jstest` (block “the crosshair under the
+pointer”) with a stubbed DOM: a hundred pointer movements must leave **one** group
+in the drawing, and the redraw must deliver a new group with the crosshair at the
+pointer's sample.
 
-### Wie der Browser aus der CSV rechnet
+### How the browser computes from the CSV
 
-**Die Energie eines Zeitraums ist die Differenz der Lebensdauerzähler zwischen
-seiner ersten und seiner letzten Zeile** - nicht die Summe von Momentanwerten.
-Das ist genau die Größe, die das Gerät selbst zählt, und sie bleibt über eine
-Lücke hinweg richtig. Der externe Generator zählt zur Erzeugung und zum Verbrauch
-(dieselbe Rechnung wie `energyPeriodValues`). Die Einspeisezähler kommen am
-Gerät negativ an, deshalb wird der Betrag genommen - an einer Stelle, nicht
-sechsmal.
+**The energy of a period is the difference of the lifetime counters between its
+first and its last row** — not the sum of momentary values. That is exactly the
+quantity the device counts itself, and it stays correct across a gap. The external
+generator counts towards the generation and towards the consumption (the same
+computation as `energyPeriodValues`). The feed-in counters arrive at the device
+negatively, therefore the magnitude is taken — in one place, not six times.
 
-Der **Eigenverbrauch ist Verbrauch minus Netzbezug** - dieselbe Rechnung wie
-`rulePeriod` auf dem Panel, und aus demselben Grund: gezaehlt wird beim Entladen
-und nicht beim Laden, damit ein Tag nicht die Ladung des anderen erzaehlt. Die
-drei Balken gehen deshalb nicht auf; die Differenz ist die Akkuladung plus die
-Umwandlungsverluste, und kein Zaehler fuehrt beides. `rpEnergy()` bekommt dazu
-`ownOk` aus dem Attribut `data-own` der Seite: die Differenz braucht beide
-Zaehler, und ohne sie gibt es keinen Eigenverbrauch, keine Autarkie und keine
-Quote - drei `null`, aus denen der Browser nichts macht. Die **Eigenverbrauchsquote
-hat den Nenner Eigenverbrauch + Einspeisung**, nicht die Erzeugung.
+The **own consumption is consumption minus grid draw** — the same computation as
+`rulePeriod` on the panel, and for the same reason: it is counted on the way out
+and not on the way in, so that one day does not tell the charging of another. The
+three bars therefore do not add up; the difference is the battery charge plus the
+conversion losses, and no counter carries either. `rpEnergy()` gets `ownOk` from
+the page's `data-own` attribute for that: the difference needs both meters, and
+without them there is no own consumption, no self-sufficiency and no share — three
+`null`, out of which the browser makes nothing. The **own-consumption share has
+the denominator own consumption + feed-in**, not the generation.
 
-Der S0-Anteil wird **nicht** aus der Momentanleistung hochgerechnet. `ext_total_wh`
-zählt die *Erzeugung* an diesem Eingang, und eine Anlage ohne Erzeugung dort hat
-schlicht keinen Anteil an den Summen - auch wenn die Linie EXT im Diagramm den
-Verbrauch am selben Eingang zeigt (`io_board.s0_external_power`, ein
-Momentanwert). Auf dem Entwicklergerät ist das genau so: über 30 h und 338
-Proben keine einzige Änderung an `ext_total_wh` (fest bei 1 545 861 Wh), während
-`s0` in 117 Proben ungleich null war.
+The S0 share is **not** extrapolated from the momentary power. `ext_total_wh`
+counts the *generation* at that input, and a plant without generation there simply
+has no share in the sums — even though the EXT line in the chart shows the
+consumption at the same input (`io_board.s0_external_power`, a momentary value). On
+the development device that is exactly so: over 30 h and 338 samples not a single
+change of `ext_total_wh` (fixed at 1 545 861 Wh), while `s0` was non-zero in 117
+samples.
 
-Die sechs Reihen sind dieselben wie in `csvrow::toSample()`: der Lastzähler des
-Wechselrichters hat den S0-Zähler schon abgezogen, deshalb ist der Verbrauch
-Zähler plus extern, und die Erzeugung sind beide Strings zusammen.
+The six series are the same as in `csvrow::toSample()`: the inverter's load meter
+has already subtracted the S0 counter, therefore the consumption is meter plus
+external, and the generation is both strings together.
 
-Die Spaltennamen kommen aus `csvrow::kHeader` und stehen als `data-cols` im
-HTML; der Browser liest die Zeilen **nach Namen**, nicht nach Position. Eine
-neue Spalte in der CSV ändert damit nichts an dieser Seite, und unbekannte
-Spalten werden ignoriert statt geraten.
+The column names come from `csvrow::kHeader` and stand as `data-cols` in the HTML;
+the browser reads the rows **by name**, not by position. A new column in the CSV
+therefore changes nothing on this page, and unknown columns are ignored instead of
+guessed.
 
-Die Monatsdateien werden **nacheinander** geholt, nicht nebeneinander: das Panel
-bedient einen Download zur Zeit und beantwortet einen zweiten mit „busy". Sie
-bleiben danach im Speicher des Browsers, unter ihrem **vollen Dateinamen** als
-Schlüssel - ein `RCT-202609.csv` und ein `RCT-202610.csv` sind verschiedene
-Dateien, und ein Cache nur über den Monat gäbe die falsche aus. Wer sich drei
-Monate weit durchblättert, hat danach eine Datei von ~1,2 MB im Handy liegen und
-keinen einzigen weiteren Zugriff aufs Panel.
+The month files are fetched **one after another**, not in parallel: the panel
+serves one download at a time and answers a second one with “busy”. They then stay
+in the browser's memory, keyed by their **full file name** — an `RCT-202609.csv`
+and an `RCT-202610.csv` are different files, and a cache keyed by month alone would
+return the wrong one. Anyone who pages back three months afterwards has a ~1.2 MB
+file in their phone and not one single further access to the panel.
 
-### Dateien im alten Format
+### Files in the old format
 
-Monatsdateien, die vor dem Wechsel auf 23 Spalten angelegt wurden, tragen 16
-Namen über den Zeilen. Hinter der Kopfzeile können aber Zeilen mit 23 Werten
-stehen - **das ist der Normalfall und nicht der Ausnahmefall**: auf der
-Entwicklerkarte hat `RCT-202610.csv` 231 Zeilen mit 16 und 333 Zeilen mit 23
-Werten. Die Entscheidung fällt deshalb **je Zeile**, nicht je Datei; eine Meldung
-aus der Kopfzeile würde Tagen ohne Summen nennen, die welche haben.
+Month files that were created before the switch to 23 columns carry 16 names above
+the rows. Behind the header line there can nevertheless be rows with 23 values —
+**that is the normal case and not the exception**: on the development card
+`RCT-202610.csv` has 231 rows with 16 and 333 rows with 23 values. The decision is
+therefore made **per row**, not per file; a message from the header line would name
+days without sums that do have them.
 
-Der Browser füllt die fehlenden Summen mit **0** - genau wie der Panel-Leser es
-macht (`csvrow::parse()`: ein Zähler, der nicht geloggt wurde, liest sich als 0,
-und nur die eine Stelle, die das weiß, darf das sagen). Damit bleibt die Ansicht
-durchgehend befüllt und der Browser rechnet ohne Sonderfall. Damit die Null nicht
-als Messwert gelesen wird, steht ein Satz über dem Diagramm, sobald **im
-gewählten Zeitraum** eine Zeile ohne Summen liegt:
+The browser fills the missing sums with **0** — exactly as the panel's reader does
+(`csvrow::parse()`: a counter that was not logged reads as 0, and only the one
+place that knows that may say so). That keeps the view filled throughout and lets
+the browser compute without a special case. So that the zero is not read as a
+measurement, a sentence stands above the chart as soon as **in the selected
+period** there is a row without sums:
 
-> Teile der Zeilen haben keine Summen (von vor dem Update): Tage ganz davor
-> zeigen 0, ein Zeitraum über den Wechsel beginnt mit der ersten Zeile, die
-> Summen hat.
+> Parts of the rows have no sums (from before the update): days entirely before it
+> show 0, a period across the change begins with the first row that has sums.
 
-Drei Fälle, und keiner von ihnen erfindet eine Zahl:
+Three cases, and none of them invents a number:
 
-* **Der Zeitraum hat überall Summen.** Die Differenz zwischen seiner ersten und
-  seiner letzten Zeile - dieselbe Größe wie im Kapitel über die Energie-Seite.
-* **Der Zeitraum hat keine.** Dann gibt es nichts zu subtrahieren: die Balken
-  zeigen 0, und die beiden Prozente stehen als **–**. Ein Zeitraum ohne Zähler
-  hat keine Quote, und „100 % Eigenverbrauch" wäre eine Antwort auf eine Frage,
-  die niemand gestellt hat. Das trifft auch den ersten Tag nach dem Update,
-  wenn er nur eine einzige Zeile mit Summen hat: ein Zähler braucht zwei
-  Ablesungen, bevor er etwas sagt.
-* **Der Zeitraum hat beide.** Dann läuft die Differenz von der ersten Zeile
-  **mit** Summen bis zur letzten mit Summen, nicht von der ersten Zeile des
-  Zeitraums - sonst wäre sie die Differenz zwischen einem Zähler und einer Null,
-  also dessen ganzes Leben statt der Energie dieses Zeitraums. Was am Anfang des
-  Zeitraums fehlt, steht in dem Satz über dem Diagramm.
+* **The period has sums everywhere.** The difference between its first and its last
+  row — the same quantity as in the chapter about the energy page.
+* **The period has none.** Then there is nothing to subtract: the bars show 0 and
+  the two percentages stand as **–**. A period without counters has no share, and
+  “100 % own consumption” would be an answer to a question nobody asked. That also
+  covers the first day after the update, when it has only a single row with sums: a
+  counter needs two readings before it says anything.
+* **The period has both.** Then the difference runs from the first row **with**
+  sums to the last with sums, not from the first row of the period — otherwise it
+  would be the difference between a counter and a zero, that is its whole life
+  instead of the energy of this period. What is missing at the beginning of the
+  period stands in the sentence above the chart.
 
-Für eine Anlage, die später auf die Firmware kommt, gibt es den Fall nicht.
+For an installation that gets the firmware later, the case does not exist.
 
-### Lücken
+### Gaps
 
-Gezählt wie auf dem Panel (`histPush` in `src/gui/GuiApp.cpp`): eine Probe, die
-mehr als eineinhalb Intervalle zu spät kommt, heißt, dass die Plätze dazwischen
-nie geschrieben wurden. Angezeigt wird derselbe Satz wie am Panel („9 Lücken,
-110 min ohne Messwerte", `T_D_GAP_MANY`). Ohne diese Zeile liest sich eine
-Aufzeichnungspause wie ein Einbruch.
+Counted as on the panel (`histPush` in `src/gui/GuiApp.cpp`): a sample that comes
+more than one and a half intervals late means that the slots in between were
+never written. The same sentence is shown as on the panel (“9 gaps, 110 min
+without measurements”, `T_D_GAP_MANY`). Without that line a pause in the recording
+reads like a collapse.
 
-Im 24-h-Bild sind die Lücken die leeren Plätze des Rings, also direkt
-gezählt - dieselbe Zahl, die das Panel unter seinem Diagramm zeigt.
+In the 24 h view the gaps are the empty slots of the ring, therefore counted
+directly — the same number the panel shows under its chart.
 
-### Was das kostet und was nicht geht
+### What it costs and what does not work
 
-* **Kein Nachladen auf `/`.** Aus dem Grund oben.
-* **Kein Server-Rendering, keine Bibliothek, kein CDN.** Die Seite läuft im
-  lokalen Netz; ein Nachladen aus dem Internet würde genau die Seite brechen, die
-  zeigt, ob das Panel noch lebt. Handgeschriebenes SVG und DOM, zusammen
-  `src/web/pages.h`: 18,4 kB CSS, 11,8 kB Logik, 17,8 kB Script. In der
-  Flash-Rechnung ist das eine Zeile (5,8 MB frei); der eigentliche Preis ist die
-  Prüfbarkeit, nicht der Platz - und die ist mit `tools/jstest` bezahlt.
-* **Keine Texte im Script.** Beschriftungen, Überschriften und der Fehlsatz
-  kommen als `data-*`-Attribute aus der Firmware, sonst könnte ein Wort auf der
-  Seite anders heißen als in der Sprachtabelle. Dasselbe gilt für das
-  Datumsformat (`{D}.{M}.{Y}` oder `{Y}-{M}-{D}`), die Trennfarbe und die
-  sechs Reihenfarben.
-* **Einheiten an den Achsen, weil hier Platz ist.** Jede Skalenmarke links
-  trägt die Einheit hinter der Zahl (`10,0 kW`), und rechts steht auf **gleicher
-  Höhe** der Ladezustand - geschrieben, wie man es auch im Text schreiben
-  würde. Der Ladezustand läuft über die volle Höhe von 0 % bis 100 %, deshalb
-  steht neben der Null-Linie der Stand des Akku in diesem Moment (hier rund
-  50 %), oben 100 %, unten 0 %. Die Einheit kommt aus der Antwort des Panels,
-  ist also die, die er geschickt hat. Auf dem 480-Pixel-Display fehlt dafür der
-  Platz; die Marken stehen dort ohne Einheit, die Legende nennt die Reihen.
-* **Die Oberfläche steht während eines Dateizugs.** Bei der gemessenen Rate von
-  ~470 kB/s sind die ~1,2 MB einer Monatsdatei rund 2,6 s Lesezeit, in denen die
-  Bedienung des Panels wartet - dieselbe Arbeit, an der die Oberfläche beim
-  Schreiben der CSV-Zeile schon 4,4 s stillsteht. Der 24-h-Bereich ist davon
-  nicht betroffen: er kommt aus dem RAM.
-* **Ein Zeitraum mit zwei Monatsdateien** (eine Woche über den Monatswechsel)
-  lädt beide, der zweite erst, wenn der erste fertig ist.
+* **No reloading on `/`.** For the reason above.
+* **No server rendering, no library, no CDN.** The page runs in the local
+  network; loading from the internet would break exactly the page that shows
+  whether the panel is still alive. Hand-written SVG and DOM, together in
+  `src/web/pages.h`: 18.4 kB CSS, 11.8 kB logic, 17.8 kB script. In the flash
+  accounting that is one line (5.9 MB free); the real price is testability, not
+  space — and that is paid for with `tools/jstest`.
+* **No texts in the script.** Labels, headings and the error sentence come as
+  `data-*` attributes from the firmware, otherwise a word could be spelled
+  differently on the page than in the language table. The same holds for the date
+  format (`{D}.{M}.{Y}` or `{Y}-{M}-{D}`), the separator and the six series
+  colours.
+* **Units on the axes, because there is room here.** Every scale mark on the left
+  carries the unit behind the number (`10.0 kW`), and on the right at the **same
+  height** the state of charge — written as one would write it in running text.
+  The state of charge runs over the full height from 0 % to 100 %, which is why
+  next to the zero line stands the battery's level at that moment (here around
+  50 %), at the top 100 %, at the bottom 0 %. The unit comes from the panel's
+  answer, so it is the one it sent. On the 480 pixel display there is no room for
+  that; the marks stand there without a unit, the legend names the series.
+* **The interface is blocked during a file transfer.** At the measured rate of
+  ~470 kB/s the ~1.2 MB of a month file are around 2.6 s of reading time during
+  which operating the panel waits — the same work during which the interface
+  already stalls for 4.4 s while writing the CSV row. The 24 h area is not
+  affected: it comes from RAM.
+* **A period with two month files** (a week across the month boundary) loads both,
+  the second only when the first is finished.
 
-### Prüfung
+### Checking
 
-* `tools/jstest` schneidet den Logikblock aus `src/web/pages.h` heraus und führt
-  ihn in node aus - **derselbe** Code, der im Browser läuft, keine Abschrift.
-  Geprüft werden die Zeitzonenregel gegen `zoneinfo`, das Lesen der CSV, die
-  Tagesbereiche, die Monatsrechnung und die Energiedifferenz an den Zahlen vom
-  2.10.2026 (23,68 kWh erzeugt, 15,89 kWh eingespeist, 7,79 kWh Eigenverbrauch,
-  1,81 kWh Bezug, 3,89 kWh Verbrauch).
-* `tools/json_test` prüft die Zahlenformatierung der Antworten.
-* Die Seiten wurden im Browser gegen beide Spaltenformate bei 360 px und 1024 px
-  Breite angesehen, in beiden Sprachfassungen.
+* `tools/jstest` cuts the logic block out of `src/web/pages.h` and runs it in node
+  — the **same** code that runs in the browser, not a copy. Checked are the time
+  zone rule against `zoneinfo`, reading the CSV, the day ranges, the month
+  computation and the energy difference on the numbers from 2026-10-02 (23.68 kWh
+  generated, 15.89 kWh fed in, 2.08 kWh own consumption, 1.81 kWh grid draw,
+  3.89 kWh consumption).
+* `tools/json_test` checks the number formatting of the answers.
+* The pages were looked at in a browser against both column formats at 360 px and
+  1024 px width, in both language versions.
 
-## Daten aus der SD-Karte: Stream statt Datei im RAM
+## Data from the SD card: stream instead of file in RAM
 
-Die Karte gehört dem Worker aus `src/storage/sdlog.cpp`; der Webserver fasst
-sie nie an. Ein Download ist eine Handshake über drei Aufrufe:
+The card belongs to the worker from `src/storage/sdlog.cpp`; the web server never
+touches it. A download is a handshake over three calls:
 
 ```
-sdRequestStream(path, tailBytes)   // anfordern, kehrt sofort zurück
-sdStreamTotal()                    // Byte-Zahl, sobald der Worker die Datei geöffnet hat
-sdTakeStreamChunk(buf, max)        // 0 = noch nicht fertig, -1 = fertig/Fehler
-sdStopStream()                     // abbrechen
+sdRequestStream(path, tailBytes)   // request, returns immediately
+sdStreamTotal()                    // byte count, as soon as the worker has opened the file
+sdTakeStreamChunk(buf, max)        // 0 = not done yet, -1 = done/error
+sdStopStream()                     // abort
 ```
 
-Der Worker füllt **einen** 16-kB-Puffer pro Durchlauf und nur, wenn der
-vorige abgeholt wurde. Ein Browser, der langsam liest, hält dadurch den Worker
-an - endliche Puffer, kein Wachstum. Umgekehrt wartet eine geparkte
-5-Minuten-CSV-Zeile höchstens einen Puffer (≈40 ms bei 4 MHz), Logging und
-Download hungern sich nicht aus.
+The worker fills **one** 16 kB buffer per pass and only if the previous one has
+been collected. A browser that reads slowly thereby holds the worker back — finite
+buffers, no growth. The other way round, a parked 5-minute CSV row waits at most
+one buffer (≈40 ms at 4 MHz); logging and download do not starve each other.
 
-`Content-Length` ist die echte Dateigröße, nicht das, was gelesen wurde: ein
-abgebrochener Download ist damit im Browser ein fehlgeschlagener Transfer und
-keine stillschweigend gekappte Datei.
+`Content-Length` is the real file size, not what was read: an aborted download is
+therefore a failed transfer in the browser and not a silently truncated file.
 
-### Zwei Dinge, die die Bibliothek sonst ruiniert hätten
+### Two things the library would otherwise have ruined
 
-1. **Fünf Sekunden.** `WebServer::handleClient()` lässt die Verbindung
-   `HTTP_MAX_DATA_WAIT` = 5000 ms offen und schließt sie dann. Eine ganze
-   CSV-Monatsdatei braucht länger. Solange ein Download läuft wird
-   `handleClient()` deshalb **nicht** aufgerufen - nur so bleibt der Socket
-   offen. Preis: während eines Downloads bedient das Panel keine zweite
-   Anfrage. Ein Verzeichnis, das 999 Screenshots enthält, passt nicht in einen
-   2-kB-Puffer; die Seite sagt das, statt eine gekürzte Liste als vollständige
-   auszugeben.
-2. **`sendContent()` gibt nichts zurück.** In dieser Core-Version ist der Rückgabewert
-   `void`; ein partieller Write (volles TCP-Fenster) ginge als Datenverlust
-   durch. Der Rumpf geht deshalb über eine eigene Kopie des Clients:
-   `WiFiClient` ist referenzgezählt (`shared_ptr`-Socket-Handle), die Kopie
-   redet mit demselben Socket und `write()` liefert die wirklich geschriebene
-   Zahl. Damit ist auch der Fall "Browser ging weg" überhaupt erkennbar
-   (4 s ohne Fortschritt → Stream abbrechen, Karte freigeben).
+1. **Five seconds.** `WebServer::handleClient()` leaves the connection open for
+   `HTTP_MAX_DATA_WAIT` = 5000 ms and then closes it. A whole CSV month file takes
+   longer. While a download runs, `handleClient()` is therefore **not** called —
+   only that keeps the socket open. Price: during a download the panel serves no
+   second request. A directory with 999 screenshots does not fit into a 2 kB
+   buffer; the page says so instead of outputting a shortened list as a complete
+   one.
+2. **`sendContent()` returns nothing.** In this core version the return value is
+   `void`; a partial write (full TCP window) would pass as data loss. The body
+   therefore goes through its own copy of the client: `WiFiClient` is
+   reference-counted (a `shared_ptr` socket handle), the copy talks to the same
+   socket and `write()` delivers the number really written. That also makes the
+   case “browser went away” detectable at all (4 s without progress → abort the
+   stream, release the card).
 
-Ein Write blockiert nie: `WiFiClient::write()` nutzt `select()` mit 35 ms
-Timeout und `MSG_DONTWAIT`, höchstens vier Versuche - im schlechtesten Fall
-~140 ms, und nur während ein Browser nicht liest.
+A write never blocks: `WiFiClient::write()` uses `select()` with a 35 ms timeout
+and `MSG_DONTWAIT`, at most four attempts — in the worst case ~140 ms, and only
+while a browser does not read.
 
-## Verzeichnislisten
+## Directory listing
 
-`sdRequestListing(dir)` / `sdTakeListing(out, cap)` - eine Zeile pro Eintrag,
-`name|size|epoch`, in Verzeichnisreihenfolge. Auch das über den Worker, aus
-denselben Gründen. Die Seite hält die Antwort nicht auf: der Handler fordert an
-und geht ohne Antwort zurück, gerendert wird, sobald der Worker sie hat
-(die Verbindung lebt 5 s, der Worker braucht wenigezig Millisekunden). Nach
-4 s ohne Antwort: 503.
+`sdRequestListing(dir)` / `sdTakeListing(out, cap)` — one line per entry,
+`name|size|epoch`, in directory order. Also via the worker, for the same reasons.
+The page does not hold the answer: the handler requests and returns without an
+answer, rendering happens as soon as the worker has it (the connection lives 5 s,
+the worker needs few milliseconds). After 4 s without an answer: 503.
 
-Der Puffer ist 2 kB (~60 Zeilen). Läuft er mitten in einer Zeile voll, sagt die
-Seite das — die Prüfung auf das letzte Zeichen muss aber **vor** dem Rendern
-passieren: der Renderer ersetzt die Zeilenumbrüche im Puffer durch `\0`, danach
-ist das letzte Byte immer `\0` und die Meldung stünde auf jeder Seite mit
-Dateien.
+The buffer is 2 kB (~60 lines). If it fills in the middle of a line the page says
+so — but the check for the last character has to happen **before** rendering: the
+renderer replaces the line breaks in the buffer with `\0`, after which the last
+byte is always `\0` and the message would stand on every page with files.
 
-## Screenshot auslösen (`/bilder`)
+## Triggering a screenshot (`/bilder`)
 
-Unter der Bildliste steht ein Formular (Code + **Screenshot auslösen**), das an
-`/aktion?was=bild` geht. `guiRequestShot()` nimmt die Aufnahme **ohne** die
-5-s-Vorlauf der Panel-Taste: die gibt es dort, weil man vorher noch auf die
-richtige Seite blättern muss — im Browser ist die gewünschte Seite bereits die
-sichtbare.
+Below the image list stands a form (code + **Screenshot auslösen**) that goes to
+`/aktion?was=bild`. `guiRequestShot()` takes the capture **without** the 5 s
+delay of the panel button: that delay exists because you first have to page to the
+right page — in the browser the desired page is already the visible one.
 
-Die Antwort ist ein 303 auf `/bilder?neu=1`, und `?neu` zählt die Schritte des
-**einen** Reloads, der zu einer Aufnahme gehört:
+The answer is a 303 to `/bilder?neu=1`, and `?neu` counts the steps of the
+**one** reload that belongs to one capture:
 
-| Schritt | Adresse          | Was passiert                                        |
-| ------- | ---------------- | --------------------------------------------------- |
-| 1       | `/bilder?neu=1`  | dieselbe Liste wie vorher, dazu ein Meta-Refresh nach 6 s |
-| 2       | `/bilder?neu=2`  | **ein** Reload, der die Karte neu liest — danach steht die Seite still |
+| Step | Address         | What happens                                        |
+| ---- | --------------- | --------------------------------------------------- |
+| 1    | `/bilder?neu=1` | the same list as before, plus a meta refresh after 6 s |
+| 2    | `/bilder?neu=2` | **one** reload that reads the card anew — after that the page stays still |
 
-6 s, weil das Schreiben von 691 kB bei 4 MHz gemessen 3 s und (auf einer Karte,
-die parallel die CSV-Zeile schrieb) 5 s brauchte. Schritt 2 liest das Verzeichnis
-mit `sdRequestListing(dir, /*force=*/true)`: ohne das würde der bis zu 5 s alte
-Listenpuffer die gerade geschriebene Datei noch zurückhalten. Läuft das Schreiben
-dann noch (langsame Karte), fragt Schritt 2 ein weiteres Mal nach, höchstens
-`kShotReloadMax` (8) Schritte — danach ist der Knopf **Seite neu laden** da.
-Eine Seite, die sich endlos selbst neu lädt, ist unlesbar; deshalb genau einer.
+6 s, because writing 691 kB at 4 MHz was measured at 3 s and (on a card that wrote
+the CSV row in parallel) needed 5 s. Step 2 reads the directory with
+`sdRequestListing(dir, /*force=*/true)`: without that, the up-to-5-second-old list
+buffer would still withhold the file just written. If the writing is then still
+running (slow card), step 2 asks again, at most `kShotReloadMax` (8) steps — after
+that the button **Seite neu laden** is there. A page that reloads itself endlessly
+is unreadable; hence exactly one.
 
-Ein unausgeschriebener Schreibvorgang ist ausgeschlossen: `sdWorkerWriteShot()`
-prüft jeden `write()` und wiederholt einen kurzen bis zu viermal, vergleicht
-danach die Dateigröße auf der Karte mit der beabsichtigten und **löscht** eine
-Datei, die zu kurz ist. Auf der Wand gemessen waren 3 von 8 Aufnahmen kurz
-(0, 167 kB, 499 kB von 675 kB), während der Rückgabewert ungelesen blieb und die
-Log-Zeile jedes Mal die Sollgröße meldete. Eine zu kurze Datei gilt im
-Webserver als „gibt es nicht" (404), nicht als Lesefehler der Karte.
+An untruncated write is ruled out: `sdWorkerWriteShot()` checks every `write()` and
+repeats a short one up to four times, then compares the file size on the card with
+the intended one and **deletes** a file that is too short. Measured on the wall, 3
+of 8 captures were short (0, 167 kB, 499 kB of 675 kB), while the return value went
+unread and the log line reported the target size every time. A too-short file
+counts in the web server as “does not exist” (404), not as a read error of the
+card.
 
-## Firmware-Update (OTA)
+## Firmware update (OTA)
 
-`Update.begin/write/end` aus einer einzigen Kontext (`loop()`), denn der
-`Updater` hat keinen eigenen Mutex. Der Updater löscht verzögert: `begin()`
-wählt nur den Zielslot und allokiert 4 kB, das Löschen passiert pro geschriebenem
-64-kB-Block in `_writeBuffer`. Der längste Einzelsystem ist damit ein
-Block-Löschen in zig Millisekunden, nicht ein mehrsekündiges Partition-Löschen -
-das Panel bleibt während des Schreibens bedienbar.
+`Update.begin/write/end` from a single context (`loop()`), because the `Updater`
+has no mutex of its own. The updater deletes lazily: `begin()` only chooses the
+target slot and allocates 4 kB, the deleting happens per written 64 kB block in
+`_writeBuffer`. The longest single system call is therefore a block delete in tens
+of milliseconds, not a multi-second partition erase — the panel stays operable
+while writing.
 
-Ein mißlungenes Update brickt nichts: das Image wird vor dem Booten
-magisch-byte-geprüft, der andere 7-MB-Slot bleibt unangetastet, schlimmstenfalls
-bootet das Panel die alte Firmware.
+A failed update bricks nothing: the image is checked magic-byte-wise before the
+boot, the other 7 MB slot stays untouched, in the worst case the panel boots the
+old firmware.
 
-Abgelehnt wird vor dem ersten geschriebenen Byte: der Code und ein Dateiname
-ohne `.bin`. Zwei Eigenschaften dieser WebServer-Version haben das Update vorher
-**immer** scheitern lassen, ohne dass ein Byte geschrieben wurde:
+Rejected before the first written byte: the code and a file name without `.bin`.
+Two properties of this web server version made the update **always** fail before,
+without a single byte written:
 
-- `HTTPUpload::totalSize` ist bei `UPLOAD_FILE_START` **0** — die Bibliothek
-  summiert die Chunkgrößen erst beim Durchlaufen auf und kennt die
-  `Content-Length` der Anfrage nicht. `Update.begin(0, ...)` ist ein
-  `UPDATE_ERROR_SIZE`, also stand im Log immer „Update abgelehnt (Groesse passt
-  nicht)". Jetzt `Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)`: der ganze Slot,
-  und `end(true)` schneidet das Image auf das, was wirklich ankam. Die
-  Größengrenze wird deshalb **während** des Schreibens geprüft
-  (`s_otaBytes + currentSize > kMaxFirmware` → `Update.abort()`), nicht davor.
-- `HTTPUpload::name` ist der **Formularfeldname**, nicht der Dateiname; für
-  dieses Formular sind beide `fw`. Die `.bin`-Prüfung gehört auf `filename`, sonst
-  wird jede Datei abgewiesen (Log: „Update abgelehnt (keine .bin-Datei)").
+* `HTTPUpload::totalSize` is **0** at `UPLOAD_FILE_START` — the library only sums
+  the chunk sizes while iterating and does not know the request's
+  `Content-Length`. `Update.begin(0, ...)` is an `UPDATE_ERROR_SIZE`, so the log
+  always said “Update rejected (size does not match)”. Now
+  `Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)`: the whole slot, and `end(true)`
+  cuts the image to what really arrived. The size limit is therefore checked
+  **during** the writing (`s_otaBytes + currentSize > kMaxFirmware` →
+  `Update.abort()`), not before.
+* `HTTPUpload::name` is the **form field name**, not the file name; for this form
+  both are `fw`. The `.bin` check belongs on `filename`, otherwise every file is
+  rejected (log: “Update rejected (no .bin file)”).
 
-Beides auf der Wand geprüft: 1 472 560 Byte in 4534 ms, danach Neustart mit
-`rst:0xc`, neuer Wartungscode, Karte und Werte wieder da.
+Both verified on the wall: 1 472 560 bytes in 4534 ms, then a restart with
+`rst:0xc`, new maintenance code, card and values there again.
 
-## Schaltausgang
+## Switched output
 
-Die Startseite trägt oben Zustand und Funktion des Ausgangs, darunter das
-Formular: Auswahlfeld für die Funktion (5 Werte), Zahlenfeld für die Schwelle in
-Watt, und zwei Knöpfe - `was=ausgang` (übernehmen) und `was=test` (5 s an,
-5 s aus). Die Regeln dahinter stehen in `docs/relay.md`.
+The start page carries state and function of the output at the top, the form
+below: selection field for the function (5 values), number field for the threshold
+in watts, and two buttons — `was=ausgang` (apply) and `was=test` (5 s on, 5 s off).
+The rules behind it stand in `docs/relay.md`.
 
-`was=test` antwortet sofort und startet den Test im Hintergrund: der Browser
-würde 20 s lang auf eine Antwort warten, die er nicht braucht. Ein zweiter
-Teststart während eines laufenden Tests ist ein 409, kein zweiter Test.
+`was=test` answers immediately and starts the test in the background: the browser
+would otherwise wait 20 s for an answer it does not need. A second test start
+during a running test is a 409, not a second test.
 
-`was=ausgang` liest beide Felder und speichert die Schwelle auch dann, wenn die
-gewählte Funktion keine hat - so steht der Wert beim Zurückwechseln auf die
-Schwellwertfunktionen noch da. Die Service-Seite kann dieselbe Funktion durch
-Antippen wählen, aber keine Schwelle: Zahlen in Watt brauchen eine Tastatur, und
-das Panel hat nur ein Touchscreen.
+`was=ausgang` reads both fields and saves the threshold even when the selected
+function has none — so the value is still there when switching back to the
+threshold functions. The Service page can choose the same function by tapping, but
+cannot set a threshold: numbers in watts need a keyboard, and the panel only has a
+touchscreen.
 
-## Sprache
+## Language
 
-Der sichtbare Text steht in `src/i18n/`, eine Tabelle je Sprache, und wird zur
-Bauzeit gewählt: `pio run -e esp32-s3` ist Deutsch, `pio run -e esp32-s3-en`
-englisch (`-DRCT_LANG_EN`). Zur Laufzeit gibt es keinen Umschalter - die
-Anzeigeseiten werden einmal in `guiStartApp()` gebaut, und eine zweite Tabelle
-wäre für ein paar kB Text ein zweiter Zustand, den man auf der Wand nicht
-prüfen kann.
+The visible text stands in `src/i18n/`, one table per language, and is chosen at
+build time: `pio run -e esp32-s3` is German, `pio run -e esp32-s3-en` is English
+(`-DRCT_LANG_EN`). There is no switch at runtime — the display pages are built
+once in `guiStartApp()`, and a second table would be a second state for a few kB
+of text that one cannot check on the wall.
 
-Für die Webseiten heißt das: `tr(T_...)` statt eines deutschen Literals, und der
-`<html lang>`-Wert kommt aus derselben Tabelle (`T_HTML_LANG`). Zwei
-Konventionen in den Tabellen: Web-Texte tragen HTML-Entities (`&uuml;`),
-Anzeigetexte sind normales UTF-8 (Montserrat hat die Umlaute). Geprüft wird das
-in `tools/i18n_test`: gleiche IDs und gleiche Platzhalter auf beiden Seiten,
-kein deutscher Buchstabe in `src/web/` und `src/storage/`.
+For the web pages that means: `tr(T_...)` instead of a German literal, and the
+`<html lang>` value comes from the same table (`T_HTML_LANG`). Two conventions in
+the tables: web texts carry HTML entities (`&uuml;`), display texts are normal
+UTF-8 (Montserrat has the umlauts). This is checked in `tools/i18n_test`: same IDs
+and same placeholders on both sides, no German letter in `src/web/` and
+`src/storage/`.
 
-Für die Diagrammseiten kommt derselbe Weg über den Browser: Die Worte, das
-Datumsformat und die Trennfarbe stehen als `data-*`-Attribute im HTML, das Script
-liest sie. Ein Wort, das im Script stünde, wäre beim nächsten Übersetzen eine
-zweite Stelle, an der es falsch werden kann.
+For the chart pages the same way through the browser: the words, the date format
+and the separator stand as `data-*` attributes in the HTML, which the script
+reads. A word that stood in the script would be a second place where it can go
+wrong at the next translation.
 
-Nicht übersetzt sind das Serienprotokoll (Entwicklertext, bleibt wie er ist) und
-die CSV-Spaltenköpfe (`ts,pv_a,...` - eine Tabelle in Excel darf ihre Spalten
-nicht mit der Anzeigesprache wechseln).
+Not translated are the serial protocol (developer text, stays as it is) and the
+CSV column headers (`ts,pv_a,...` — a table in Excel may not change its columns
+with the display language).
 
-## Puffer und Speicher
+## Buffers and memory
 
-* 16 kB Stream-Puffer aus PSRAM (`heap_caps_malloc`, Rückfall auf internen RAM)
-* 2 kB Listenpuffer im Worker
-* 2 kB Sende-Puffer im Webserver
-* PROGMEM-Seiten (`src/web/pages.h`), pro Request ~2-3 kB `String` in RAM
-* JSON-Antworten: 163 Byte für die Energiewerte, ~16 kB für den 24-h-Ring,
-  jeweils eine einzige Reservierung für die ganze Antwort
+* 16 kB stream buffer from PSRAM (`heap_caps_malloc`, fallback to internal RAM)
+* 2 kB list buffer in the worker
+* 2 kB send buffer in the web server
+* PROGMEM pages (`src/web/pages.h`), per request ~2-3 kB `String` in RAM
+* JSON answers: 163 bytes for the energy values, ~16 kB for the 24 h ring, each
+  with a single reservation for the whole answer
 
-Interne Heap-Reserve in Normalbetrieb ~150 kB; Webserver und Worker liegen bei
-~2 kB statischem Bedarf darüber. Die Seiten sind aus Flash-Bausteinen
-zusammengesetzt (ein Shell-Dokument mit `%T`/`%L`/`%R`/`%S`/`%J`/`%B`-Platzhaltern,
-`%J` ist das Diagrammscript und bleibt auf den Seiten ohne Diagramm leer), nicht
-aus `String`-Konkatenation - sonst würde jeder Seitenaufbau einen großen Teil des
-Heaps verbrauchen.
+Internal heap reserve in normal operation ~150 kB; web server and worker add about
+~2 kB of static requirement on top. The pages are composed from flash building
+blocks (a shell document with `%T`/`%L`/`%R`/`%S`/`%J`/`%B` placeholders, `%J` is
+the chart script and stays empty on the pages without a chart), not from `String`
+concatenation — otherwise every page build would use a large part of the heap.
 
-Der Verlauf hat die Diagrammseite in **zwei** Teile geteilt, und das ist der
-eigentliche Speichergrund: die Übersicht lädt ihre Datei nicht, sie fragt nach
-Zahlen aus dem RAM. Der Verlauf lädt genau eine Monatsdatei - und die liegt im
-Speicher des **Browsers**, nicht im Panel. Statisch ist durch die Diagrammseiten
-nichts dazugekommen (112 264 Byte, vor und nach der Änderung gemessen).
+The history split the chart page into **two** parts, and that is the actual memory
+reason: the overview does not load its file, it asks for numbers from RAM. The
+history loads exactly one month file — and that one sits in the **browser's**
+memory, not in the panel. Statically the chart pages added nothing (112 264 bytes,
+measured before and after the change).
 
-## SD-Takt
+## SD clock
 
-Die Karte läuft mit 4 MHz (`kSdFastHz`) und fällt auf 400 kHz zurück, wenn der
-Rück-Test sie nicht besteht. Begründung und Messung in `docs/sd-history.md`.
+The card runs at 4 MHz (`kSdFastHz`) and falls back to 400 kHz when the loopback
+test does not pass it. Reason and measurement in `docs/sd-history.md`.
 
-## Start und Stopp
+## Start and stop
 
-`main.cpp` ruft `webStart()`/`webUpdate()` nur in `normalOperation()` auf
-(`WIFI_READY` und kein Portal). `Configuration.cpp` ruft `webStop()`, bevor das
-Portal das Radio übernimmt. mDNS läuft mit (`rct-panel.local`), ist aber reine
-Bequemlichkeit: die IP steht auf der Panel-Seite Service und in der Übersicht,
-und ein Netz, das mDNS blockiert, verliert nur den Namen.
+`main.cpp` calls `webStart()`/`webUpdate()` only in `normalOperation()`
+(`WIFI_READY` and no portal). `Configuration.cpp` calls `webStop()` before the
+portal takes over the radio. mDNS runs along (`rct-panel.local`), but is pure
+convenience: the IP stands on the panel's Service page and in the overview, and a
+network that blocks mDNS only loses the name.
