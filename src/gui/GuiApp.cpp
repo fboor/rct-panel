@@ -660,7 +660,12 @@ static lv_obj_t *makeButton(lv_obj_t *parent, const char *symbol,
   lv_obj_t *l = lv_label_create(btn);
   lv_label_set_text(l, symbol);
   lv_obj_set_style_text_font(l, &lv_font_montserrat_28_uml, 0);
-  lv_obj_set_style_text_color(l, uiText(), 0);
+  // White, and not uiText(), for the reason the code row on the Service page
+  // gives: a button sits on the navigation bar, the bar is COL_BAR in both
+  // themes, so the text must not follow the theme. With uiText() this was only
+  // wrong after a boot into the light theme - the walk leaves a label inside the
+  // bar alone, so a theme switch kept the boot colour and hid the mistake.
+  lv_obj_set_style_text_color(l, FLOW_WHITE, 0);
   lv_obj_center(l);
   return btn;
 }
@@ -2085,8 +2090,16 @@ static void pageBuildService(AppPage *p) {
   // there for the same reason: a tap that changes nothing visible reads as a
   // field that does not work.
   (void)sectionHead(tr(T_D_SV_HEAD_WEB), 118, 300);
+  // White, not uiText(). This row has a background of its own, and that
+  // background is COL_BAR in both themes - it does not follow the theme, so
+  // neither may its text. uiText() put the theme's text colour here, and the
+  // theme walk swaps exactly that colour by value: tapping the theme button
+  // repainted the code dark on the dark row, and it was unreadable in the light
+  // theme only, which is why it looked right until somebody did. The three
+  // buttons in this column - code, output, theme - are the same kind of object
+  // and now say so in the same way.
   p->labels[SV_CODE] = makeLabel(root, tr(T_D_CODE_EMPTY),
-                                 &lv_font_montserrat_14_uml, uiText());
+                                 &lv_font_montserrat_14_uml, FLOW_WHITE);
   lv_obj_set_pos(p->labels[SV_CODE], 300, 140);
   lv_obj_set_width(p->labels[SV_CODE], 160);
   lv_obj_set_style_text_align(p->labels[SV_CODE], LV_TEXT_ALIGN_CENTER, 0);
@@ -2118,8 +2131,10 @@ static void pageBuildService(AppPage *p) {
   (void)sectionHead(tr(T_D_SV_HEAD_OUTPUT), 198, 300);
   // "Aus" ist nur, was die Zeile vor dem ersten Durchlauf zeigt, in dem die
   // gespeicherte Funktion gelesen wurde; danach traegt sie die Funktion selbst.
+  // Weisse Schrift aus demselben Grund wie die Code-Zeile darüber: die Zeile hat
+  // COL_BAR als eigene Flaeche und die ist in beiden Themes dunkel.
   p->labels[SV_RELAY] = makeLabel(root, relayModeName(RelayMode::Off),
-                                   &lv_font_montserrat_14_uml, uiText());
+                                   &lv_font_montserrat_14_uml, FLOW_WHITE);
   lv_obj_set_pos(p->labels[SV_RELAY], 300, 220);
   lv_obj_set_width(p->labels[SV_RELAY], 160);
   lv_obj_set_style_text_align(p->labels[SV_RELAY], LV_TEXT_ALIGN_CENTER, 0);

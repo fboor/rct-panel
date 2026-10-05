@@ -12,6 +12,7 @@
 // The first case below is that bug, kept as a test.
 //
 // SPDX-License-Identifier: MIT
+#include <cmath>
 #include <cstdio>
 
 #include "gui/Theme.h"
@@ -139,6 +140,65 @@ static void testUntouched() {
         "Text in der Farbe des Seitentexts wird mitgezogen");
 }
 
+// A row that keeps its own surface must also keep a text that can be read on
+// it. This is the second half of the rule the test above documents, and it is
+// the half that bit: the code row and the output row on the Service page were
+// given the theme's text colour on a COL_BAR background. COL_BAR is dark in both
+// themes, the walk swaps the theme's text colour by value, and so tapping the
+// theme button repainted both rows dark on dark - in the light theme only, which
+// is why the panel looked right until somebody did it.
+//
+// The check is contrast and not colour identity on purpose. "The text must not
+// be the page-text colour" would pass the moment somebody picked a third shade
+// of dark grey that the walk happens not to know, and the row would still be
+// unreadable. A ratio cannot be argued with: 3:1 is the level at which a
+// graphical object still counts as visible, and this is text on a background.
+static double relativeLuminance(int32_t rgb) {
+  auto lin = [](double c) {
+    return c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * lin((double)((rgb >> 16) & 0xFF) / 255.0) +
+         0.7152 * lin((double)((rgb >> 8) & 0xFF) / 255.0) +
+         0.0722 * lin((double)(rgb & 0xFF) / 255.0);
+}
+
+static double contrast(int32_t a, int32_t b) {
+  const double la = relativeLuminance(a), lb = relativeLuminance(b);
+  const double hi = la > lb ? la : lb, lo = la > lb ? lb : la;
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+static void testTextOnItsOwnRow() {
+  // What the three buttons in the right column of the Service page and the
+  // navigation bar now use, on the bar colour they all sit on.
+  check(contrast(kBar, kNodeFill) >= 3.0,
+        "weisse Schrift auf der Zeilenflaeche ist lesbar");
+
+  // The pair as it was: the dark theme's text on the same bar. Kept as the case
+  // that must not come back, and it is the reason the fix is at the call site -
+  // the walk is behaving as documented when it swaps this colour.
+  check(contrast(kBar, kTextDark) >= 3.0,
+        "heller Text auf der Zeilenflaeche ist lesbar");
+  check(contrast(kBar, kTextLight) < 3.0,
+        "dunkler Text auf der Zeilenflaeche ist unlesbar - die alte Fassung");
+
+  // The walk does what it is documented to do: it swaps that colour. So the walk
+  // cannot be the place where this is caught - only the caller can, by not
+  // handing the walk a colour it will swap onto a surface that does not move.
+  const ThemeDecision d = toLight(true, kBar, kTextDark);
+  check(d.bg == -1, "die Flaeche bleibt, wie sie ist");
+  check(d.text == kTextLight,
+        "und die Schrift wird trotzdem getauscht - der Aufrufer muss es richtig "
+        "machen");
+
+  // A text that the walk does not know is left alone, which is what makes a
+  // fixed colour the working answer.
+  check(toLight(true, kBar, kNodeFill).text == -1,
+        "feste helle Schrift wird nicht angefasst");
+  check(toDark(true, kBar, kNodeFill).text == -1,
+        "in beide Richtungen nicht");
+}
+
 int main() {
   testNodeStaysLight();
   testWhiteIsNotAPanelColour();
@@ -147,6 +207,7 @@ int main() {
   testLabelsOnTheBackground();
   testGreenFollows();
   testUntouched();
+  testTextOnItsOwnRow();
 
   printf("%s: %d Prüfungen, %d fehlgeschlagen\n",
          g_failed == 0 ? "OK" : "FEHLER", g_checks, g_failed);
