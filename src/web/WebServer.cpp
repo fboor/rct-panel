@@ -41,6 +41,7 @@
 #include "../storage/CsvRow.h"
 #include "../storage/sdlog.h"
 #include "Json.h"
+#include "RingJson.h"
 #include "pages.h"
 
 #include <ESPmDNS.h>
@@ -602,49 +603,25 @@ void handleApiEnergy() {
 // oldest and newest timestamp in the window.
 void handleApiHistory() {
   const int n = guiHistoryPoints();
-  float v[6];
-  uint32_t ts = 0;
-  bool written = false;
-  uint32_t from = 0, to = 0;
 
   // One reservation for the whole answer, so the String grows in a single step:
   // about 72 bytes per point (10 digits of timestamp, six numbers, punctuation)
   // plus the header.
   String j;
   j.reserve(800 + (size_t)n * 72);
-  j = '{';
-  addTz(j);
-  j += F("\"points\":");
-  j += n;
-  j += F(",\"series\":[\"grid\",\"load\",\"pv\",\"ext\",\"battery\",\"soc\"],"
-         "\"unit\":[\"W\",\"W\",\"W\",\"W\",\"W\",\"%\"],\"data\":[");
-  for (int i = 0; i < n; i++) {
-    if (!guiHistoryPoint(i, &ts, v)) {
-      j += written ? F(",null") : F("null");
-      continue;
-    }
-    if (from == 0) {
-      from = ts; // oldest sample the ring still holds
-    }
-    to = ts;
-    j += written ? F(",") : F("");
-    written = true;
-    j += F("{\"t\":");
-    j += ts;
-    j += F(",\"v\":[");
-    for (int k = 0; k < 6; k++) {
-      if (k > 0) {
-        j += F(",");
-      }
-      addNum(j, v[k], 1);
-    }
-    j += F("]}");
-  }
-  j += F("],\"from\":");
-  j += from;
-  j += F(",\"to\":");
-  j += to;
-  j += F("}");
+
+  // The bytes themselves come out of web/RingJson.h, which is free of Arduino and
+  // host-tested: the comma between two entries is what broke when it was decided
+  // here by "has a sample been written" instead of by position. A ring with empty
+  // slots at the front answered `nullnull`, and the page showed "Daten konnten
+  // nicht geladen werden."
+  ringjson::write(
+      n, kTimeZone,
+      [](int i, uint32_t *ts, float *v) {
+        return guiHistoryPoint(i, ts, v);
+      },
+      [&j](const char *s) { j += s; });
+
   s_server.send(200, "application/json; charset=utf-8", j);
 }
 
