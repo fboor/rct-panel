@@ -63,54 +63,6 @@ default `192.168.0.1:8899`). Everything after that is in the panel's own web
 interface; `docs/hardware.md` has the pin map, the boot log and the quirks of
 the board.
 
-### Before committing
-
-**Nothing that identifies the machine or the developer goes into a commit
-message.** Three things, and all three are easy to leave in by accident:
-
-| Never in a message | Why |
-|---|---|
-| MAC addresses | the panel's, the inverter's, any network interface |
-| local paths | `/home/<user>/…`, `/Users/<user>/…`, `/tmp/…`, any scratch directory |
-| personal names | who ran the test, who owns the card, who reported the fault |
-
-The message is the worst place for all three: it is not part of the tree, so no
-later edit takes it out again, and a rewritten commit keeps its old text in the
-history.
-
-One command looks for them, and it is cheaper to run before the commit than to
-rewrite afterwards:
-
-```sh
-git log --format=%B --all \
-  | grep -inE '\b([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}\b|/home/|/Users/|/tmp/'
-```
-
-Write the finding instead of the machine's name of it: *"Verified on the panel:
-ESP32-S3 rev 0.2, the new build boots"*, not *"Verified on the panel: ESP32-S3
-rev 0.2, MAC 02:…:01"*. For the address in a test fixture use a synthetic one
-that cannot belong to a board — spelled with letters, like `02:00:00:00:00:xx`,
-so the check above does not flag the check.
-
-### And: no rewriting of history
-
-A commit that exists is left as it is. That rules out `git commit --amend`,
-`git rebase`, `git filter-branch` and `--force`, for a typo in a message just as
-much as for a MAC address. It is not about the size of the change but about the
-copies: rewriting changes the SHA under every later commit, so the commit stops
-matching what other clones, the reflog and the hosting service already hold.
-
-So when something identifying turns up in a commit that already exists, the fix is
-a new commit — or, if the text is only in a message, nothing at all — and the
-finding is written down instead. The table below is that list.
-
-| Where | What | Why it stays |
-|---|---|---|
-| `tools/json_scan_test/test_json_scan.cpp` (`9fcffda`) | an inverter MAC as JSON test data, to prove that a MAC with colons is parsed | in `origin/master` |
-| `d869113` | a local path in the message | in `origin/master` |
-
-A new row goes here the moment a finding is accepted rather than fixed.
-
 ## Documentation
 
 | File | For whom |
