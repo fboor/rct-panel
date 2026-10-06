@@ -7,9 +7,9 @@
       "chipFamily": "ESP32-S3",
       "improv": false,
       "parts": [
-        { "path": "v1.0-rc1/esp32s3-4848s040-bootloader.bin", "offset": 0 },
-        { "path": "v1.0-rc1/esp32s3-4848s040-partitions.bin", "offset": 32768 },
-        { "path": "v1.0-rc1/esp32s3-4848s040-en.bin", "offset": 65536 }
+        { "path": "esp32s3-4848s040-bootloader.bin", "offset": 0 },
+        { "path": "esp32s3-4848s040-partitions.bin", "offset": 32768 },
+        { "path": "esp32s3-4848s040-en.bin", "offset": 65536 }
       ]
     }
   ]

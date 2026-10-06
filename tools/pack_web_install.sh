@@ -130,6 +130,12 @@ for dev in d["devices"]:
         # The manifest goes into the release directory beside the files it names, so
         # a release is one self-contained folder: six files, and the page needs only
         # the release name to find them.
+        #
+        # The paths inside are therefore bare file names. ESP Web Tools resolves a
+        # part against the manifest's own URL, not the page's - so a path that
+        # repeats the release folder is looked up one folder too deep and every part
+        # comes back 404. The page is one level up and does need the folder; the
+        # manifest is inside it and does not.
         ziel = "%s/manifest-%s-%s.json" % (release_dir, dev["id"], sprache)
         # Bootloader at 0x0, not 0x1000. The ESP Web Tools documentation writes 4096
         # and that example is for the ESP32; the S3 has its bootloader at the very
@@ -152,9 +158,9 @@ for dev in d["devices"]:
       "chipFamily": "%(chip)s",
       "improv": false,
       "parts": [
-        { "path": "%(release)s/%(board)s-bootloader.bin", "offset": 0 },
-        { "path": "%(release)s/%(board)s-partitions.bin", "offset": 32768 },
-        { "path": "%(release)s/%(board)s-%(lang)s.bin", "offset": 65536 }
+        { "path": "%(board)s-bootloader.bin", "offset": 0 },
+        { "path": "%(board)s-partitions.bin", "offset": 32768 },
+        { "path": "%(board)s-%(lang)s.bin", "offset": 65536 }
       ]
     }
   ]
@@ -240,6 +246,35 @@ echo "=== 3/3 Manifeste geschrieben ==="
 for m in $MANIFESTS; do
   echo "  $m"
 done
+
+# Every path a manifest names has to exist in the folder the manifest itself sits in.
+# This is the check the layout of this release needed and did not have: the parts are
+# resolved against the manifest's URL, so a path carrying the release folder in front
+# looks one folder too deep and every part comes back 404. That is not visible from
+# the output above - the files are there, they are just not where the flasher looks.
+python3 - "$OUT/$RELEASE" "$RELEASE" <<'PY3'
+import json, os, sys
+ordner, release = sys.argv[1], sys.argv[2]
+fehlend = []
+for name in sorted(os.listdir(ordner)):
+    if not name.startswith("manifest-"):
+        continue
+    with open(os.path.join(ordner, name)) as fh:
+        m = json.load(fh)
+    for build in m["builds"]:
+        for p in build["parts"]:
+            pfad = os.path.join(ordner, p["path"])
+            if not os.path.isfile(pfad):
+                fehlend.append("%s -> %s" % (name, p["path"]))
+if fehlend:
+    sys.exit("  Teile fehlen, die die Manifeste nennen:\n" +
+             "\n".join("    " + f for f in fehlend) +
+             "\n  Geprueft wurde jeder Pfad gegen den Ordner des Manifests (%s),"
+             "\n  denn so loest ESP Web Tools ihn auf - nicht gegen die Seite."
+             % release)
+print("  alle Teilepfade aller %d Manifeste aufgeloest" %
+      len([n for n in os.listdir(ordner) if n.startswith("manifest-")]))
+PY3
 
 echo
 echo "--- Abgelegt ---"
