@@ -31,7 +31,6 @@ OFFSET=${OFFSET:-0x10000}
 BACKUP=${BACKUP:-/tmp/rct-panel-backup.bin}
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BIN="$ROOT/.pio/build/$ENV/firmware.bin"
-ELF="$ROOT/.pio/build/$ENV/firmware.elf"
 
 ESP=${ESP:-$HOME/.platformio/packages/tool-esptoolpy/esptool.py}
 if [ ! -f "$ESP" ]; then
@@ -72,14 +71,24 @@ if [ -f "$BACKUP" ]; then
 fi
 # read_flash braucht die Groesse; die des Images ist die des alten Standes
 # ebenfalls, solange niemand etwas anderes gebaut hat.
-"$ESP" --chip "$CHIP" --port "$PORT" read_flash "$OFFSET" "$BACKUP" \
-        $(wc -c < "$BIN")
+#
+# Reihenfolge: Adresse, Groesse, Datei. Sie stand hier zwei Argumente andersherum,
+# was esptool 2.x mitgeschluckt hat und 4.x mit einem argparse-Fehler abweist - und
+# weil `set -e` gesetzt ist, brach der Flash danach ab. Die Sicherung war also nie
+# kaputt, sie hat nur nie jemanden erreicht, seit esptool 4 auf dieser Maschine liegt.
+"$ESP" --chip "$CHIP" --port "$PORT" read_flash "$OFFSET" \
+        $(wc -c < "$BIN") "$BACKUP"
 echo "Sicherung: $BACKUP"
 echo
 
 echo "=== 3/3 Schreiben ==="
+# --verify, and no ELF. esptool 4.x reads every second argument as an address, so
+# handing it the .elf after the .bin aborted the write with "Address ... must be a
+# number" - the flash never happened, and `set -e` turned that into a silent no-op
+# rather than a failed flash. The ELF was never a thing write_flash accepts; what it
+# was reaching for is --verify, which actually checks what landed.
 "$ESP" --chip "$CHIP" --port "$PORT" --baud 921600 \
-        write_flash "$OFFSET" "$BIN" "$ELF"
+        write_flash --verify "$OFFSET" "$BIN"
 echo
 
 echo "--- Boot verfolgen (20 s) ---"
