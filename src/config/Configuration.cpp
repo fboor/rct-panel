@@ -19,6 +19,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "Configuration.h"
 
+#include "../device/Device.h"
 #include "../output/Relay.h"
 #include "../web/WebServer.h"
 #include <Preferences.h>
@@ -288,6 +289,29 @@ static void finishWifiUp() {
     }
     relaySetThreshold(atoi(p_relay_w.getValue()));
     shouldSaveConfig = false;
+
+    // Hand the new address to the driver. Said out loud here because nothing else
+    // does, and the symptom is two sources quietly disagreeing.
+    //
+    // main.cpp begins the device ONCE, on the first loop() iteration - which is
+    // before the portal is even offered, so on a fresh panel the driver was built
+    // from an empty host and has held that ever since. The Info page shows the live
+    // global, so it displayed the address correctly the whole time while the driver
+    // kept trying to reach nothing, visible in the log as
+    //
+    //   hostByName(): DNS Failed for
+    //   RCT: connecting to :8899
+    //
+    // with nothing after the "for". Re-begunning the driver is what the web
+    // interface's device switch does, and it is the only thing that carries the
+    // value from the saved setting into the driver.
+    {
+      DeviceConfig cfg;
+      deviceConfig(cfg);
+      deviceBegin(cfg);
+      Serial.printf("Portal: Geraet neu verbunden: %s %s:%s\n", cfg.type, cfg.host,
+                    cfg.port);
+    }
   } else {
     // Background reconnect: the parameter buffers still hold the compile-time
     // defaults; do NOT let them overwrite the values readConfig() loaded from
