@@ -36,7 +36,7 @@ mkdir -p "$build/lvgl"
 # PANEL_SIM: the firmware's own uiLayout() steps aside and the simulator
 # supplies the profile it was asked for. That is the plan's compile-time choice
 # working, not a special case.
-cflags="-O2 -DPANEL_SIM -DLV_CONF_INCLUDE_SIMPLE -I$here/lvconf -I$repo/include -I$repo/src -I$lvgl -I$here -I$here/stubs"
+cflags="-O2 -DPANEL_SIM -DLV_CONF_INCLUDE_SIMPLE -DRCT_BOARD_GUITION_4848S040 -I$here/lvconf -I$repo/include -I$repo/src -I$lvgl -I$here -I$here/stubs"
 ldflags="-lSDL2 -lz -lm -lpthread"
 
 # The language is a build flag, so run.sh scans for it and builds accordingly -

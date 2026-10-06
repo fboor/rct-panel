@@ -16,6 +16,6 @@
 # name.
 set -e
 cd "$(dirname "$0")/../.."
-g++ -std=c++17 -Wall -Itools/relay_test/stubs -Isrc \
+g++ -std=c++17 -Wall -DRCT_BOARD_GUITION_4848S040 -Itools/relay_test/stubs -Isrc \
     -o /tmp/relay_test tools/relay_test/test_relay.cpp src/i18n/LangDe.cpp
 exec /tmp/relay_test

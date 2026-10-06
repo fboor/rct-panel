@@ -42,14 +42,13 @@
 #include <freertos/task.h>
 
 #include "storage/RowQueue.h"
+#include "board/BoardPins.h"
 
 namespace {
 
-// TF slot pins (see docs/sd-history.md section 1).
-constexpr uint8_t kSpiSck = 48;
-constexpr uint8_t kSpiMiso = 41;
-constexpr uint8_t kSpiMosi = 47;
-constexpr uint8_t kSpiSs = 42;
+// TF slot pins come from the board's pin map (src/board/BoardPins.h). They were
+// these four constants right here until a second board made it necessary to know
+// which board a number belongs to. See docs/sd-history.md section 1.
 
 SPIClass s_spi(FSPI);
 volatile bool s_mounted = false; // read by the GUI thread via sdMounted()
@@ -315,8 +314,8 @@ bool probeMount(float *kbsOut) {
 // One mount attempt at a given clock: bus, mount, /hist, self-test. Leaves the
 // card unmounted on any failure so the next attempt starts from a clean bus.
 static bool tryMount(uint32_t hz, float *kbsOut, bool *probeOkOut) {
-  s_spi.begin(kSpiSck, kSpiMiso, kSpiMosi, kSpiSs);
-  if (!SD.begin(kSpiSs, s_spi, hz, "/sd", 4)) {
+  s_spi.begin(PIN_SD_SCK, PIN_SD_MISO, PIN_SD_MOSI, PIN_SD_CS);
+  if (!SD.begin(PIN_SD_CS, s_spi, hz, "/sd", 4)) {
     SD.end(); // leave the bus clean for the next attempt
     return false;
   }

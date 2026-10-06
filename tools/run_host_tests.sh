@@ -37,6 +37,12 @@
 #                  the fixed layout it had before - a refactoring is only worth
 #                  doing if the common case does not move
 #   ring_json_test  the ring JSON the Verlauf page reads (its commas)
+#   board_test      every board's own pin map and layout, one after the other:
+#                  routable pins, no pin in two roles, sixteen RGB data lines for
+#                  RGB565, the refresh rate the porches add up to, and a geometry
+#                  that fits the resolution the board claims. A board nobody builds
+#                  is a board that rots unnoticed, which is the failure a second
+#                  board brings
 #   chart_color_test the six colours of the history chart: they are shared by the
 #                  panel and the web page, and they were once 3/255 apart for a
 #                  deuteranope - the same colour. Two lines that collide in a
@@ -84,7 +90,7 @@ set -e
 cd "$(dirname "$0")/.."
 
 fail=0
-for t in device_test relay_test sd_queue_test numfmt_test i18n_test backlight_test badge_test crc_test json_test theme_test flow_layout_test json_scan_test ring_json_test chart_color_test oig_field_test jstest; do
+for t in device_test relay_test sd_queue_test numfmt_test i18n_test backlight_test badge_test crc_test json_test theme_test flow_layout_test json_scan_test ring_json_test chart_color_test oig_field_test board_test jstest; do
   printf '\n=== %s ===\n' "$t"
   if [ "$t" = "jstest" ]; then
     if command -v node >/dev/null 2>&1; then

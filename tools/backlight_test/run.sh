@@ -12,6 +12,6 @@
 # switches itself off, and that a refused LEDC setup leaves the panel lit.
 set -e
 cd "$(dirname "$0")/../.."
-g++ -std=c++17 -Wall -Itools/backlight_test/stubs -Isrc \
+g++ -std=c++17 -Wall -DRCT_BOARD_GUITION_4848S040 -Itools/backlight_test/stubs -Isrc \
     -o /tmp/backlight_test tools/backlight_test/test_backlight.cpp
 exec /tmp/backlight_test

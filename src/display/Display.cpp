@@ -23,7 +23,7 @@
 #include <math.h>
 
 #include "Backlight.h"
-#include "DisplayPins.h"
+#include "board/BoardPins.h"
 
 #define LCD_H_RES 480
 #define LCD_V_RES 480

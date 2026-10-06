@@ -49,7 +49,7 @@
 // SPDX-License-Identifier: MIT
 #include "Backlight.h"
 
-#include "DisplayPins.h"
+#include "board/BoardPins.h"
 
 // --- Hardware ---------------------------------------------------------------
 

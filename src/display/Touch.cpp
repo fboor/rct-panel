@@ -12,7 +12,7 @@
 #include <lvgl.h>
 
 #include "Backlight.h"
-#include "DisplayPins.h"
+#include "board/BoardPins.h"
 
 static uint8_t s_addr = 0;
 static int16_t s_x = 0;
