@@ -97,6 +97,7 @@ c++ $cflags $lang \
     "$here/sim_data.cpp" \
     "$here/sim_device.cpp" \
     "$here/sim_switch.cpp" \
+    "$here/sim_config.cpp" \
     "$repo/src/device/Device.cpp" \
     "$repo/src/device/DeviceFactory.cpp" \
     "$repo/src/rct/RctDriver.cpp" \

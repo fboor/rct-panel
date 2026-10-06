@@ -4,3 +4,4 @@ examples/
 .vscode/
 __pycache__/
 tools/panel_sim/build/
+tools/panel_sim/data/simulator.json

@@ -55,6 +55,23 @@ Voraussetzungen: SDL2, zlib, C/C++-Compiler, LVGL unter `.pio/libdeps/esp32-s3/l
 
 Erster Lauf: 419 LVGL-Dateien, danach Sekunden. `build/` ist nicht im Baum.
 
+## Einstellungen merken
+
+`data/simulator.json` — **nicht im Repository** (`.gitignore`), weil dort eine
+Geräteadresse steht und die nicht in die Historie gehört.
+
+| Ebene | Gewinnt |
+|---|---|
+| Kommandozeile | `--device`, `--host`, `--port`, `--data`, `--size` |
+| `data/simulator.json` | das zuletzt Gespeicherte |
+| Vorgabe | **Simulation**, `data/rct_mock.json`, 480x480 |
+
+Ohne die Datei startet der Simulator also **emuliert**, nie gegen ein fremdes Gerät.
+Ein Entwickler, der immer mit einem echten Wechselrichter testet, stellt ihn einmal
+im Browser ein — und der nächste Start kommt so hoch.
+
+Datei löschen = zurück auf der Vorgabe.
+
 ## Was gefakt ist
 
 | Ding | Antwort |

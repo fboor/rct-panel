@@ -34,6 +34,7 @@
 // The same accessor the GUI uses, so the tool and the firmware cannot disagree
 // about which board is being drawn.
 static inline const UiLayout &ui() { return uiLayout(); }
+#include "sim_config.h"
 #include "sim_data.h"
 
 namespace {
@@ -41,16 +42,23 @@ namespace {
 struct Optionen {
   const char *shotPath = nullptr;
   const char *dataPath = "data/rct_mock.json";
+  bool dataPathGiven = false;   // --data was typed, so the file may not override it
+  bool sizeGiven = false;
   int breite = 480;
   int hoehe = 480;
   int speed = 1;
-  // Which device the simulator talks to. SIM is the default because that is what a
-  // build machine has; RCT and OIG reach a real device over the network, through the
-  // shipped TcpTransport and the shipped drivers, so "real data" means the code that
-  // talks to an inverter and not a replay of one.
-  const char *deviceType = "SIM";
-  const char *deviceHost = "";
-  const char *devicePort = "";
+  // Which device the simulator talks to. The DEFAULT is the mock, because that is
+  // what a build machine has; RCT and OIG reach a real device over the network,
+  // through the shipped TcpTransport and the shipped drivers, so "real data" means
+  // the code that talks to an inverter and not a replay of one.
+  //
+  // nullptr means "not given on the command line", and that distinction is the whole
+  // of the precedence: an absent flag must not overwrite what the saved file said,
+  // or every run would reset the data file and the board size. The three levels and
+  // the order between them are in main().
+  const char *deviceType = nullptr;
+  const char *deviceHost = nullptr;
+  const char *devicePort = nullptr;
   // How long to let the panel's own clock run before the frame is taken.
   //
   // The GUI holds the Wi-Fi overlay up for a boot test window of 10 s
@@ -247,12 +255,38 @@ void klicke(int x, int y) {
 
 int main(int argc, char **argv) {
   Optionen opt;
+
+  // Three levels, and the order is the only sensible one:
+  //   1. the command line     what is typed now
+  //   2. data/simulator.json  what was saved last - the developer's own device
+  //   3. the default          SIM and the mock file
+  //
+  // Without the file the answer is the MOCK, so a fresh checkout starts emulated and
+  // is not pointed at somebody's inverter by accident. The file is in .gitignore:
+  // it holds a device address, which is the same kind of thing the commit-message
+  // rule keeps out of the history.
+  SimConfig gespeichert;
+  if (simConfigLoad(&gespeichert)) {
+    printf("Einstellungen aus %s: Typ %s, %s:%s\n", simConfigPfad().c_str(),
+           gespeichert.deviceType.c_str(),
+           gespeichert.deviceHost.empty() ? "-" : gespeichert.deviceHost.c_str(),
+           gespeichert.devicePort.c_str());
+  }
+  if (opt.deviceType == nullptr) opt.deviceType = gespeichert.deviceType.c_str();
+  if (opt.deviceHost == nullptr) opt.deviceHost = gespeichert.deviceHost.c_str();
+  if (opt.devicePort == nullptr) opt.devicePort = gespeichert.devicePort.c_str();
+  if (!opt.dataPathGiven) opt.dataPath = gespeichert.dataFile.c_str();
+  if (!opt.sizeGiven) {
+    sscanf(gespeichert.size.c_str(), "%dx%d", &opt.breite, &opt.hoehe);
+  }
+
   for (int i = 1; i < argc; i++) {
     const std::string a = argv[i];
     if ((a == "--shot") && i + 1 < argc) {
       opt.shotPath = argv[++i];
     } else if ((a == "--data") && i + 1 < argc) {
       opt.dataPath = argv[++i];
+      opt.dataPathGiven = true;
     } else if (a == "--lang") {
       // Accepted and ignored: the language is chosen when the program is compiled,
       // not when it is started. run.sh reads the same flag and adds -DRCT_LANG_EN.
@@ -270,6 +304,7 @@ int main(int argc, char **argv) {
     } else if (a == "--after") {
       opt.nachSekunden = (i + 1 < argc) ? atoi(argv[++i]) : 11;
     } else if ((a == "--size") && i + 1 < argc) {
+      opt.sizeGiven = true;
       if (sscanf(argv[++i], "%dx%d", &opt.breite, &opt.hoehe) != 2) {
         fprintf(stderr, "--size erwartet 800x480\n");
         return 2;
@@ -288,6 +323,27 @@ int main(int argc, char **argv) {
   // it wants for these dimensions and says so plainly if there is none - drawing at
   // 480 x 480 inside an 800 x 480 window would look like a working second
   // resolution and be nothing of the kind.
+  // Whatever is running now is what a save would write out, so the file and the
+  // running program cannot disagree.
+  SimConfig aktuell;
+  aktuell.deviceType = opt.deviceType;
+  aktuell.deviceHost = opt.deviceHost;
+  aktuell.devicePort = opt.devicePort;
+  aktuell.dataFile = opt.dataPath;
+  // Into a local buffer and then assigned. Writing through std::string::data()
+  // with the string's own size as the limit works only once the string has a size:
+  // a default-constructed one has room for the terminating NUL and nothing else,
+  // so "480x480" came out as "480x48" - silently, and then read back next time.
+  {
+    char puffer[16];
+    snprintf(puffer, sizeof(puffer), "%dx%d", opt.breite, opt.hoehe);
+    aktuell.size = puffer;
+  }
+  {
+    extern void simSetConfig(const SimConfig &cfg);
+    simSetConfig(aktuell);
+  }
+
   const UiLayout *board = uiLayoutForSize(opt.breite, opt.hoehe);
   if (board == nullptr) {
     fprintf(stderr, "Kein Boardprofil fuer %d x %d in diesem Baum.\n", opt.breite,

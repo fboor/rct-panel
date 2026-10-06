@@ -19,8 +19,18 @@
 #include "../../src/device/Device.h"
 #include "../../src/web/WebServer.h"
 
+#include "sim_config.h"
+
 // Defined in src/web/WebServer.cpp under PANEL_SIM; the firmware has no such
 // function and neither call site of it exists there.
+// The settings as they stand, so that a save can write them out. Set once at
+// startup from what the command line and the saved file said; the settings page
+// reads the device fields out of the globals the firmware keeps them in, so there
+// is one truth and not two.
+static SimConfig g_aktuell;
+
+void simSetConfig(const SimConfig &cfg) { g_aktuell = cfg; }
+
 void webDeviceSwitch() {
   DeviceConfig cfg;
   snprintf(cfg.type, sizeof(cfg.type), "%s", device_type);
@@ -38,4 +48,12 @@ void webDeviceSwitch() {
   // a leak, it is one object.
   deviceBegin(cfg);
   printf("Geraet: jetzt %s\n", deviceTypeName());
+
+  // Remember it, so the next start comes up the same way. The developer's own device
+  // and board size are not retyped every morning - that is the whole reason this
+  // exists, and the reason the file is in .gitignore.
+  g_aktuell.deviceType = cfg.type;
+  g_aktuell.deviceHost = cfg.host;
+  g_aktuell.devicePort = cfg.port;
+  simConfigSave(g_aktuell);
 }
