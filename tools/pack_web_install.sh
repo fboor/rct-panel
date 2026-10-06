@@ -3,15 +3,25 @@
 #
 # WHAT THIS IS FOR
 #
-# A blank panel has no bootloader, no partition table and no otadata blob, so all
-# four parts have to arrive or nothing boots. tools/flash_usb.sh writes
-# firmware.bin alone and is right to: it updates a panel that is already running,
-# where the running bootloader hands over to the new app. On an empty device there
-# is no bootloader to hand over - which is why this stages four parts and not one,
-# and why the ESP Web Tools documentation's merged.bin is not used. A merged file
-# exists only to work around esptool patching flash parameters at run time; it needs
-# esptool 4.x, and the esptool on a desktop PATH here is 2.8, which has neither
-# merge_bin nor the ESP32-S3. The parts are already separate build output.
+# A blank panel has no bootloader and no partition table, so both have to arrive or
+# nothing boots - three parts, not one. tools/flash_usb.sh writes firmware.bin alone
+# and is right to: it updates a panel that is already running, where the running
+# bootloader hands over to the new app. On an empty device there is no bootloader to
+# hand over, which is why this stages more than one.
+#
+# WHY THERE IS NO boot_app0.bin HERE, THOUGH THE DOCUMENTATION LISTS ONE
+#
+# The ESP Web Tools example writes boot_app0.bin at 0xE000. For this layout that file
+# is not an otadata blob: it starts with 0x01, carries neither the OTA magic 0x5F nor
+# a 0x9F entry, and has twelve non-0xFF bytes out of 8192. It is written into the one
+# partition the bootloader reads FIRST to decide where to boot, and it is the only
+# one of the parts that is not a valid image.
+#
+# It is not needed. Without a factory partition - and this table has none - ESP-IDF
+# boots the first OTA slot, which is app0 at 0x10000. Our own flash_usb.sh writes
+# nothing but the app at that offset and the panel boots, which is the same proof from
+# the other side. So the part is dropped rather than translated into a blob we would
+# have to invent.
 #
 # ONE LIST, TWO READERS
 #
@@ -43,9 +53,7 @@ LIST="$OUT/devices.json"
 PIO=${PIO:-pio}
 # From PlatformIO, not from $PATH: see the note about esptool 2.8 above.
 ESPROOT=${ESPROOT:-$HOME/.platformio/packages}
-BOOT_APP0="$ESPROOT/framework-arduinoespressif32/tools/partitions/boot_app0.bin"
-
-for f in "$HEADER" "$LIST" "$BOOT_APP0"; do
+for f in "$HEADER" "$LIST"; do
   [ -f "$f" ] || { echo "Fehlt: $f"; exit 1; }
 done
 
@@ -113,7 +121,6 @@ for dev in d["devices"]:
       "parts": [
         { "path": "bootloader.bin", "offset": 4096 },
         { "path": "partitions.bin", "offset": 32768 },
-        { "path": "boot_app0.bin", "offset": 57344 },
         { "path": "firmware-%s.bin", "offset": 65536 }
       ]
     }
@@ -150,8 +157,6 @@ for part in bootloader.bin partitions.bin; do
   cp "$src" "$OUT/$part"
   echo "  $part  ($FIRST_ENV)"
 done
-cp "$BOOT_APP0" "$OUT/boot_app0.bin"
-echo "  boot_app0.bin  (aus dem Framework, nicht aus dem Build)"
 
 for env in $ENVS; do
   case "$env" in
