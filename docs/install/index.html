@@ -6,17 +6,16 @@
 <title>Install the RCT Power Panel firmware</title>
 
 <!--
-  The installer page for a blank panel.
+  Installer page for a blank panel.
 
-  ESP Web Tools, and why it is a script tag and not a build step: it opens the
-  browser's Web Serial port, talks to the chip over USB UART and writes the parts
-  from the manifest. It needs the page to be served over HTTPS - that is a Web Serial
-  security requirement, not a preference of the tool.
+  ESP Web Tools opens the browser's Web Serial port and writes the parts named in
+  the manifest. It needs the page over HTTPS - a Web Serial security requirement.
+  localhost counts as secure, which is why this can be tried before it is published.
 
-  Two buttons, because the panel's language is baked into the firmware: there is no
-  switch on the device (src/i18n/Lang.h). Two manifests rather than one manifest with
-  a dropdown, so each choice is a plain link and the page works without any script
-  beyond the install button itself.
+  One list, two readers: devices.json says which devices exist and which build each
+  language comes from. This page fills the pickers from it; tools/pack_web_install.sh
+  reads it to know what to build. The version comes from include/FirmwareVersion.h at
+  pack time - nothing here carries a version of its own to fall out of date.
 -->
 <script
   type="module"
@@ -25,61 +24,45 @@
 
 <style>
   :root {
-    --fg: #e8eaed;
-    --muted: #9aa0a6;
-    --bg: #16181c;
-    --card: #1e2126;
-    --line: #2c3038;
-    --warn: #e8b23a;
+    --fg: #e8eaed; --muted: #9aa0a6; --bg: #16181c;
+    --card: #1e2126; --line: #2c3038; --warn: #e8b23a;
   }
   * { box-sizing: border-box; }
   body {
-    margin: 0;
-    padding: 2rem 1rem 4rem;
-    background: var(--bg);
-    color: var(--fg);
+    margin: 0; padding: 2rem 1rem 4rem;
+    background: var(--bg); color: var(--fg);
     font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
   }
-  main { max-width: 44rem; margin: 0 auto; }
+  main { max-width: 42rem; margin: 0 auto; }
   h1 { font-size: 1.7rem; margin: 0 0 .25rem; }
-  h2 { font-size: 1.1rem; margin: 2.5rem 0 .75rem; }
-  p { margin: .75rem 0; }
-  .sub { color: var(--muted); margin: 0 0 2rem; }
+  h2 { font-size: 1.05rem; margin: 2.25rem 0 .6rem; }
+  p { margin: .7rem 0; }
+  .sub { color: var(--muted); margin: 0; }
   .card {
-    background: var(--card);
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    padding: 1.25rem 1.5rem;
-    margin: 1rem 0;
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 8px; padding: 1.1rem 1.4rem; margin: 1rem 0;
   }
-  .warn {
-    border-color: var(--warn);
-    border-left-width: 4px;
-  }
+  .warn { border-color: var(--warn); border-left-width: 4px; }
   .warn strong { color: var(--warn); }
-  ol, ul { padding-left: 1.3rem; }
-  li { margin: .4rem 0; }
-  code {
-    background: #262a31;
-    padding: .1rem .35rem;
-    border-radius: 4px;
-    font-size: .92em;
+  ol, ul { padding-left: 1.25rem; }
+  li { margin: .35rem 0; }
+  code { background: #262a31; padding: .1rem .35rem; border-radius: 4px; font-size: .92em; }
+  a { color: #8ab4f8; }
+  label { display: block; font-size: .85rem; color: var(--muted); margin: 0 0 .3rem; }
+  select {
+    width: 100%; padding: .55rem .6rem; font: inherit; color: var(--fg);
+    background: #262a31; border: 1px solid var(--line); border-radius: 6px;
   }
-  .pick {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 1rem;
-    align-items: center;
-    justify-content: space-between;
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.25rem 0; }
+  @media (max-width: 30rem) { .row { grid-template-columns: 1fr; } }
+  .version {
+    display: inline-block; margin-top: .4rem; padding: .15rem .55rem;
+    border: 1px solid var(--line); border-radius: 999px;
+    font-size: .8rem; color: var(--muted);
   }
-  .pick p { margin: 0; }
-  .pick .lang { font-weight: 600; }
   footer {
-    margin-top: 3rem;
-    padding-top: 1.25rem;
-    border-top: 1px solid var(--line);
-    color: var(--muted);
-    font-size: .875rem;
+    margin-top: 3rem; padding-top: 1.25rem;
+    border-top: 1px solid var(--line); color: var(--muted); font-size: .875rem;
   }
 </style>
 </head>
@@ -87,84 +70,55 @@
 <main>
 
 <h1>Install the RCT Power Panel firmware</h1>
-<p class="sub">
-  Flashing a blank <b>Guition ESP32-S3 4848S040</b> over USB, from the browser.
-  No software to install on your computer.
-</p>
+<p class="sub">Flashing a blank panel over USB, from the browser.</p>
+
+<h2>Choose</h2>
+<div class="row">
+  <div>
+    <label for="geraet">Device</label>
+    <select id="geraet"></select>
+  </div>
+  <div>
+    <label for="sprache">Language</label>
+    <select id="sprache"></select>
+  </div>
+</div>
+
+<div class="card">
+  <esp-web-install-button id="knopf">
+    <button slot="activate">Install</button>
+    <span slot="unsupported">This browser cannot flash. Use Chrome, Edge or Firefox.</span>
+    <span slot="not-allowed">This page must be served over https://</span>
+  </esp-web-install-button>
+  <p class="version">Release <span id="version">&mdash;</span></p>
+</div>
 
 <div class="card warn">
   <p>
-    <strong>This erases everything on the panel.</strong> Wi-Fi credentials, the
-    24&nbsp;h history on the SD card and every setting are gone. Use it to install
-    onto a new or blank panel &mdash; not to update a panel that is already running.
-    An update goes through the panel's own update page, behind the maintenance code.
+    <strong>Everything on the panel is erased, including its configuration.</strong>
+    An already installed panel has its own updater &mdash; use that one.
   </p>
 </div>
 
-<h2>What you need</h2>
-<ul>
-  <li>Google Chrome, Microsoft Edge or Firefox &mdash; not Safari, not on an iPhone or iPad.</li>
-  <li>A USB cable to the panel, on the port that carries data.</li>
-  <li>The panel's USB port: it is the one behind the lower cover, next to the SD card.</li>
-</ul>
-
-<h2>Choose the language</h2>
-<p>
-  The panel's language is fixed in the firmware. Pick it here &mdash; you cannot
-  change it later without flashing again.
-</p>
-
-<div class="card pick">
-  <p><span class="lang">German</span><br><span class="sub">Deutsch</span></p>
-  <esp-web-install-button
-    manifest="manifest-de.json">
-    <button slot="activate">Install (German)</button>
-    <span slot="unsupported">This browser cannot flash. Use Chrome, Edge or Firefox.</span>
-    <span slot="not-allowed">This page must be served over https://</span>
-  </esp-web-install-button>
-</div>
-
-<div class="card pick">
-  <p><span class="lang">English</span><br><span class="sub">English</span></p>
-  <esp-web-install-button
-    manifest="manifest-en.json">
-    <button slot="activate">Install (English)</button>
-    <span slot="unsupported">This browser cannot flash. Use Chrome, Edge or Firefox.</span>
-    <span slot="not-allowed">This page must be served over https://</span>
-  </esp-web-install-button>
-</div>
-
-<h2>After the flash</h2>
+<h2>Next steps</h2>
 <ol>
+  <li>The panel starts a Wi-Fi network called <b>RCT-Panel</b>, no password. Join it.</li>
+  <li>A configuration page opens. Enter the network and the inverter's address.</li>
   <li>
-    The panel starts its own Wi-Fi network, <b>RCT-Panel</b>, with no password.
-    Join it from your computer or phone.
-  </li>
-  <li>
-    A configuration page opens. Enter the network the panel should live in, and the
-    inverter's address. The panel then reboots and connects.
-  </li>
-  <li>
-    From here the panel is reached at <code>http://192.168.1.228</code>, or at
-    <code>http://rct-panel.local</code> from a browser with mDNS.
+    The panel joins your network and shows the address it got on its own screen —
+    Service page, top left. Open it there, or at
+    <code>http://rct-panel.local</code> if your browser resolves such names.
   </li>
 </ol>
 
-<h2>If something goes wrong</h2>
+<h2>Troubleshooting</h2>
 <ul>
   <li>
-    <b>The browser does not offer the port.</b> A dialog asking which port to use has
-    to appear. If it does not, the panel is not enumerating: try another USB cable,
-    another port, and make sure the cover is off.
+    A dialog asking which port to use has to appear. If it does not, the panel is not
+    enumerating: another USB cable, another port, cover off.
   </li>
-  <li>
-    <b>The flash stops halfway.</b> Run it again. Everything is erased first, so a
-    half-finished attempt leaves nothing to recover.
-  </li>
-  <li>
-    <b>Nothing happens after the flash.</b> Press the reset button once. The panel
-    boots the firmware it was given.
-  </li>
+  <li>The flash stopped halfway &mdash; run it again. Everything is erased first anyway.</li>
+  <li>Nothing after the flash &mdash; press reset once.</li>
 </ul>
 
 <footer>
@@ -173,12 +127,60 @@
     endorsement by or support from RCT Power GmbH.
   </p>
   <p>
-    Flashing by
-    <a href="https://esphome.github.io/esp-web-tools/" style="color:inherit">ESP Web Tools</a>.
-    Firmware and source: <a href="https://github.com/fboor/rct-panel" style="color:inherit">github.com/fboor/rct-panel</a>.
+    Flashing by <a href="https://esphome.github.io/esp-web-tools/">ESP Web Tools</a> &middot;
+    source: <a href="https://github.com/fboor/rct-panel">github.com/fboor/rct-panel</a>
   </p>
 </footer>
 
 </main>
+
+<script type="module">
+// The pickers and the manifest come from one place, devices.json. The page holds no
+// list of its own, so a device added there shows up here without an edit - and a
+// device that exists in neither does not appear at all.
+const geraet = document.getElementById('geraet');
+const sprache = document.getElementById('sprache');
+const knopf = document.getElementById('knopf');
+const version = document.getElementById('version');
+
+const antwort = await fetch('devices.json');
+const liste = await antwort.json();
+
+// German before English, because the panel is German first but the page is English:
+// the order in the list decides which is preselected, and it is the reader's list.
+for (const s of liste.languages) {
+  const o = document.createElement('option');
+  o.value = s.id;
+  o.textContent = s.name;
+  sprache.append(o);
+}
+
+for (const d of liste.devices) {
+  const o = document.createElement('option');
+  o.value = d.id;
+  o.textContent = d.name;
+  geraet.append(o);
+}
+
+function aktualisieren() {
+  const d = liste.devices.find((x) => x.id === geraet.value);
+  knopf.manifest = `manifest-${d.id}-${sprache.value}.json`;
+}
+
+// The manifest is the only thing that changes; the button is created by ESP Web
+// Tools and is not rebuilt, which would throw away whatever it has already shown.
+geraet.addEventListener('change', aktualisieren);
+sprache.addEventListener('change', aktualisieren);
+
+// ESP Web Tools reads the manifest when it opens, so it has to be there before the
+// first click. Waiting for the custom element avoids a button that is briefly dead.
+await customElements.whenDefined('esp-web-install-button');
+aktualisieren();
+
+// The release number, from the manifest that was just selected. Not a literal here:
+// a version on the page is a second version to keep in step.
+const m = await (await fetch(knopf.manifest)).json();
+version.textContent = m.version;
+</script>
 </body>
 </html>

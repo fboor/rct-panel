@@ -1,0 +1,18 @@
+{
+  "_comment": "The target devices of the browser installer, and the only place that lists them. Read by tools/pack_web_install.sh to know what to build and stage, and by docs/install/index.html to fill the device picker. One list, two readers - adding a device is an edit here and nowhere else. A device here is the BOARD, not a product: two products on one board would share an entry and differ only in their build environment. The emulator (PANEL_SIM) is deliberately absent - it is a build machine's tool, not something anyone installs.",
+  "devices": [
+    {
+      "id": "esp32s3-4848s040",
+      "name": "Guition ESP32-S3 4848S040",
+      "chipFamily": "ESP32-S3",
+      "envs": {
+        "de": "esp32-s3",
+        "en": "esp32-s3-en"
+      }
+    }
+  ],
+  "languages": [
+    { "id": "de", "name": "Deutsch" },
+    { "id": "en", "name": "English" }
+  ]
+}
