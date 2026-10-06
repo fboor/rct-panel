@@ -17,6 +17,12 @@
 
 #include "../oig/OigDriver.h"
 #include "RctDriver.h"
+#ifdef PANEL_SIM
+// Only in a simulator build. The implementation is in tools/panel_sim/ and is not in
+// a firmware build's file list, so enabling this on a panel gives one undefined
+// symbol rather than a driver that invents numbers.
+#include "SimDriver.h"
+#endif
 
 DeviceDriver *makeDriver(const DeviceConfig &cfg) {
   if (strcmp(cfg.type, "RCT") == 0) {
@@ -25,6 +31,11 @@ DeviceDriver *makeDriver(const DeviceConfig &cfg) {
   if (strcmp(cfg.type, "OIG") == 0) {
     return new OigDriver();
   }
+#ifdef PANEL_SIM
+  if (strcmp(cfg.type, "SIM") == 0) {
+    return makeSimDriver();
+  }
+#endif
   return nullptr;
 }
 
@@ -43,5 +54,10 @@ const char *deviceDefaultPort(const char *type) {
   if (strcmp(type, "OIG") == 0) {
     return "80";
   }
+#ifdef PANEL_SIM
+  if (strcmp(type, "SIM") == 0) {
+    return "0";
+  }
+#endif
   return "";
 }

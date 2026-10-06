@@ -9,9 +9,19 @@
 #ifndef RCT_PANEL_SIM_WIFI_H
 #define RCT_PANEL_SIM_WIFI_H
 
+#include <errno.h>
+#include <fcntl.h>
+#include <netdb.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <unistd.h>
+
 #include "Arduino.h"
 
 enum WiFiMode_t { WIFI_OFF = 0, WIFI_STA = 1, WIFI_AP = 2, WIFI_AP_STA = 3 };
+enum wl_status_t { WL_IDLE_STATUS = 0, WL_NO_SSID_AVAIL, WL_CONNECTED,
+                   WL_CONNECT_FAILED, WL_DISCONNECTED };
 
 struct WiFiClass {
   void begin(const char * = nullptr) {}
@@ -24,9 +34,134 @@ struct WiFiClass {
   IPAddress softAPIP() { return IPAddress(); }
   IPAddress gatewayIP() { return IPAddress(); }
   IPAddress dnsIP() { return IPAddress(); }
+  // The network name the settings page shows. Named for what it is.
+  const char *SSID() const { return "simulator"; }
   int32_t RSSI() { return -52; }
+  // The RCT driver asks for the link's state. Here the link is always up, because a
+  // driver that is talking to something has a link - and the simulator's own SIM
+  // driver never asks.
+  wl_status_t status() { return WL_CONNECTED; }
 };
 
 extern WiFiClass WiFi;
+
+// A TCP client over a POSIX socket.
+//
+// This one is not a stub in the usual sense. The whole point of running the real
+// device layer here is that --device RCT reaches a REAL inverter over the network,
+// through the shipped TcpTransport and the shipped RctDriver, so the code that
+// talks to an inverter is the code the panel runs and not a re-implementation of it.
+class WiFiClient {
+ public:
+  WiFiClient() : m_fd(-1) {}
+  ~WiFiClient() { stop(); }
+
+  bool connect(const char *host, uint16_t port, uint32_t timeoutMs) {
+    stop();
+    // Resolve first: getaddrinfo carries the whole IPv6 story, and the panel only
+    // ever sees an IPv4 address anyway.
+    struct addrinfo hints = {};
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    struct addrinfo *res = nullptr;
+    char dienst[8];
+    snprintf(dienst, sizeof(dienst), "%u", (unsigned)port);
+    if (getaddrinfo(host, dienst, &hints, &res) != 0 || res == nullptr) {
+      return false;
+    }
+    m_fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    if (m_fd < 0) {
+      freeaddrinfo(res);
+      return false;
+    }
+    const bool ok = connectWithTimeout(res->ai_addr, timeoutMs) == 0;
+    freeaddrinfo(res);
+    if (!ok) {
+      stop();
+    }
+    return ok;
+  }
+
+  size_t write(const uint8_t *buf, size_t n) {
+    if (m_fd < 0) {
+      return 0;
+    }
+    const ssize_t k = ::send(m_fd, buf, n, MSG_NOSIGNAL);
+    return (k > 0) ? (size_t)k : 0;
+  }
+
+  // Read everything that has arrived, the way the panel's driver expects: the
+  // buffer is ours to drain, and nothing is buffered behind our back.
+  int available() {
+    if (m_fd < 0) {
+      return 0;
+    }
+    uint8_t tmp[512];
+    int gesamt = 0;
+    for (;;) {
+      const ssize_t k = recv(m_fd, tmp, sizeof(tmp), MSG_DONTWAIT);
+      if (k > 0) {
+        gesamt += (int)k;
+        if ((size_t)k < sizeof(tmp)) {
+          break;
+        }
+        continue;
+      }
+      break;
+    }
+    return gesamt;
+  }
+
+  int read() {
+    if (m_fd < 0) {
+      return -1;
+    }
+    uint8_t b;
+    const ssize_t k = recv(m_fd, &b, 1, MSG_DONTWAIT);
+    return (k == 1) ? (int)b : -1;
+  }
+
+  // Hand the socket of the request currently being served to a client object, so
+  // that a handler writing through its own WiFiClient reference writes the response.
+  // attach() does not own the socket: the server closes it when it is done.
+  void attach(int fd) { m_fd = fd; m_gehoert = false; }
+
+  bool connected() const { return m_fd >= 0; }
+  void stop() {
+    if (m_fd >= 0 && m_gehoert) {
+      ::close(m_fd);
+    }
+    m_fd = -1;
+    m_gehoert = true;
+  }
+
+ private:
+  int connectWithTimeout(const struct sockaddr *addr, uint32_t timeoutMs) {
+    int fl = fcntl(m_fd, F_GETFL, 0);
+    fcntl(m_fd, F_SETFL, fl | O_NONBLOCK);
+    int rc = ::connect(m_fd, addr, sizeof(struct sockaddr));
+    if (rc == 0) {
+      return 0;
+    }
+    if (errno != EINPROGRESS) {
+      return -1;
+    }
+    fd_set w;
+    FD_ZERO(&w);
+    FD_SET(m_fd, &w);
+    struct timeval tv = {(time_t)(timeoutMs / 1000),
+                         (suseconds_t)((timeoutMs % 1000) * 1000)};
+    if (select(m_fd + 1, nullptr, &w, nullptr, &tv) <= 0) {
+      return -1;
+    }
+    int fehler = 0;
+    socklen_t len = sizeof(fehler);
+    getsockopt(m_fd, SOL_SOCKET, SO_ERROR, &fehler, &len);
+    return fehler == 0 ? 0 : -1;
+  }
+
+  int m_fd;
+  bool m_gehoert = true;   // false while a server hands the socket over
+};
 
 #endif // RCT_PANEL_SIM_WIFI_H

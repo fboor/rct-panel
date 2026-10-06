@@ -103,7 +103,14 @@ const char *relayModeNameLong(RelayMode mode) {
 namespace {
 
 
+// The simulator answers on 8081 and not on 80, so that a panel and a build machine
+// on the same machine do not fight over the port - and so that the address in the
+// browser says which of the two is being looked at.
+#ifdef PANEL_SIM
+WebServer s_server(8081);
+#else
 WebServer s_server(80);
+#endif
 bool s_serverStarted = false;
 bool s_mdnsStarted = false;
 

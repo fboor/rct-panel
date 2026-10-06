@@ -95,6 +95,12 @@ c++ $cflags $lang \
     "$here/sim_main.cpp" \
     "$here/sim_stubs.cpp" \
     "$here/sim_data.cpp" \
+    "$here/sim_device.cpp" \
+    "$repo/src/device/Device.cpp" \
+    "$repo/src/device/DeviceFactory.cpp" \
+    "$repo/src/rct/RctDriver.cpp" \
+    "$repo/src/oig/OigDriver.cpp" \
+    "$repo/src/web/WebServer.cpp" \
     "$repo/src/gui/GuiApp.cpp" \
     "$here/sim_board.cpp" \
     "$repo/src/ui/UiLayout.cpp" \

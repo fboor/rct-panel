@@ -20,12 +20,17 @@
 #include "../../src/i18n/Lang.h"
 #include "../../src/output/Relay.h"
 #include "../../src/web/WebServer.h"
+#include "stubs/ESPmDNS.h"
+#include "stubs/Update.h"
+#include <stdbool.h>
 
 #include "stubs/WiFi.h"
 #include "../../src/device/Device.h"
+#include "../../src/device/SimDriver.h"
 #include "../../src/device/DeviceState.h"
 #include "../../src/ui/UiLayout.h"
 #include "../../src/storage/sdlog.h"
+#include "../../src/config/Configuration.h"
 
 namespace {
 
@@ -38,10 +43,14 @@ uint32_t g_pollAtMs = 0;
 uint32_t g_breite = 480, g_hoehe = 480;
 DeviceSemantics g_sem;
 void (*g_yieldHook)() = nullptr;
-char g_code[8] = {0};
 
 EspClass esp;
+EspClass ESP;
 WiFiClass WiFi;
+// The two library singletons the shipped WebServer.cpp calls. Both live in stubs/
+// and do what a build machine can honestly do: nothing, and refuse.
+MDNSClass MDNS;
+UpdateClass Update;
 
 }  // namespace
 
@@ -99,33 +108,13 @@ size_t SimSerial::printf(const char *fmt, ...) {
 }
 void SimSerial::flush() { fflush(stdout); }
 
-// --- the device --------------------------------------------------------------
+// --- the device ------------------------------------------------------------
 //
-// The seven functions Device.h declares, and no more. The state comes from the
-// JSON file; the semantics are the RCT's, because that is the plant the panel
-// talks to and Rules.h has one code path for it.
-
-const DeviceState &deviceState() { return simDataState(); }
-
-DeviceState &deviceStateMutable() { return simDataState(); }
-
-const DeviceSemantics &deviceSemantics() { return g_sem; }
-
-void deviceSetSemantics(const DeviceSemantics &sem) { g_sem = sem; }
-
-void deviceBegin(const DeviceConfig &) {}
-
-void devicePoll() { simDataPoll(); }
-
-const char *deviceTypeName() { return "RCT"; }
-
-void deviceSetYieldHook(void (*fn)()) { g_yieldHook = fn; }
-
-void deviceYieldHook() {
-  if (g_yieldHook != nullptr) {
-    g_yieldHook();
-  }
-}
+// NOT here any more. sim_stubs.cpp used to answer deviceState() itself, which
+// meant Rules.h, Device.cpp, DeviceFactory.cpp and both real drivers were never
+// executed on the build machine - a bug in any of them could only be found on a
+// panel. The shipped Device.cpp is linked instead, and the only file that is not
+// shipped is the driver in sim_device.cpp.
 
 // --- the display and the touch -----------------------------------------------
 //
@@ -175,6 +164,28 @@ void sdScreenshot(const uint16_t *, int, int) {}
 
 bool sdTakeShotDone() { return true; }
 
+// The web interface's half of the card: streaming a CSV or a screenshot out, and
+// listing a directory. There is no card, so a stream has no total and no chunks and
+// reports failure - which is what the firmware's own handler prints, and it is the
+// same answer a card that cannot be read produces. The pages around them still come
+// up, which is the point: looking at the four pages is worth doing without a card,
+// and pretending the downloads work would be worse than saying they do not.
+void sdRequestStream(const char *, uint32_t) {}
+uint32_t sdStreamTotal() { return 0; }
+int sdTakeStreamChunk(uint8_t *, uint32_t) { return -1; }
+bool sdStreamFailed() { return true; }
+void sdStopStream() {}
+
+void sdRequestListing(const char *, bool) {}
+int sdListingText(const char *, char *out, size_t cap) {
+  if (cap > 0) {
+    out[0] = '\0';
+  }
+  return 0;
+}
+
+uint32_t sdSpiHz() { return 4000000; }
+
 bool sdShotOk() { return false; }
 
 // No card means no history, and "no history yet" is what a panel with an empty
@@ -200,6 +211,11 @@ bool provisioningApOpen() { return true; }
 void restartProvisioning() {}
 
 // --- the settings ------------------------------------------------------------
+
+// The settings, in memory. saveConfig() has nowhere to save them to, and says so -
+// the settings page then behaves as it does on a panel whose flash is full, which is
+// a state worth being able to see.
+void saveConfig() { printf("Speichern im Simulator: keine NVS\n"); }
 
 char device_type[12] = "RCT";
 char device_host[41] = "192.168.1.83";
@@ -235,30 +251,17 @@ float relayTriggerValue() { return 0.0f; }
 bool relayStartTest() { return false; }
 bool relayTestRunning() { return false; }
 
-// --- the web interface -------------------------------------------------------
+// --- the web interface ------------------------------------------------------
 //
-// Not running, because there is no socket here. The maintenance code is still
-// there and still printed, so the settings pages can be looked at: on a panel that
-// code comes from the boot log, and here it comes from the same place, the terminal
-// the program was started in.
-
-bool webRunning() { return false; }
-
-const char *webCode(const char *newCode) {
-  if (newCode != nullptr && newCode[0] != '\0') {
-    snprintf(g_code, sizeof(g_code), "%s", newCode);
-  } else if (g_code[0] == '\0') {
-    snprintf(g_code, sizeof(g_code), "%04u", (unsigned)(1000 + (millis() % 9000)));
-  }
-  printf("Wartungscode: %s\n", g_code);
-  return g_code;
-}
-
-const char *webNewCode() { return g_code; }
+// NOT here any more: the shipped src/web/WebServer.cpp is linked, with a WebServer
+// class over POSIX sockets in stubs/WebServer.h. The maintenance code below is the
+// only thing left, because it is the one thing the web file asks the rest of the
+// firmware for.
 
 // --- the diagnostics ---------------------------------------------------------
 
 void diagPhase(const char *) {}
+void diagBeat() {}
 void diagStart() {}
 void diagMem(const char *) {}
 
@@ -280,10 +283,13 @@ void simSetClockMs(uint32_t ms) {
   g_letzteFortschreibung = Clock::now();
 }
 
+// The poll the firmware makes every 10 s, through the real device layer: the same
+// devicePoll(), the same driver interface, the same Rules.h.
 void simPoll() {
   const uint32_t jetzt = millis();
   if (jetzt - g_pollAtMs >= 10000u) {
     g_pollAtMs = jetzt;
-    simDataPoll();
+    simDriverSetNowMs(jetzt);
+    devicePoll();
   }
 }

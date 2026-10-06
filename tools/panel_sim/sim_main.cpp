@@ -22,7 +22,11 @@
 #include <zlib.h>
 #include <lvgl.h>
 
+#include "../../src/device/Device.h"
+#include "../../src/device/DeviceDriver.h"
+#include "../../src/device/DeviceConfig.h"
 #include "../../src/gui/GuiApp.h"
+#include "../../src/web/WebServer.h"
 #include "sim_stubs.h"
 #include "../../src/ui/UiLayout.h"
 
@@ -39,6 +43,13 @@ struct Optionen {
   int breite = 480;
   int hoehe = 480;
   int speed = 1;
+  // Which device the simulator talks to. SIM is the default because that is what a
+  // build machine has; RCT and OIG reach a real device over the network, through the
+  // shipped TcpTransport and the shipped drivers, so "real data" means the code that
+  // talks to an inverter and not a replay of one.
+  const char *deviceType = "SIM";
+  const char *deviceHost = "";
+  const char *devicePort = "";
   // How long to let the panel's own clock run before the frame is taken.
   //
   // The GUI holds the Wi-Fi overlay up for a boot test window of 10 s
@@ -245,6 +256,12 @@ int main(int argc, char **argv) {
       // Accepted and ignored: the language is chosen when the program is compiled,
       // not when it is started. run.sh reads the same flag and adds -DRCT_LANG_EN.
       if (i + 1 < argc) i++;   // the language name, whichever it is
+    } else if ((a == "--device") && i + 1 < argc) {
+      opt.deviceType = argv[++i];
+    } else if ((a == "--host") && i + 1 < argc) {
+      opt.deviceHost = argv[++i];
+    } else if ((a == "--port") && i + 1 < argc) {
+      opt.devicePort = argv[++i];
     } else if (a == "--page") {
       opt.seite = (i + 1 < argc) ? atoi(argv[++i]) : 1;
     } else if (a == "--speed") {
@@ -278,9 +295,20 @@ int main(int argc, char **argv) {
   }
   simSetBoard(*board);
 
-  if (!simDataLoad(opt.dataPath)) {
-    return 1;
+  // The settings, built the way main.cpp builds them from the stored configuration.
+  // Without this the device layer never starts and every page says "keine Daten" -
+  // which is what happened the first time this file was called at all.
+  DeviceConfig cfg;
+  snprintf(cfg.type, sizeof(cfg.type), "%s", opt.deviceType);
+  snprintf(cfg.host, sizeof(cfg.host), "%s", opt.deviceHost);
+  snprintf(cfg.port, sizeof(cfg.port), "%s", opt.devicePort);
+  if (cfg.port[0] == '\0') {
+    snprintf(cfg.port, sizeof(cfg.port), "%s", deviceDefaultPort(cfg.type));
   }
+  printf("Geraet: Typ %s, Adresse %s, Port %s\n", cfg.type,
+         cfg.host[0] ? cfg.host : "-", cfg.port);
+
+  simDataLoad(opt.dataPath);
   if (SDL_Init(SDL_INIT_VIDEO) != 0) {
     fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
     return 1;
@@ -304,6 +332,21 @@ int main(int argc, char **argv) {
   SDL_AddEventWatch(quitWatch, nullptr);
 
   simBegin(opt.breite, opt.hoehe, opt.speed);
+
+  // The yield hook the panel installs before the first poll, so that a driver which
+  // blocks keeps the display alive. The simulator's is the LVGL clock and the
+  // handler, which is the same thing the panel's is.
+  deviceSetYieldHook([]() {
+    lvAdvance(millis());
+    lv_timer_handler();
+  });
+  deviceBegin(cfg);
+
+  // The panel's own web interface, on the loopback interface and on 8081 rather than
+  // 80 (src/web/WebServer.cpp decides which under PANEL_SIM). Started before the
+  // GUI so that the first browser request finds it.
+  webStart();
+
   guiSetup();
   guiStartApp();
 
@@ -334,6 +377,11 @@ int main(int argc, char **argv) {
 
     // The poll the firmware makes every 10 s, out of the same file.
     simPoll();
+
+    // The web interface runs on its own tick, exactly as the panel runs it: a
+    // request is served inside one LVGL pass, so a slow download cannot stop the
+    // display and the display cannot stop a download.
+    webUpdate();
 
     uint32_t warteMs = lv_timer_handler();
     if (warteMs > 20) {
@@ -402,6 +450,7 @@ int main(int argc, char **argv) {
     }
   }
 
+  webStop();
   SDL_Quit();
   return 0;
 }
