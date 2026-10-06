@@ -185,11 +185,18 @@ int SDLCALL quitWatch(void *, SDL_Event *ev) {
 // drains that queue from its own timer and hands the events to its mouse, so the
 // panel's own touch handling runs - the whole point of pushing real events rather
 // than calling a page-switch function.
+void bewege(int x, int y) {
+  SDL_Event m;
+  SDL_memset(&m, 0, sizeof(m));
+  m.type = SDL_MOUSEMOTION;
+  m.motion.x = x;
+  m.motion.y = y;
+  m.motion.xrel = 0;
+  m.motion.yrel = 0;
+  SDL_PushEvent(&m);
+}
+
 void klicke(int x, int y) {
-  SDL_Event ev;
-  SDL_memset(&ev, 0, sizeof(ev));
-  SDL_Window *win = SDL_GetWindowFromID(1);
-  (void)win;
   SDL_Event m;
   SDL_memset(&m, 0, sizeof(m));
   m.type = SDL_MOUSEMOTION;
@@ -216,7 +223,6 @@ void klicke(int x, int y) {
   u.button.y = y;
   u.button.clicks = 1;
   SDL_PushEvent(&u);
-  (void)ev;
 }
 }  // namespace
 
@@ -337,6 +343,31 @@ int main(int argc, char **argv) {
         (!klicksFertig || (int)(jetzt2 / 1000) < opt.nachSekunden);
     if (!warteNoch) {
       if (opt.shotPath != nullptr) {
+        // The clock, pinned to the moment the picture was asked for - see
+        // simSetClockMs(). Two runs of the same build then produce the same file,
+        // which is what makes a before-and-after comparison of a refactor mean
+        // anything.
+        // Settle deterministically: the pointer has to leave the navigation bar,
+        // and the buttons have to finish coming back from being pressed.
+        //
+        // Both are done on the panel's own clock in fixed steps rather than on the
+        // wall clock, and that is the whole point. Driven by SDL_Delay the settle
+        // took a different number of steps on every run - the navigation bar came
+        // out in 9000 slightly different pixels each time, which is not a layout
+        // difference and would have been read as one. Twenty steps of 50 ms is
+        // enough for both and is the same sixty steps every time. Twenty was not:
+        // pages that carry a lot of labels - the energy page and the device page -
+        // still came out in 9000 differing pixels, and the whole width of the
+        // navigation bar was among them, which is what an unfinished layout pass
+        // looks like rather than a button that has not finished coming back.
+        const uint32_t zielMs = (uint32_t)opt.nachSekunden * 1000u;
+        for (int i = 0; i < 60; i++) {   // 3000 ms of panel time
+          simSetClockMs(zielMs + (uint32_t)(i + 1) * 50u);
+          bewege(10, 300);
+          lv_tick_inc(50);
+          lv_timer_handler();
+          SDL_Delay(4);
+        }
         const bool ok = schreibeBild(opt.shotPath, opt.breite, opt.hoehe);
         if (!ok) {
           SDL_Quit();

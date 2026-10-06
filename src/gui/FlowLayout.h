@@ -26,6 +26,7 @@
 #include <stdint.h>
 
 #include "../device/DeviceCaps.h"
+#include "../ui/UiLayout.h"
 
 // A node of the diagram: where its centre is, how big, and whether it is there
 // at all. A node that is not drawn still has the other values set, so a caller
@@ -77,95 +78,51 @@ struct FlowLayout {
   bool pvIcoNative;     // the PV icon has a font of its own and is drawn 1:1
 };
 
-// --- the fixed layout of a full device, unchanged ---------------------------
-// PV left, house in the middle as the hub (92 px, its icon scaled by 320 %),
-// grid right, battery below the hub. These numbers are the ones the panel has
-// been drawing since the three pills arrived.
-static const int16_t kFlowRowY = 80;   // the outer nodes' centre
-static const int16_t kFlowHubY = 82;   // the hub's centre, 2 px lower
-static const int16_t kFlowSideD = 60;  // PV, grid, battery
-static const int16_t kFlowHubD = 92;   // the house
-// The PV as the only node on the page: bigger than a node that has company,
-// because it is then the whole diagram, and big enough for the glyph that goes
-// with it. The glyph's ink is 114 px, so 138 px left 12 px of white inside the
-// circle - the icon looked pressed against the rim - and every step since has
-// been the panel asking for more of it. 190 px gives 38 px on each side, and with
-// the centre 18 px below the hub row its top edge is at y = 5: still inside the
-// container, which starts 9 px below where the heading ends. 190 is about as far
-// as this goes: the diameter is bounded by the height of the page, and the next
-// 10 px would need the centre at y = 110 to keep its top edge off the frame,
-// which would take the room the value needs out of the band below it.
-static const int16_t kFlowAlleinD = 190;
-// 18 px below the hub row's centre. The circle fits under the heading either way
-// (its top edge is at y = 20), and it reads better the further down it stands:
-// with nothing else on the page, a circle near the top of it looks like it wants
-// to climb out of the frame. Two steps of 8 and 10 px, both from looking at the
-// panel.
-static const int16_t kFlowAlleinY = (int16_t)(kFlowHubY + 18);
-static const int16_t kFlowPvX = 60;
-static const int16_t kFlowHubX = 240;
-static const int16_t kFlowGridX = 420;
-static const int16_t kFlowBatY = 210;
-
-// The three pills are 152 px wide with 6 px between them and 6 px of margin,
-// which fills the 480 px page exactly. Fewer pills are centred as a group: one
-// pill at the far left with 320 px of empty space next to it looks broken, and
-// the order does not change.
-static const int16_t kFlowPillW = 152;
-static const int16_t kFlowPillH = 34; // GuiApp.cpp uses this for the pills it builds
-static const int16_t kFlowPillGap = 6;
-static const int16_t kFlowPageW = 480;
-static const int16_t kFlowPillY = 316;
-// The diagram's container sits this far down the page (GuiApp.cpp's FLOW_Y, which
-// is that constant). The nodes and the values live in the container, the pills on
-// the page - so the band between the circle and the pill can only be measured in
-// the container, and that needs this offset. It is the heading's height: the
-// heading ends at 26, the container starts at 35.
-static const int16_t kFlowFlowY = 35;
-static const int16_t kFlowPillYInFlow = (int16_t)(kFlowPillY - kFlowFlowY);
-
-// Where a value sits. The hub's value is right of the vertical battery line, so
-// the line does not run through the text - which is also where the value of the
-// big PV goes in a layout without a house, because the place is free then.
-// The width the value labels have been created with, and the only one that fits
-// the 16 px font; the one-node layout states a wider one for its 36 px number.
-static const int16_t kFlowValW = 120;
-static const int16_t kFlowHubValX = 250;
-static const int16_t kFlowHubValY = 120;
-static const int16_t kFlowPvValX = 0;
-static const int16_t kFlowPvValY = 116;
-static const int16_t kFlowGridValX = 360;
-static const int16_t kFlowGridValY = 118;
-static const int16_t kFlowBatValX = 180;
-static const int16_t kFlowBatValY = 247;
-// The value under the PV when it is the only node on the page: centred, and in
-// the middle of the empty band between the circle above it and the pill below it.
-// Both ends of the band are in the container, where this value lives too: the
-// circle's lower edge (100 + 190/2 = 195) and the pill's upper edge (316 - 35 -
-// 17 = 264), so its middle is 229. The band is 69 px for a number of 45 - the
-// tightest it gets while the circle still fits, which is why the circle cannot
-// grow further without taking some of the number's air away. The first version
-// measured the circle in the
-// container and the pill on the page and called the result 225 - 12 px too low,
-// because it had added the heading's height to the distance instead of taking it
-// off. It moves with the circle above it, which is the point of measuring.
+// The layout for one device family.
 //
-// Centred horizontally too: a 200 px label whose text is centred in itself has
-// its left edge at 240 - 100, and 200 px is what the 36 px font needs for
-// "1,23 kW" - see FlowValue above.
-static const int16_t kFlowAlleinValW = 200;
-static const int16_t kFlowAlleinValX =
-    (int16_t)(kFlowHubX - kFlowAlleinValW / 2);
-static const int16_t kFlowAlleinValY =
-    (int16_t)((kFlowAlleinY + kFlowAlleinD / 2 + kFlowPillYInFlow -
-               kFlowPillH / 2) /
-              2);
+// The numbers live in src/ui/UiLayout.h, because they are the board's and not this
+// file's: they were constants here until stage 5 of the hardware plan moved them,
+// and the reason for moving them is that a second display cannot be laid out from a
+// list of literals without a second copy of the file.
+//
+// Four positions are DERIVED rather than stated, and they are derived here so that
+// every board gets them for free: the one-node circle's centre, the pills' row in
+// the container's coordinates, and the position and width of the value under a PV
+// that is the only node on the page.
+static inline int16_t flowAlleinY(const UiLayout &u) {
+  return (int16_t)(u.flow.hubY + u.flow.alleinDY);
+}
+
+// The pill row is on the page, the nodes are in the container, so the band between
+// the circle and the pill can only be measured in the container. That is what this
+// offset is for, and it is why the container's y has to be known here.
+static inline int16_t flowPillYInFlow(const UiLayout &u) {
+  return (int16_t)(u.flow.pillY - u.flow.flowY);
+}
+
+// Centred horizontally: a 200 px label whose text is centred in itself has its left
+// edge at hubX - 100, and 200 px is what the 36 px font needs for "1,23 kW".
+static inline int16_t flowAlleinValX(const UiLayout &u) {
+  return (int16_t)(u.flow.hubX - u.flow.alleinValW / 2);
+}
+
+// In the middle of the empty band between the circle above and the pill below. Both
+// ends of the band are in the container, where this value lives too: the circle's
+// lower edge and the pill's upper edge, halved. The band is 69 px for a number of
+// 45 - the tightest it gets while the circle still fits, which is why the circle
+// cannot grow further without taking some of the number's air away.
+static inline int16_t flowAlleinValY(const UiLayout &u) {
+  return (int16_t)((flowAlleinY(u) + u.flow.alleinD / 2 + flowPillYInFlow(u) -
+                    u.flow.pillH / 2) / 2);
+}
 
 // The layout for one device family. caps.isKnown() false means "nothing has
 // answered yet": the full layout is drawn, because an RCT Power is what most of
 // them are and a diagram that rearranges itself ten seconds after every boot is
 // worse than one that starts out right.
-static inline FlowLayout flowLayoutFor(const DeviceCaps &caps) {
+static inline FlowLayout flowLayoutFor(const DeviceCaps &caps,
+                                       const UiLayout &ui) {
+  const UiFlow &f = ui.flow;
   FlowLayout L;
   L.batterySoc = false;
   L.islandMark = true;
@@ -180,9 +137,9 @@ static inline FlowLayout flowLayoutFor(const DeviceCaps &caps) {
   // The hub, and which node it is.
   const bool hubIstPv = !kenneHaus;
   L.house.visible = kenneHaus;
-  L.house.x = kFlowHubX;
-  L.house.y = kFlowHubY;
-  L.house.d = kFlowHubD;
+  L.house.x = f.hubX;
+  L.house.y = f.hubY;
+  L.house.d = f.hubD;
 
   // The PV node: an outer node of the row, the hub when there is no house, and on
   // its own - alone, 160 px and 8 px lower - when there is neither a house nor
@@ -190,23 +147,23 @@ static inline FlowLayout flowLayoutFor(const DeviceCaps &caps) {
   // follow from it and a second, later test could read a d that is not set yet.
   const bool pvAllein = hubIstPv && !kenneAkku && !kenneNetz;
   L.pv.visible = true;
-  L.pv.x = hubIstPv ? kFlowHubX : kFlowPvX;
-  L.pv.y = hubIstPv ? (pvAllein ? kFlowAlleinY : kFlowHubY) : kFlowRowY;
-  L.pv.d = hubIstPv ? (pvAllein ? kFlowAlleinD : kFlowHubD) : kFlowSideD;
+  L.pv.x = hubIstPv ? f.hubX : f.pvX;
+  L.pv.y = hubIstPv ? (pvAllein ? flowAlleinY(ui) : f.hubY) : f.rowY;
+  L.pv.d = hubIstPv ? (pvAllein ? f.alleinD : f.hubD) : f.sideD;
 
   L.grid.visible = kenneNetz;
-  L.grid.x = kFlowGridX;
-  L.grid.y = kFlowRowY;
-  L.grid.d = kFlowSideD;
+  L.grid.x = f.gridX;
+  L.grid.y = f.rowY;
+  L.grid.d = f.sideD;
 
   L.battery.visible = kenneAkku;
-  L.battery.x = kFlowHubX;
-  L.battery.y = kFlowBatY;
-  L.battery.d = kFlowSideD;
+  L.battery.x = f.hubX;
+  L.battery.y = f.batDY;
+  L.battery.d = f.sideD;
 
   // The connectors all start at the hub's centre: from the house to the three
   // around it, or from the PV node when there is no house.
-  const int16_t hubX = kFlowHubX, hubY = kFlowHubY;
+  const int16_t hubX = f.hubX, hubY = f.hubY;
   // A connector only exists between two nodes. When the PV is the hub there is
   // nothing to connect it to, so the line is not drawn and the arrow on it goes
   // with it - an arrow on a link of zero length is a dash with no meaning, and it
@@ -224,41 +181,41 @@ static inline FlowLayout flowLayoutFor(const DeviceCaps &caps) {
   L.linkBattery.visible = kenneAkku;
   L.linkBattery.x1 = hubX;
   L.linkBattery.y1 = hubY;
-  L.linkBattery.x2 = kFlowHubX;
-  L.linkBattery.y2 = kFlowBatY;
+  L.linkBattery.x2 = f.hubX;
+  L.linkBattery.y2 = f.batDY;
 
   // The values. The hub's value keeps the place it had as the house's: right of
   // the vertical line, so the line does not run through the digits - and free in
   // a layout without a house.
   L.valHouse.visible = kenneHaus;
-  L.valHouse.x = kFlowHubValX;
-  L.valHouse.y = kFlowHubValY;
-  L.valHouse.w = kFlowValW;
+  L.valHouse.x = f.hubValX;
+  L.valHouse.y = f.hubValY;
+  L.valHouse.w = f.valW;
   L.valHouse.centreY = false;
   L.valHouse.gross = false;
 
   L.valPv.visible = true;
   L.valPv.gross = hubIstPv;
-  L.valPv.w = hubIstPv ? kFlowAlleinValW : kFlowValW;
+  L.valPv.w = hubIstPv ? f.alleinValW : f.valW;
   L.valPv.centreY = false;
   if (hubIstPv && kenneAkku) {
     // A battery hangs below the PV node, and with it the vertical line - so the
     // value keeps the place the house's value had: right of that line, so the
     // line does not run through the digits. It is not centred here: there is
     // still a node below, and the number belongs to the one above.
-    L.valPv.x = kFlowHubValX;
-    L.valPv.y = kFlowHubValY;
+    L.valPv.x = f.hubValX;
+    L.valPv.y = f.hubValY;
   } else if (hubIstPv) {
     // Nothing below the node and nothing above but the circle: the value is the
     // content of the page, so it goes in the middle of the band between the two -
     // which is the only thing that makes it belong to the circle rather than to
     // the pill. Its y is therefore a middle, not a top edge.
-    L.valPv.x = kFlowAlleinValX;
-    L.valPv.y = kFlowAlleinValY;
+    L.valPv.x = flowAlleinValX(ui);
+    L.valPv.y = flowAlleinValY(ui);
     L.valPv.centreY = true;
   } else {
-    L.valPv.x = kFlowPvValX;
-    L.valPv.y = kFlowPvValY;
+    L.valPv.x = f.pvValX;
+    L.valPv.y = f.pvValY;
   }
   L.grossPvIco = hubIstPv;
   // In the one-node layout the icon is drawn from its own font at its own size;
@@ -267,16 +224,16 @@ static inline FlowLayout flowLayoutFor(const DeviceCaps &caps) {
   L.pvIcoNative = pvAllein;
 
   L.valGrid.visible = kenneNetz;
-  L.valGrid.x = kFlowGridValX;
-  L.valGrid.y = kFlowGridValY;
-  L.valGrid.w = kFlowValW;
+  L.valGrid.x = f.gridValX;
+  L.valGrid.y = f.gridValY;
+  L.valGrid.w = f.valW;
   L.valGrid.centreY = false;
   L.valGrid.gross = false;
 
   L.valBattery.visible = kenneAkku;
-  L.valBattery.x = kFlowBatValX;
-  L.valBattery.y = kFlowBatValY;
-  L.valBattery.w = kFlowValW;
+  L.valBattery.x = f.batValX;
+  L.valBattery.y = f.batValY;
+  L.valBattery.w = f.valW;
   L.valBattery.centreY = false;
   L.valBattery.gross = false;
 
@@ -307,12 +264,12 @@ static inline FlowLayout flowLayoutFor(const DeviceCaps &caps) {
       n++;
     }
   }
-  const int16_t gesamt = (int16_t)(n * kFlowPillW + (n > 0 ? (n - 1) * kFlowPillGap : 0));
-  const int16_t start = (int16_t)((kFlowPageW - gesamt) / 2);
+  const int16_t gesamt = (int16_t)(n * f.pillW + (n > 0 ? (n - 1) * f.pillGap : 0));
+  const int16_t start = (int16_t)((f.pageW - gesamt) / 2);
   int k = 0;
   for (int i = 0; i < 3; i++) {
     if (p & (1u << i)) {
-      L.pillX[i] = (int16_t)(start + k * (kFlowPillW + kFlowPillGap));
+      L.pillX[i] = (int16_t)(start + k * (f.pillW + f.pillGap));
       k++;
     }
   }

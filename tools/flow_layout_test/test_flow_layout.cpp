@@ -16,6 +16,11 @@
 
 #include "device/DeviceCaps.h"
 #include "gui/FlowLayout.h"
+#include "ui/UiLayout.h"
+
+// The board under test. The test asks the same questions the panel asks, so it has
+// to name the same board - and it is the only place besides UiLayout.cpp that does.
+static const UiLayout &ui() { return uiLayout(); }
 
 static int g_checks = 0;
 static int g_failed = 0;
@@ -49,7 +54,7 @@ static DeviceCaps capsOf(bool haus, bool akku, bool netz) {
 // A full device: exactly the numbers the fixed layout used. If this case moves,
 // the panel's screenshots and the manual's pictures are stale.
 static void testFullDeviceIsUnchanged() {
-  const FlowLayout L = flowLayoutFor(capsOf(true, true, true));
+  const FlowLayout L = flowLayoutFor(capsOf(true, true, true), ui());
 
   check(L.pv.visible && L.pv.x == 60 && L.pv.y == 80 && L.pv.d == 60,
         "voll: PV-Knoten unveraendert");
@@ -89,13 +94,13 @@ static void testFullDeviceIsUnchanged() {
   // Mittelpunkts (320 %) - hier ist ein 60px-Knoten, da waere eine eigene
   // 136px-Schrift nur Speicher fuer nichts.
   check(!L.pvIcoNative, "voll: das 28px-Icon, wie der Mittelpunkt es auch hat");
-  check(!L.valPv.centreY && L.valPv.w == kFlowValW,
+  check(!L.valPv.centreY && L.valPv.w == ui().flow.valW,
         "voll: PV-Wert wie die anderen drei");
 }
 
 // No battery: the house stays the hub, the battery and its connector go.
 static void testWithoutBattery() {
-  const FlowLayout L = flowLayoutFor(capsOf(true, false, true));
+  const FlowLayout L = flowLayoutFor(capsOf(true, false, true), ui());
   check(L.pv.x == 60 && L.pv.y == 80 && L.pv.d == 60, "ohne Akku: PV bleibt aussen");
   check(L.house.x == 240 && L.house.y == 82 && L.house.d == 92,
         "ohne Akku: Haus bleibt die Mitte");
@@ -117,7 +122,7 @@ static void testWithoutBattery() {
 // No household meter: the PV becomes the hub - big, in the middle, with the
 // large value. This is the case a plain string inverter produces.
 static void testWithoutHouseMeter() {
-  const FlowLayout L = flowLayoutFor(capsOf(false, true, true));
+  const FlowLayout L = flowLayoutFor(capsOf(false, true, true), ui());
   check(!L.house.visible, "ohne Hauszaehler: Haus-Knoten weg");
   check(!L.valHouse.visible, "ohne Hauszaehler: Haus-Wert weg");
 
@@ -127,7 +132,7 @@ static void testWithoutHouseMeter() {
   // With a node below it the number belongs to the node above, so it stays where
   // the house's value was - and it is placed by its top edge like the others.
   check(!L.valPv.centreY, "ohne Hauszaehler: mit Akku ist y die Oberkante");
-  checkEq(L.valPv.w, kFlowAlleinValW,
+  checkEq(L.valPv.w, ui().flow.alleinValW,
           "ohne Hauszaehler: auch hier die breite Zahl, der Wert ist gross");
   // 92 px is a node with company, so the 28 px font scaled to 320 % is fine -
   // that is what the house uses as well.
@@ -135,8 +140,8 @@ static void testWithoutHouseMeter() {
         "ohne Hauszaehler: mit Akku und Netz das 28px-Icon wie im vollen Bild");
   // Nur der eine Knoten rueckt ab: bei einem Akku darunter waere eine andere
   // Mitte genau der Fehler, den diese Aenderung sonst wiederholt.
-  check(L.pv.y == kFlowHubY, "ohne Hauszaehler: mit Akku in der Zeile geblieben");
-  check(L.valPv.x == kFlowHubValX && L.valPv.y == kFlowHubValY,
+  check(L.pv.y == ui().flow.hubY, "ohne Hauszaehler: mit Akku in der Zeile geblieben");
+  check(L.valPv.x == ui().flow.hubValX && L.valPv.y == ui().flow.hubValY,
         "ohne Hauszaehler: mit Akku und Netz bleibt der Wert, wo der Hauswert war");
   check(L.grossPvIco, "ohne Hauszaehler: das PV-Icon wird wie das eines "
                       "Mittelpunkts skaliert");
@@ -159,47 +164,47 @@ static void testWithoutHouseMeter() {
 // The Growatt305 behind the stick: generation and nothing else. The diagram is
 // one node, and one pill.
 static void testOnlyGeneration() {
-  const FlowLayout L = flowLayoutFor(capsOf(false, false, false));
+  const FlowLayout L = flowLayoutFor(capsOf(false, false, false), ui());
   // The only thing the device can report, so bigger than a hub: 138 px.
-  check(L.pv.visible && L.pv.x == 240 && L.pv.y == kFlowAlleinY &&
-            L.pv.d == kFlowAlleinD,
+  check(L.pv.visible && L.pv.x == 240 && L.pv.y == flowAlleinY(ui()) &&
+            L.pv.d == ui().flow.alleinD,
         "nur Erzeugung: PV in der Mitte, 190 px gross und 18 px tiefer");
   check(L.valPv.gross, "nur Erzeugung: Wert gross");
   // Centred under the node, and in the middle of the band between the circle's
   // lower edge and the pill's upper edge: 151 and 299, so 225.
-  check(L.valPv.x == kFlowAlleinValX && L.valPv.y == kFlowAlleinValY,
+  check(L.valPv.x == flowAlleinValX(ui()) && L.valPv.y == flowAlleinValY(ui()),
         "nur Erzeugung: der Wert sitzt mittig darunter und weiter unten");
   // The band between circle and pill, measured where the value lives: in the
-  // container, which sits kFlowFlowY lower than the page the pills are on. Both
+  // container, which sits ui().flow.flowY lower than the page the pills are on. Both
   // ends of the band in one coordinate system - 162 and 264, so 213.
-  checkEq(kFlowAlleinValY, 229, "Band zwischen Kreis und Pille");
+  checkEq(flowAlleinValY(ui()), 229, "Band zwischen Kreis und Pille");
   checkEq(L.valPv.y,
-          (int16_t)((kFlowAlleinY + kFlowAlleinD / 2 + (316 - 35) - 34 / 2) / 2),
+          (int16_t)((flowAlleinY(ui()) + ui().flow.alleinD / 2 + (316 - 35) - 34 / 2) / 2),
           "nur Erzeugung: die Mitte ist gerechnet, nicht geraten");
   // Room for the glyph: 114 px of ink inside the circle. 138 px left 12 px on
   // each side and the icon looked pressed against the rim; 190 px leaves 38.
-  checkEq(kFlowAlleinD - 114, 76, "nur Erzeugung: 38 px Luft links und rechts");
+  checkEq(ui().flow.alleinD - 114, 76, "nur Erzeugung: 38 px Luft links und rechts");
   // And the circle fits under the heading: its top edge is inside the container,
   // which starts 9 px below where the heading ends.
-  check(kFlowAlleinY - kFlowAlleinD / 2 >= 0,
+  check(flowAlleinY(ui()) - ui().flow.alleinD / 2 >= 0,
         "nur Erzeugung: der Kreis passt unter die Kopfzeile");
-  checkEq(kFlowAlleinY - kFlowAlleinD / 2, 5,
+  checkEq(flowAlleinY(ui()) - ui().flow.alleinD / 2, 5,
           "nur Erzeugung: und hat 5 px Luft nach oben");
-  checkEq(kFlowAlleinY, 100, "nur Erzeugung: die Mitte des Kreises");
+  checkEq(flowAlleinY(ui()), 100, "nur Erzeugung: die Mitte des Kreises");
   // Its y is a middle, so the caller puts the top edge half a line above it -
   // a label is placed by its corner, and getting that wrong is what put the
   // number 16 px too low the first time.
   check(L.valPv.centreY, "nur Erzeugung: y ist die Mitte des Wertes");
   // 200 px, because "1,23 kW" in the 36 px font is 133 px and a narrower label
   // wraps its text onto a second line.
-  checkEq(L.valPv.w, kFlowAlleinValW, "nur Erzeugung: der Wert bekommt 200 px");
+  checkEq(L.valPv.w, ui().flow.alleinValW, "nur Erzeugung: der Wert bekommt 200 px");
   checkEq(L.valPv.w, 200, "nur Erzeugung: 200 px fuer den 36px-Wert");
   checkEq(L.valPv.x, 140, "nur Erzeugung: 200 px mittig auf 240 heisst 140");
   // 190 px is still inside the page, and its bottom leaves a band the value fits
   // into: 195 to 264 is 69 px for a number of 45 - which is the limit. The next
   // 10 px of circle would need the centre at y = 110, and then the band would be
   // 59 px for a number of 45 with 7 px of air on each side of it.
-  check(kFlowAlleinD <= kFlowPageW, "nur Erzeugung: der Kreis passt in die Seite");
+  check(ui().flow.alleinD <= ui().flow.pageW, "nur Erzeugung: der Kreis passt in die Seite");
   // Its own font at its own size: the 28 px glyph at 480 % was a blur.
   check(L.pvIcoNative, "nur Erzeugung: das PV-Icon aus eigener Schrift, 1:1");
   check(!L.linkPv.visible, "nur Erzeugung: keine Verbindung nach links");
@@ -219,7 +224,7 @@ static void testOnlyGeneration() {
 static void testUnknownCaps() {
   DeviceCaps leer = {};
   check(!leer.isKnown(), "leere Faehigkeiten sind nicht bekannt");
-  const FlowLayout L = flowLayoutFor(leer);
+  const FlowLayout L = flowLayoutFor(leer, ui());
   check(L.house.visible && L.battery.visible && L.grid.visible,
         "unbekannt: alles gezeichnet");
   check(L.pv.d == 60 && !L.valPv.gross, "unbekannt: die PV ist ein normaler Knoten");
@@ -240,13 +245,13 @@ static void testPillGeometry() {
                                   : (n == 2 ? capsOf(true, false, false)
                                             : capsOf(false, false, false));
     g_seen = 0;
-    const FlowLayout L = flowLayoutFor(c);
+    const FlowLayout L = flowLayoutFor(c, ui());
     for (int i = 0; i < 3; i++) {
       if (L.pills & (1u << i)) {
         if (g_seen == 0) {
           erste = L.pillX[i];
         }
-        letzte = (int16_t)(L.pillX[i] + kFlowPillW);
+        letzte = (int16_t)(L.pillX[i] + ui().flow.pillW);
         g_seen++;
       }
     }
@@ -254,15 +259,15 @@ static void testPillGeometry() {
     char msg[80];
     snprintf(msg, sizeof(msg), "%d Pillen: so viele gibt es", n);
     checkEq(gesehen, n, msg);
-    const int16_t rand = (int16_t)((kFlowPageW - (letzte - erste)) / 2);
+    const int16_t rand = (int16_t)((ui().flow.pageW - (letzte - erste)) / 2);
     checkEq(erste, rand, "Pillen mittig");
     snprintf(msg, sizeof(msg), "%d Pillen: der Rand ist gleich links wie rechts",
              n);
-    checkEq(kFlowPageW - letzte, rand, msg);
+    checkEq(ui().flow.pageW - letzte, rand, msg);
   }
   // Und der Sonderfall, den es vorher nie gab: mit drei Pillen ist der Rand 6,
   // was die Zahl im Kommentar über den Steckplatz ist.
-  checkEq(kFlowPageW - (6 + 3 * kFlowPillW + 2 * kFlowPillGap), 6,
+  checkEq(ui().flow.pageW - (6 + 3 * ui().flow.pillW + 2 * ui().flow.pillGap), 6,
           "drei Pillen fuellen die Seite mit 6 px Rand");
 }
 

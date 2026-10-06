@@ -274,6 +274,11 @@ void simBegin(int breite, int hoehe, int speed) {
          simDatenQuelle(), g_speed);
 }
 
+void simSetClockMs(uint32_t ms) {
+  g_virtualMs = ms;
+  g_letzteFortschreibung = Clock::now();
+}
+
 void simPoll() {
   const uint32_t jetzt = millis();
   if (jetzt - g_pollAtMs >= 10000u) {

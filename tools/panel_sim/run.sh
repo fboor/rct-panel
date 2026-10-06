@@ -93,6 +93,7 @@ c++ $cflags $lang \
     "$here/sim_stubs.cpp" \
     "$here/sim_data.cpp" \
     "$repo/src/gui/GuiApp.cpp" \
+    "$repo/src/ui/UiLayout.cpp" \
     "$repo"/src/i18n/Lang*.cpp \
     "$build"/schiff/*.o \
     "$build"/lvgl/*.o \

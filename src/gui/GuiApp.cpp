@@ -48,6 +48,7 @@
 #include "Theme.h"
 
 #include "../Charts.h"
+#include "../ui/UiLayout.h"
 #include "../DataStatus.h"
 #include "../NumFmt.h"
 #include "../config/Configuration.h"
@@ -71,20 +72,24 @@
 #include "fonts/lv_font_montserrat_20_uml.h"
 #include "fonts/lv_font_montserrat_28_uml.h"
 
-#define NAV_H 72
-#define STATUS_H 44
-#define CONTENT_H (480 - STATUS_H - NAV_H)
+// The board's geometry, in one place. Everything below that used to be a #define
+// or a literal is now a question to the board, which is what stage 5 of the
+// hardware plan asks for: placement per board, content once.
+//
+// The numbers did not change. That is checked twice - flow_layout_test for the
+// invariants, and the simulator for all seven pages, before and after.
+static inline const UiLayout &ui() { return uiLayout(); }
 
 // Y of the page heading inside a page root. Every page uses this one value
 // (placed centrally at page creation, see guiInit), so the heading sits at the
 // same spot on all seven pages.
-#define HEAD_Y 8
+#define HEAD_Y (ui().headY)
 
 // First row y on the "Info" / "Gerät" list pages, below the heading.
-#define ROW_Y0 40
-// Row pitch there. 14 rows must fit in CONTENT_H: 40 + 13*22 + 20 = 346 < 364
+#define ROW_Y0 (ui().rowY0)
+// Row pitch there. 14 rows must fit in ui().contentH(): 40 + 13*22 + 20 = 346 < 364
 // (16 px font has a 20 px line box, so 22 leaves 2 px of air per row).
-#define ROW_PITCH 22
+#define ROW_PITCH (ui().rowPitch)
 
 // ---------------------------------------------------------------------------
 // Palette (from the RCT Portal Energiefluss: white nodes, red active flows)
@@ -295,12 +300,12 @@ static const char kSolarIcon[] =
 // The three pills' measurements are the layout's, because the one-node layout
 // places the value in the middle of the band above them and needs to know where
 // that band begins - see FlowLayout.h. Same numbers as before, one place.
-#define OV_BTN_W kFlowPillW
-#define OV_BTN_H kFlowPillH
+#define OV_BTN_W (ui().flow.pillW)
+#define OV_BTN_H (ui().flow.pillH)
 #define OV_BTN_R (OV_BTN_H / 2)
 #define OV_BTN_X0 6
-#define OV_BTN_DX (kFlowPillW + kFlowPillGap) // 152 px plus the 6 px gap
-#define OV_BTN_Y kFlowPillY
+#define OV_BTN_DX (ui().flow.pillW + ui().flow.pillGap) // 152 px plus the 6 px gap
+#define OV_BTN_Y (ui().flow.pillY)
 // What counts as "nothing happening" for the buttons: below 10 W there is no
 // household draw and no battery current to name, and the grid only counts as
 // importing from 20 W (the device regulates around zero below that).
@@ -312,7 +317,7 @@ static const char kSolarIcon[] =
 // 26, so the top of the house node is at 71 and the buttons at 316 are 14 px below
 // the battery value - the diagram is centred in what is left rather than sitting
 // in the middle of the page with a hole under it.
-#define FLOW_Y kFlowFlowY
+#define FLOW_Y (ui().flow.flowY)
 
 // ---------------------------------------------------------------------------
 // Page model
@@ -877,7 +882,7 @@ static void pageBuildOverview(AppPage *p) {
   // "still on the page background", so the values and the legend inside it follow
   // the theme like everything else on the background.
   lv_obj_t *flow = lv_obj_create(root);
-  lv_obj_set_size(flow, 480, 280);
+  lv_obj_set_size(flow, ui().screenW, 280);
   lv_obj_set_pos(flow, 0, FLOW_Y);
   lv_obj_set_style_bg_opa(flow, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(flow, 0, 0);
@@ -935,7 +940,8 @@ static void pageBuildOverview(AppPage *p) {
 
   // NETZ node: the transmission tower.
   s_icoGrid =
-      makeNode(flow, 420, 80, 60, kFlowGridIcon, &lv_font_mdi_icons_28);
+      makeNode(flow, ui().flow.gridX, ui().flow.rowY, ui().flow.sideD,
+               kFlowGridIcon, &lv_font_mdi_icons_28);
   s_nodeGrid = lv_obj_get_parent(s_icoGrid);
 
   // Connector lines (haus <-> node), animated later via color/style.
@@ -1062,7 +1068,7 @@ static void pageBuildOverview(AppPage *p) {
   // The layout of the last device that answered, not of this one: the caps are
   // in the answer and the answer has not come yet. With nothing stored the key
   // is 0xFF, which yields the full layout - the one this page was drawn for.
-  applyFlowLayout(flowLayoutFor(capsFromKey(s_flowKey)), p);
+  applyFlowLayout(flowLayoutFor(capsFromKey(s_flowKey), ui()), p);
 }
 
 // ---------------------------------------------------------------------------
@@ -1322,7 +1328,7 @@ static void applyFlowLayout(const FlowLayout &L, AppPage *ov) {
     }
     if (L.pills & (1u << i)) {
       lv_obj_remove_flag(s_ovBtn[i], LV_OBJ_FLAG_HIDDEN);
-      lv_obj_set_pos(s_ovBtn[i], L.pillX[i], kFlowPillY);
+      lv_obj_set_pos(s_ovBtn[i], L.pillX[i], ui().flow.pillY);
     } else {
       lv_obj_add_flag(s_ovBtn[i], LV_OBJ_FLAG_HIDDEN);
     }
@@ -2331,7 +2337,7 @@ static void pageBuildGraph(AppPage *p) {
   s_chart = lv_chart_create(root);
   lv_obj_set_pos(s_chart, kHistChartX, kHistChartY);
   // kHistChartY + kHistChartH = 332, and the gap summary sits directly under
-  // the chart at 336..~354 so it stays inside CONTENT_H (364) - no scrolling
+  // the chart at 336..~354 so it stays inside ui().contentH() (364) - no scrolling
   // to read it.
   lv_obj_set_size(s_chart, kHistChartW, kHistChartH);
   lv_obj_set_style_bg_color(s_chart, COL_CARD, 0);
@@ -2438,7 +2444,7 @@ static void navNextCb(lv_event_t *e) {
 static void buildApOverlay() {
   lv_obj_t *scr = lv_screen_active();
   s_apOverlay = lv_obj_create(scr);
-  lv_obj_set_size(s_apOverlay, 480, 480);
+  lv_obj_set_size(s_apOverlay, ui().screenW, ui().screenH);
   lv_obj_set_pos(s_apOverlay, 0, 0);
   lv_obj_set_style_bg_color(s_apOverlay, uiBg(), 0);
   lv_obj_set_style_radius(s_apOverlay, 0, 0);
@@ -2515,7 +2521,7 @@ static void refreshCb(lv_timer_t *t) {
   {
     const uint8_t key = flowCapsKey(s.caps);
     if (s.caps.isKnown() && key != s_flowKey) {
-      applyFlowLayout(flowLayoutFor(s.caps), &s_pages[PAGE_OVERVIEW]);
+      applyFlowLayout(flowLayoutFor(s.caps, ui()), &s_pages[PAGE_OVERVIEW]);
       s_flowKey = key;
       flowKeySpeichern(key);
     }
@@ -3228,7 +3234,7 @@ void guiSetup() {
 
   // Status bar.
   lv_obj_t *bar = lv_obj_create(scr);
-  lv_obj_set_size(bar, 480, STATUS_H);
+  lv_obj_set_size(bar, ui().screenW, ui().statusH);
   lv_obj_align(bar, LV_ALIGN_TOP_MID, 0, 0);
   lv_obj_set_style_bg_color(bar, COL_BAR, 0);
   lv_obj_set_style_border_width(bar, 0, 0);
@@ -3273,8 +3279,8 @@ void guiStartApp() {
 
   // Content area (pages live here).
   lv_obj_t *content = lv_obj_create(lv_screen_active());
-  lv_obj_set_size(content, 480, CONTENT_H);
-  lv_obj_align(content, LV_ALIGN_TOP_MID, 0, STATUS_H);
+  lv_obj_set_size(content, ui().screenW, ui().contentH());
+  lv_obj_align(content, LV_ALIGN_TOP_MID, 0, ui().statusH);
   lv_obj_set_style_bg_color(content, uiBg(), 0);
   lv_obj_set_style_border_width(content, 0, 0);
   lv_obj_set_style_pad_left(content, 0, 0);
@@ -3293,7 +3299,7 @@ void guiStartApp() {
     s_pages[i].title = tr(titleIds[i]);
     s_pages[i].labelCount = 0;
     s_pages[i].root = lv_obj_create(content);
-    lv_obj_set_size(s_pages[i].root, 480, CONTENT_H);
+    lv_obj_set_size(s_pages[i].root, ui().screenW, ui().contentH());
     lv_obj_set_style_bg_color(s_pages[i].root, uiBg(), 0);
     lv_obj_set_style_border_width(s_pages[i].root, 0, 0);
     lv_obj_set_style_pad_all(s_pages[i].root, 0, 0);
@@ -3312,7 +3318,7 @@ void guiStartApp() {
 
   // Navigation bar: left | home | right.
   lv_obj_t *nav = lv_obj_create(lv_screen_active());
-  lv_obj_set_size(nav, 480, NAV_H);
+  lv_obj_set_size(nav, ui().screenW, ui().navH);
   lv_obj_align(nav, LV_ALIGN_BOTTOM_MID, 0, 0);
   lv_obj_set_style_bg_color(nav, COL_BAR, 0);
   lv_obj_set_style_border_width(nav, 0, 0);
@@ -3333,9 +3339,9 @@ void guiStartApp() {
   lv_obj_set_flex_grow(bLeft, 1);
   lv_obj_set_flex_grow(bHome, 1);
   lv_obj_set_flex_grow(bRight, 1);
-  lv_obj_set_size(bLeft, 140, NAV_H - 12);
-  lv_obj_set_size(bHome, 140, NAV_H - 12);
-  lv_obj_set_size(bRight, 140, NAV_H - 12);
+  lv_obj_set_size(bLeft, 140, ui().navH - 12);
+  lv_obj_set_size(bHome, 140, ui().navH - 12);
+  lv_obj_set_size(bRight, 140, ui().navH - 12);
 
   // Touch input device (GT911 -> LVGL pointer). Wire must be set up before
   // the read callback starts polling; failure only disables touch - and the

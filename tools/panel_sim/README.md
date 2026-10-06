@@ -1,55 +1,60 @@
 # panel_sim — das Panel in einem Fenster
 
-Die Firmware-Oberfläche, auf dem Rechner, in einem SDL-Fenster. Kein Layout
-hier: `src/gui/GuiApp.cpp` wird unverändert übersetzt, dazu LVGL 9.3.0 aus dem
-PlatformIO-Verzeichnis. Was im Fenster steht, steht auch auf dem Panel.
+Die Firmware-Oberfläche auf dem Rechner. Kein Layout hier: `src/gui/GuiApp.cpp`
+unverändert, LVGL 9.3.0 aus `.pio/libdeps/esp32-s3/lvgl`.
 
-## Aufrufen
+## Bauen und starten
 
 ```sh
-tools/panel_sim/run.sh                        # Fenster, deutsch, 480x480
-tools/panel_sim/run.sh --lang en              # englischer Build
-tools/panel_sim/run.sh --page 4               # auf Seite 4 klicken
-tools/panel_sim/run.sh --shot p4.png --speed 20
-tools/panel_sim/run.sh --data fang.json       # andere Werte
-tools/panel_sim/run.sh --size 800x480         # zweite Aufloesung
+tools/panel_sim/run.sh                                   # Fenster, de, 480x480
+tools/panel_sim/run.sh --lang en                         # englischer Build
+tools/panel_sim/run.sh --page 4                          # auf Seite 4 klicken
+tools/panel_sim/run.sh --shot p4.png --speed 20          # Bild, dann Ende
+tools/panel_sim/run.sh --data fang.json --size 800x480
 ```
+
+Voraussetzungen: SDL2, zlib, C/C++-Compiler, LVGL unter `.pio/libdeps/esp32-s3/lvgl`
+(sonst `LVGL_DIR`).
 
 | Argument | Bedeutung |
 |---|---|
-| `--shot DATEI` | ein Bild schreiben und beenden (PNG) |
-| `--page 1..7` | auf die Seite klicken, wie ein Finger |
+| `--shot DATEI` | PNG schreiben, dann beenden |
+| `--page 1..7` | Seite per Klick ansteuern |
 | `--data DATEI` | JSON mit den Werten |
 | `--size BxH` | Fenstergrösse |
-| `--lang en` | englischer Build (Compile-Flag) |
-| `--speed N` | Paneluhr N-fach (nur für `--shot`) |
-| `--after s` | Sekunden der Paneluhr vor dem Bild |
+| `--lang en` | englischer Build |
+| `--speed N` | Paneluhr N-fach |
+| `--after s` | Panelsekunden vor dem Bild |
 
-Voraussetzungen: SDL2, zlib, ein C/C++-Compiler, LVGL 9.3.0 unter
-`.pio/libdeps/esp32-s3/lvgl` (sonst `LVGL_DIR` setzen).
+Erster Lauf: 419 LVGL-Dateien, danach Sekunden. `build/` ist nicht im Baum.
 
 ## Was gefakt ist
 
-Nur was die Oberfläche von aussen braucht: die Uhr, `Serial`, die SD-Karte
-(„keine Karte"), das Netz („verbunden"), die Einstellungen (im Speicher), den
-Schaltausgang („aus") und die Gerätedaten aus der JSON-Datei.
-
-| Datei | Inhalt |
+| Ding | Antwort |
 |---|---|
-| `sim_main.cpp` | Fenster, LVGL-Takt, Seitenklicks, PNG-Ausgabe |
-| `sim_stubs.cpp` | Uhr, Serial, SD, Netz, Relais, Web, Diagnose |
-| `sim_data.cpp` | JSON → `DeviceState` |
-| `stubs/` | `Arduino.h`, `Preferences.h`, `WiFi.h`, ESP-Teile |
-| `data/rct_mock.json` | ein Mittag im Juli: alle vier Werte, einer negativ |
+| Uhr | Echtzeit, `millis()` eine Quelle wie im Panel |
+| Werte | `data/rct_mock.json` → `DeviceState` |
+| SD-Karte | keine; `sdTakeHistory()` −1 |
+| Netz | verbunden, kein Provisioning |
+| Einstellungen | im Speicher, nicht in NVS |
+| Schaltausgang | aus |
+| Farbkorrektur | keine, `dispCorrectPixel()` unverändert |
+| Wartungscode | wird beim Start gedruckt |
 
 ## Grenzen
 
-- **Kein Diagramm.** `sdTakeHistory()` gibt −1 zurück, also nimmt das 24-h-Blatt
-  den Zweig wie eine Karte ohne Historie.
-- **Keine Farbkorrektur.** `dispCorrectPixel()` gibt die Pixel unverändert
-  zurück; das Panel korrigiert pro Kanal. Die Farben im Fenster sind also die
-  Sollfarben, nicht die des Geräts.
-- **Die 480er-Literale stecken noch in `GuiApp.cpp`.** `--size 800x480` zeigt
-  deshalb ein 480 breites Layout in einem 800 breiten Fenster. Genau das ist
-  Stufe 5/6 des Hardware-Plans, und diesen Weg hier sichtbar zu machen ist der
-  Punkt.
+- **Kein 24-h-Diagramm** — Zweig wie eine Karte ohne Historie
+- **Keine zweite Auflösung** — die 480-Literale stecken noch in `GuiApp.cpp`
+  (Stufe 5/6 des Hardware-Plans); `--size 800x480` zeigt ein 480er-Layout
+- **Seitenwechsel per Klick** — echte SDL-Mausereignisse, Knopfmitten bei
+  x = 80 / 240 / 390, y = 442, gemessen am Bild
+
+## Dateien
+
+| Datei | Inhalt |
+|---|---|
+| `sim_main.cpp` | Fenster, LVGL-Takt, Klicks, PNG |
+| `sim_stubs.cpp` | Uhr, Serial, SD, Netz, Relais, Web |
+| `sim_data.cpp` | JSON → `DeviceState` |
+| `stubs/` | `Arduino.h`, `Preferences.h`, `WiFi.h`, ESP-Teile |
+| `data/rct_mock.json` | Mittag im Juli, alle vier Werte, einer negativ |

@@ -40,6 +40,17 @@ void simBegin(int breite, int hoehe, int speed);
 // One collection run out of the JSON file, at the rate the firmware polls.
 void simPoll();
 
+// Set the panel's clock to an exact millisecond value. Called immediately before a
+// screenshot.
+//
+// Without this a picture cannot be compared with another picture: the clock counts
+// real time, so two runs of the same build differ wherever the display shows an
+// age - the uptime on the device page, the seconds since the last value, the
+// connection age - and that is true of the panel too, but it makes "did this
+// refactor move anything" unanswerable. Setting the clock to a fixed value before
+// the snapshot makes the picture a function of the code and not of the wall clock.
+void simSetClockMs(uint32_t ms);
+
 // The state as it was last read, for the log line the simulator prints.
 const char *simDatenQuelle();
 
