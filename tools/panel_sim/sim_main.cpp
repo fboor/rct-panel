@@ -35,6 +35,7 @@
 // about which board is being drawn.
 static inline const UiLayout &ui() { return uiLayout(); }
 #include "sim_config.h"
+#include "sim_restart.h"
 #include "sim_data.h"
 
 namespace {
@@ -254,6 +255,8 @@ void klicke(int x, int y) {
 }  // namespace
 
 int main(int argc, char **argv) {
+  // Before anything else: a restart needs to know what it was started with.
+  simMerkeArgumente(argc, argv);
   Optionen opt;
 
   // Three levels, and the order is the only sensible one:

@@ -98,6 +98,7 @@ c++ $cflags $lang \
     "$here/sim_device.cpp" \
     "$here/sim_switch.cpp" \
     "$here/sim_config.cpp" \
+    "$here/sim_restart.cpp" \
     "$repo/src/device/Device.cpp" \
     "$repo/src/device/DeviceFactory.cpp" \
     "$repo/src/rct/RctDriver.cpp" \

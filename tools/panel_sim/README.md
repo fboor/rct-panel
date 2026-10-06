@@ -72,6 +72,21 @@ im Browser ein — und der nächste Start kommt so hoch.
 
 Datei löschen = zurück auf der Vorgabe.
 
+## Neustart
+
+Wie auf dem Panel: ein Gerätewechsel startet den Prozess neu (`execv`), **die
+Kommandozeilenargumente zum Gerät fallen dabei weg** — sonst gewinnt wieder die
+Kommandozeile und die Umschaltung wirkt nicht.
+
+| Auslöser | Kommandozeile | Ergebnis |
+|---|---|---|
+| Gerät gewechselt | `--device --host --port` **entfallen** | gespeicherte Datei entscheidet |
+| „Neustart" | bleibt | so gestartet, wie getippt |
+| nur Theme geändert | bleibt | wirkt sofort, ohne Neustart |
+
+Bremse: nach drei Neustarts in Folge läuft der Simulator ohne weiteren weiter und
+sagt es. Ein Programm, das sich selbst neu startet, kann das endlos tun.
+
 ## Was gefakt ist
 
 | Ding | Antwort |

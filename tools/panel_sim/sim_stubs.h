@@ -45,6 +45,10 @@ void simSetBoard(const UiLayout &board);
 // One collection run out of the JSON file, at the rate the firmware polls.
 void simPoll();
 
+// Close the window and stop the web server. Called before a restart, so that the
+// next process finds the port free instead of waiting for the kernel to release it.
+void simQuit();
+
 // Set the panel's clock to an exact millisecond value. Called immediately before a
 // screenshot.
 //
@@ -55,6 +59,10 @@ void simPoll();
 // refactor move anything" unanswerable. Setting the clock to a fixed value before
 // the snapshot makes the picture a function of the code and not of the wall clock.
 void simSetClockMs(uint32_t ms);
+
+// Remember the arguments, so that a restart can be execv()ed with the same ones.
+// See sim_restart.cpp for why they are the same - and why the device ones are not.
+void simMerkeArgumente(int argc, char **argv);
 
 // The state as it was last read, for the log line the simulator prints.
 const char *simDatenQuelle();

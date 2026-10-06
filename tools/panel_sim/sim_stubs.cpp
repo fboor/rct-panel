@@ -9,9 +9,12 @@
 #include "sim_stubs.h"
 #include "sim_data.h"
 
+#include <SDL2/SDL.h>
 #include <lvgl.h>
 
+#include <cerrno>
 #include <chrono>
+#include <vector>
 #include <cstring>
 #include <thread>
 
@@ -276,6 +279,16 @@ void simBegin(int breite, int hoehe, int speed) {
   g_virtualMs = 0;
   printf("Simulation: %u x %u, Daten aus %s, Uhr %dx\n", g_breite, g_hoehe,
          simDatenQuelle(), g_speed);
+}
+
+// The parts that own something outside this process: the window (SDL) and the
+// listening socket. Both have to go before a restart, and both are reached from
+// here because main() does not know about either.
+extern void webStop(void);
+
+void simQuit() {
+  webStop();
+  SDL_Quit();
 }
 
 void simSetClockMs(uint32_t ms) {
