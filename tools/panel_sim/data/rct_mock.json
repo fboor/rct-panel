@@ -1,0 +1,29 @@
+{
+  "_comment": "A midday in July on this installation: the PV string produces, the house draws, the surplus goes into the battery and a little is fed in. Chosen so that all four values in the flow diagram are non-zero and one of them is negative - the sign is a formatting rule (NumFmt.h) and a mock without one never shows it. Magnitudes are the ones the real device produces; the counters come from a real capture of this panel.",
+
+  "gridExchangeW": -250,
+  "gridV0": 231.4, "gridV1": 230.8, "gridV2": 231.1,
+  "gridHz0": 50.01, "gridHz1": 49.99, "gridHz2": 50.00,
+
+  "genW0": 3400, "genW1": 0,
+  "extW": 0,
+
+  "houseW0": 210, "houseW1": 195, "houseW2": 240,
+
+  "socPct": 33,
+  "batW": -2505, "batV": 396.2, "batA": -6.3,
+  "batteryTemp": 24.6, "batteryCycles": 404, "batterySoh": 100,
+
+  "dayGenWh": 13600, "dayHouseWh": 6800, "dayFeedInWh": 5200,
+  "dayGridDrawWh": 300, "dayExtWh": 0,
+
+  "monthGenWh": 136500, "yearGenWh": 9064800, "totalGenWh": 19608700,
+  "monthHouseWh": 42600, "yearHouseWh": 2523900, "totalHouseWh": 6554000,
+  "monthFeedInWh": 88300, "yearFeedInWh": 6654300, "feedInTotalWh": 13750700,
+  "monthGridDrawWh": 1900, "yearGridDrawWh": 482400, "gridDrawTotalWh": 1548500,
+  "monthExtWh": 21300, "yearExtWh": 1399500, "totalExtWh": 1545900,
+
+  "deviceName": "PS 10.0 32WB",
+  "firmwareVersion": "2.3.5689",
+  "coreTemp": 30.2, "heatSinkTemp": 23.4
+}
