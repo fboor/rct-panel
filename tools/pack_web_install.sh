@@ -17,8 +17,20 @@
 # partition the bootloader reads FIRST to decide where to boot, and it is the only
 # one of the parts that is not a valid image.
 #
+# THE BOOTLOADER GOES TO 0x0, AND THAT IS THE WHOLE STORY OF THE FIRST FAILURE
+#
+# The documentation's example writes it at 4096. That is the ESP32's address. The
+# builder says so in one line:
+#
+#
+# the real one at 0x0. The panel then had no bootloader at all and answered every
+# start with "invalid header 0xFFFFFFFF". Writing only the app could not bring it
+# back, because flash_usb.sh never writes the bootloader - which is right on a
+# running panel and useless on one whose bootloader is gone.
+#
+# Found by reading the builder, after two failed installs and one wrong theory.
+#
 # It is not needed. Without a factory partition - and this table has none - ESP-IDF
-# boots the first OTA slot, which is app0 at 0x10000. Our own flash_usb.sh writes
 # nothing but the app at that offset and the panel boots, which is the same proof from
 # the other side. So the part is dropped rather than translated into a blob we would
 # have to invent.
@@ -51,7 +63,6 @@ OUT="$ROOT/docs/install"
 HEADER="$ROOT/include/FirmwareVersion.h"
 LIST="$OUT/devices.json"
 PIO=${PIO:-pio}
-# From PlatformIO, not from $PATH: see the note about esptool 2.8 above.
 ESPROOT=${ESPROOT:-$HOME/.platformio/packages}
 for f in "$HEADER" "$LIST"; do
   [ -f "$f" ] || { echo "Fehlt: $f"; exit 1; }
@@ -109,6 +120,14 @@ for dev in d["devices"]:
     for sprache in dev["envs"]:
         ziel = "%s/manifest-%s-%s.json" % (
             liste.rsplit("/", 1)[0], dev["id"], sprache)
+        # Bootloader at 0x0, not 0x1000. The ESP Web Tools documentation writes 4096
+        # and that example is for the ESP32; the S3 has its bootloader at the very
+        # start of the flash, which the espressif32 builder says in one line:
+        #   "0x0" if mcu in ("esp32c3", "esp32c6", "esp32s3") else "0x1000"
+        # Written to 0x1000 it landed where nothing reads it, and since an install
+        # erases the whole chip first the real bootloader at 0x0 was gone - so the
+        # panel came up with "invalid header 0xFFFFFFFF", twice. Found by reading the
+        # builder, after two failed installs and one wrong theory about flash modes.
         with open(ziel, "w") as fh:
             fh.write("""{
   "name": "%s (%s)",
@@ -119,7 +138,7 @@ for dev in d["devices"]:
       "chipFamily": "%s",
       "improv": false,
       "parts": [
-        { "path": "bootloader.bin", "offset": 4096 },
+        { "path": "bootloader.bin", "offset": 0 },
         { "path": "partitions.bin", "offset": 32768 },
         { "path": "firmware-%s.bin", "offset": 65536 }
       ]
