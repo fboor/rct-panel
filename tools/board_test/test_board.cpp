@@ -221,6 +221,34 @@ int main() {
 #if BOARD_RELAY_PRESENT
   snprintf(buf, sizeof(buf), "Relais an GPIO %d", RELAY_PIN);
   ok(RELAY_PIN >= 0, "Relais angekündigt, aber ohne Pin", buf);
+
+  // A relay pin that is also a display data line is always wrong: the two drive it.
+  for (const auto &d : daten) {
+    if (d.pin < 0) continue;
+    char meldung[80];
+    snprintf(meldung, sizeof(meldung), "%s und %s beide auf %d", d.rolle,
+             "relay", d.pin);
+    ok(d.pin != RELAY_PIN, "Relais auf einem RGB-Datenpin", meldung);
+  }
+
+  // On the I2C lines it is a decision, not an oversight, and it is allowed only
+  // where the board says so - with a line printed on every run. The Waveshare board
+  // drives its output from GPIO 8, which is SDA: the GT911 and the CH422G both sit on
+  // that bus, and with the expander gone so do the backlight switch and the SD card's
+  // chip select. A decision nobody reads again is how it becomes an oversight, so it
+  // is stated rather than tolerated silently.
+#if BOARD_RELAY_SHARES_I2C
+  printf("  ACHTUNG  Relais haengt am I2C-Bus: GPIO %d ist SDA (touch.sda = %d).\n"
+         "           Damit fallen Touch, CH422G, Backlicht und die SD-Karte aus.\n",
+         RELAY_PIN, PIN_TOUCH_SDA);
+  ok(RELAY_PIN == PIN_TOUCH_SDA || RELAY_PIN == PIN_TOUCH_SCL,
+     "BOARD_RELAY_SHARES_I2C gesetzt, aber der Pin ist gar keine I2C-Leitung");
+#else
+  snprintf(buf, sizeof(buf), "Relais GPIO %d auf dem I2C-Bus %d/%d", RELAY_PIN,
+           PIN_TOUCH_SDA, PIN_TOUCH_SCL);
+  ok(RELAY_PIN != PIN_TOUCH_SDA && RELAY_PIN != PIN_TOUCH_SCL,
+     "Relais auf einer I2C-Leitung, ohne es anzugeben", buf);
+#endif
 #else
   snprintf(buf, sizeof(buf), "Relais an GPIO %d", RELAY_PIN);
   ok(RELAY_PIN < 0, "kein Relais, aber ein Pin gesetzt", buf);

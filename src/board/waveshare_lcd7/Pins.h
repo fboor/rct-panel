@@ -98,9 +98,19 @@
 #define PIN_SD_MOSI 11
 #define PIN_SD_CS -1            // not a GPIO here; see BOARD_CH422G_PIN_SD_CS
 
-// ---- no switched output on this board -------------------------------------------
-#define RELAY_PIN -1
-#define BOARD_RELAY_PRESENT 0
+// ---- switched output on the I2C data line -------------------------------------
+// GPIO8 is SDA. The GT911 touch and the CH422G both sit on that bus, so driving a
+// relay from it takes both of them down - and with the expander gone, so do the
+// backlight switch and the SD card's chip select. The board still labels the pin I2C
+// on its silkscreen, which is true of the pin and no longer true of this firmware.
+//
+// Said plainly because it contradicts the project's own rule that touch is
+// mandatory for every supported board: this configuration has no touch. The board
+// test is told about it (BOARD_RELAY_SHARES_I2C) and prints it on every run, so it
+// cannot be forgotten - a deliberate collision should be loud, not silent.
+#define RELAY_PIN 8
+#define BOARD_RELAY_PRESENT 1
+#define BOARD_RELAY_SHARES_I2C 1
 
 // The resolution this board's own layout answers for. The board test uses it
 // to pick that layout out of uiLayoutForSize() - the firmware's uiLayout()
