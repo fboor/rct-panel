@@ -53,6 +53,11 @@ ein Fund befunden statt behoben wurde.
 |---|---|---|
 | `tools/json_scan_test/test_json_scan.cpp` | eine Wechselrichter-MAC als JSON-Testdatum; belegt, dass eine MAC mit Doppelpunkten gelesen wird | bereits auf `origin/master` |
 | `d869113` | ein Scratch-Verzeichnis in der Commit-Nachricht | bereits auf `origin/master` |
+| `aa0ef58` | dasselbe, zweites Foto | bereits auf `origin/master` |
+
+Der Suchausdruck oben umfasst `/tmp/` und nicht einen bestimmten
+Scratch-Namen — mit einem engeren Muster wurden zwei dieser drei Stellen
+übersehen, bis der breitere lief.
 
 ## 4. Sprachen
 
