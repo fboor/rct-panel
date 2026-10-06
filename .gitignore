@@ -6,12 +6,11 @@ __pycache__/
 tools/panel_sim/build/
 tools/panel_sim/data/simulator.json
 
-# What tools/pack_web_install.sh writes. Build output, not source: 3.1 MB, and a
-# history cannot be rewritten to get rid of them again. The page, the device list and
-# the script are versioned.
-#
-# The manifests are ignored too, and for a different reason: they carry the release
-# number from include/FirmwareVersion.h, so a checked-in one could only ever be a
-# stale one. tools/pack_web_install.sh regenerates them.
+# Loose binaries and manifests directly in docs/install/ are build output and are not
+# versioned. tools/pack_web_install.sh writes neither: everything lands in
+# docs/install/<release>/, and that folder IS versioned - GitHub Pages serves /docs
+# from the repository, so a manifest its files are not next to would show the picker and
+# install nothing. A loose file here means the script changed its layout and this file
+# was not told, so it stays ignored rather than silently committed by accident.
 docs/install/*.bin
 docs/install/manifest-*.json

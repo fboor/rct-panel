@@ -162,9 +162,13 @@ for (const d of liste.devices) {
   geraet.append(o);
 }
 
+// The manifest lives in the release folder, and the folder is named after the release.
+// Both names come from devices.json, which tools/pack_web_install.sh writes when it
+// builds - so a release bump moves the page along with it, and a hand-edited path here
+// could only ever point at a release that does not exist.
 function aktualisieren() {
   const d = liste.devices.find((x) => x.id === geraet.value);
-  knopf.manifest = `manifest-${d.id}-${sprache.value}.json`;
+  knopf.manifest = `${liste.release}/manifest-${d.id}-${sprache.value}.json`;
 }
 
 // The manifest is the only thing that changes; the button is created by ESP Web

@@ -1,0 +1,16 @@
+{
+  "name": "Guition ESP32-S3 4848S040 (en)",
+  "version": "1.0-rc1 (2026-10)",
+  "new_install_improv_wait_time": 0,
+  "builds": [
+    {
+      "chipFamily": "ESP32-S3",
+      "improv": false,
+      "parts": [
+        { "path": "v1.0-rc1/esp32s3-4848s040-bootloader.bin", "offset": 0 },
+        { "path": "v1.0-rc1/esp32s3-4848s040-partitions.bin", "offset": 32768 },
+        { "path": "v1.0-rc1/esp32s3-4848s040-en.bin", "offset": 65536 }
+      ]
+    }
+  ]
+}
