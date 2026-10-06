@@ -19,6 +19,7 @@
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <netinet/ip6.h>
 #include <netinet/tcp.h>
 #include <string.h>
 #include <sys/select.h>
@@ -97,36 +98,72 @@ class WebServer {
   void onNotFound(void (*fn)()) { m_notFound = fn; }
 
   // --- lifecycle ---
+  //
+  // TWO SOCKETS, because "localhost" is not one address. It resolves to ::1 first on
+  // this machine and to 127.0.0.1 second, and a browser tries them in that order:
+  // a server on the IPv4 loopback alone answers curl - which falls back - and not the
+  // fetch inside the page, which does not. The page loaded and the numbers did not,
+  // and that is the whole of it.
+  //
+  // Both are bound to the LOOPBACK and not to INADDR_ANY: a tool that answers on
+  // every interface of a machine is a tool other machines can reach, and this one is
+  // for the person sitting in front of the build machine.
   void begin() {
-    if (m_fd >= 0) {
+    if (m_fd >= 0 || m_fd6 >= 0) {
       return;
     }
     m_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (m_fd < 0) {
-      return;
+    if (m_fd >= 0) {
+      int ja = 1;
+      setsockopt(m_fd, SOL_SOCKET, SO_REUSEADDR, &ja, sizeof(ja));
+      struct sockaddr_in a = {};
+      a.sin_family = AF_INET;
+      a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+      a.sin_port = htons(m_port);
+      if (bind(m_fd, (struct sockaddr *)&a, sizeof(a)) != 0 ||
+          listen(m_fd, 4) != 0) {
+        ::close(m_fd);
+        m_fd = -1;
+      }
     }
-    int ja = 1;
-    setsockopt(m_fd, SOL_SOCKET, SO_REUSEADDR, &ja, sizeof(ja));
-    struct sockaddr_in a = {};
-    a.sin_family = AF_INET;
-    a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);   // the build machine, not the network
-    a.sin_port = htons(m_port);
-    if (bind(m_fd, (struct sockaddr *)&a, sizeof(a)) != 0 ||
-        listen(m_fd, 4) != 0) {
+    m_fd6 = socket(AF_INET6, SOCK_STREAM, 0);
+    if (m_fd6 >= 0) {
+      int nur6 = 1;   // keep the two apart: one socket per family
+      setsockopt(m_fd6, IPPROTO_IPV6, IPV6_V6ONLY, &nur6, sizeof(nur6));
+      struct sockaddr_in6 a6 = {};
+      a6.sin6_family = AF_INET6;
+      a6.sin6_addr = in6addr_loopback;
+      a6.sin6_port = htons(m_port);
+      if (bind(m_fd6, (struct sockaddr *)&a6, sizeof(a6)) != 0 ||
+          listen(m_fd6, 4) != 0) {
+        ::close(m_fd6);
+        m_fd6 = -1;
+      }
+    }
+    if (m_fd < 0 && m_fd6 < 0) {
       printf("WebServer: bind/listen auf Port %u schlug fehl\n", m_port);
-      ::close(m_fd);
-      m_fd = -1;
       return;
     }
-    printf("WebServer: lauscht auf 127.0.0.1:%u\n", m_port);
+    printf("WebServer: lauscht auf 127.0.0.1:%u", m_port);
+    if (m_fd >= 0) {
+      printf(" (ipv4)");
+    }
+    if (m_fd6 >= 0) {
+      printf(" und [::1]:%u (ipv6)", m_port);
+    }
+    printf("\n");
   }
 
-  bool started() const { return m_fd >= 0; }
+  bool started() const { return m_fd >= 0 || m_fd6 >= 0; }
   void stop() { close(); }
   void close() {
     if (m_fd >= 0) {
       ::close(m_fd);
       m_fd = -1;
+    }
+    if (m_fd6 >= 0) {
+      ::close(m_fd6);
+      m_fd6 = -1;
     }
   }
 
@@ -134,17 +171,30 @@ class WebServer {
 
   // --- one request, non-blocking ---
   void handleClient() {
-    if (m_fd < 0) {
-      return;
-    }
     fd_set r;
     FD_ZERO(&r);
-    FD_SET(m_fd, &r);
-    struct timeval tv = {0, 0};
-    if (select(m_fd + 1, &r, nullptr, nullptr, &tv) <= 0) {
+    int hoch = -1;
+    if (m_fd >= 0) {
+      FD_SET(m_fd, &r);
+      hoch = m_fd;
+    }
+    if (m_fd6 >= 0) {
+      FD_SET(m_fd6, &r);
+      hoch = (m_fd6 > hoch) ? m_fd6 : hoch;
+    }
+    if (hoch < 0) {
       return;
     }
-    const int fd = accept(m_fd, nullptr, nullptr);
+    struct timeval tv = {0, 0};
+    if (select(hoch + 1, &r, nullptr, nullptr, &tv) <= 0) {
+      return;
+    }
+    int fd = -1;
+    if (m_fd >= 0 && FD_ISSET(m_fd, &r)) {
+      fd = accept(m_fd, nullptr, nullptr);
+    } else if (m_fd6 >= 0 && FD_ISSET(m_fd6, &r)) {
+      fd = accept(m_fd6, nullptr, nullptr);
+    }
     if (fd < 0) {
       return;
     }
@@ -413,6 +463,7 @@ class WebServer {
 
   uint16_t m_port;
   int m_fd = -1;
+  int m_fd6 = -1;
   int m_fdFd = -1;
   std::vector<Route> m_routen;
   void (*m_notFound)() = nullptr;
