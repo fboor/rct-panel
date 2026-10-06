@@ -69,6 +69,8 @@ const char *webNewCode();
 // makes a switch from the settings page take effect. Defined in
 // tools/panel_sim/sim_switch.cpp.
 void webDeviceSwitch();
+// The plain restart, from the action page. Keeps the command line.
+void webRestart();
 #endif
 
 #endif // RCT_WEB_WEBSERVER_H

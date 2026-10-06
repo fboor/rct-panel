@@ -1703,9 +1703,11 @@ void handleAction() {
     sendMsg(200, tr(T_OK_RESTART));
     delay(500);
 #ifdef PANEL_SIM
-    // Same as the settings page: restart the DEVICE, not the process. The window
-    // stays open, which is what makes the choice worth making from a browser.
-    webDeviceSwitch();
+    // The same as on a panel, which really restarts: restart the process. The
+    // command line is KEPT here, because the person typing it meant it - and it is
+    // DROPPED after a device change, which is the other caller. Two callers, two
+    // meanings, and the difference is written down in sim_restart.h.
+    webRestart();
 #else
     webStop();
     ESP.restart();
