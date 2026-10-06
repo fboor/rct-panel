@@ -16,6 +16,12 @@ git log --format=%B --all | grep -inE '\b([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}\b|/h
 Muster breit (`/tmp/`, nicht ein Scratch-Name). Ein engeres hat zwei
 Fundstellen übersehen.
 
+## Push
+
+Nur `master`. Kein Push ohne Freigabe.
+
+`main`, `lcars-panel`, `simulator`: lokal, nie pushen.
+
 ## Historie
 
 Kein Rewrite: kein `amend`, kein `rebase`, kein `filter-branch`, kein
