@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Install the RCT Power Panel firmware</title>
+
+<!--
+  The installer page for a blank panel.
+
+  ESP Web Tools, and why it is a script tag and not a build step: it opens the
+  browser's Web Serial port, talks to the chip over USB UART and writes the parts
+  from the manifest. It needs the page to be served over HTTPS - that is a Web Serial
+  security requirement, not a preference of the tool.
+
+  Two buttons, because the panel's language is baked into the firmware: there is no
+  switch on the device (src/i18n/Lang.h). Two manifests rather than one manifest with
+  a dropdown, so each choice is a plain link and the page works without any script
+  beyond the install button itself.
+-->
+<script
+  type="module"
+  src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"
+></script>
+
+<style>
+  :root {
+    --fg: #e8eaed;
+    --muted: #9aa0a6;
+    --bg: #16181c;
+    --card: #1e2126;
+    --line: #2c3038;
+    --warn: #e8b23a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 2rem 1rem 4rem;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 44rem; margin: 0 auto; }
+  h1 { font-size: 1.7rem; margin: 0 0 .25rem; }
+  h2 { font-size: 1.1rem; margin: 2.5rem 0 .75rem; }
+  p { margin: .75rem 0; }
+  .sub { color: var(--muted); margin: 0 0 2rem; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 1.25rem 1.5rem;
+    margin: 1rem 0;
+  }
+  .warn {
+    border-color: var(--warn);
+    border-left-width: 4px;
+  }
+  .warn strong { color: var(--warn); }
+  ol, ul { padding-left: 1.3rem; }
+  li { margin: .4rem 0; }
+  code {
+    background: #262a31;
+    padding: .1rem .35rem;
+    border-radius: 4px;
+    font-size: .92em;
+  }
+  .pick {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .pick p { margin: 0; }
+  .pick .lang { font-weight: 600; }
+  footer {
+    margin-top: 3rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: .875rem;
+  }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Install the RCT Power Panel firmware</h1>
+<p class="sub">
+  Flashing a blank <b>Guition ESP32-S3 4848S040</b> over USB, from the browser.
+  No software to install on your computer.
+</p>
+
+<div class="card warn">
+  <p>
+    <strong>This erases everything on the panel.</strong> Wi-Fi credentials, the
+    24&nbsp;h history on the SD card and every setting are gone. Use it to install
+    onto a new or blank panel &mdash; not to update a panel that is already running.
+    An update goes through the panel's own update page, behind the maintenance code.
+  </p>
+</div>
+
+<h2>What you need</h2>
+<ul>
+  <li>Google Chrome, Microsoft Edge or Firefox &mdash; not Safari, not on an iPhone or iPad.</li>
+  <li>A USB cable to the panel, on the port that carries data.</li>
+  <li>The panel's USB port: it is the one behind the lower cover, next to the SD card.</li>
+</ul>
+
+<h2>Choose the language</h2>
+<p>
+  The panel's language is fixed in the firmware. Pick it here &mdash; you cannot
+  change it later without flashing again.
+</p>
+
+<div class="card pick">
+  <p><span class="lang">German</span><br><span class="sub">Deutsch</span></p>
+  <esp-web-install-button
+    manifest="manifest-de.json">
+    <button slot="activate">Install (German)</button>
+    <span slot="unsupported">This browser cannot flash. Use Chrome, Edge or Firefox.</span>
+    <span slot="not-allowed">This page must be served over https://</span>
+  </esp-web-install-button>
+</div>
+
+<div class="card pick">
+  <p><span class="lang">English</span><br><span class="sub">English</span></p>
+  <esp-web-install-button
+    manifest="manifest-en.json">
+    <button slot="activate">Install (English)</button>
+    <span slot="unsupported">This browser cannot flash. Use Chrome, Edge or Firefox.</span>
+    <span slot="not-allowed">This page must be served over https://</span>
+  </esp-web-install-button>
+</div>
+
+<h2>After the flash</h2>
+<ol>
+  <li>
+    The panel starts its own Wi-Fi network, <b>RCT-Panel</b>, with no password.
+    Join it from your computer or phone.
+  </li>
+  <li>
+    A configuration page opens. Enter the network the panel should live in, and the
+    inverter's address. The panel then reboots and connects.
+  </li>
+  <li>
+    From here the panel is reached at <code>http://192.168.1.228</code>, or at
+    <code>http://rct-panel.local</code> from a browser with mDNS.
+  </li>
+</ol>
+
+<h2>If something goes wrong</h2>
+<ul>
+  <li>
+    <b>The browser does not offer the port.</b> A dialog asking which port to use has
+    to appear. If it does not, the panel is not enumerating: try another USB cable,
+    another port, and make sure the cover is off.
+  </li>
+  <li>
+    <b>The flash stops halfway.</b> Run it again. Everything is erased first, so a
+    half-finished attempt leaves nothing to recover.
+  </li>
+  <li>
+    <b>Nothing happens after the flash.</b> Press the reset button once. The panel
+    boots the firmware it was given.
+  </li>
+</ul>
+
+<footer>
+  <p>
+    Not affiliated with RCT Power GmbH. Independent project, no connection to,
+    endorsement by or support from RCT Power GmbH.
+  </p>
+  <p>
+    Flashing by
+    <a href="https://esphome.github.io/esp-web-tools/" style="color:inherit">ESP Web Tools</a>.
+    Firmware and source: <a href="https://github.com/fboor/rct-panel" style="color:inherit">github.com/fboor/rct-panel</a>.
+  </p>
+</footer>
+
+</main>
+</body>
+</html>

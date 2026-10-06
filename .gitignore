@@ -5,3 +5,8 @@ examples/
 __pycache__/
 tools/panel_sim/build/
 tools/panel_sim/data/simulator.json
+
+# What tools/pack_web_install.sh stages. Build output, not source: 3.1 MB, and a
+# history cannot be rewritten to get rid of them again. The page, the manifests and
+# the script are versioned - the binaries are served from somewhere else.
+docs/install/*.bin
