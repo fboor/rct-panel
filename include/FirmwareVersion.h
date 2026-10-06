@@ -11,7 +11,10 @@
 // Info page. See the note next to DeviceState::firmwareVersion - two versions, two
 // sources, and confusing them is the mistake this header exists next to.
 //
-//   RCT_FW_VERSION      the release, raised when the panel's behaviour changes
+//   RCT_FW_VERSION      the release, raised when the panel's behaviour changes.
+//                       A prerelease carries a suffix ("1.0-rc1") and is tagged with
+//                       exactly this string prefixed by "v" - the panel, the
+//                       installer's manifests and the tag then name one thing.
 //   RCT_FW_VERSION_MON  when it was, so a support case can be placed in time
 //
 // The language is deliberately NOT part of it. The two builds are the same release
@@ -22,7 +25,7 @@
 #ifndef RCT_FW_VERSION_H
 #define RCT_FW_VERSION_H
 
-#define RCT_FW_VERSION "1.0"
+#define RCT_FW_VERSION "1.0-rc1"
 #define RCT_FW_VERSION_MON "2026-10"
 
 // Both parts at once, for the places that print the version as one string.
