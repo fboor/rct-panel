@@ -33,7 +33,10 @@ mkdir -p "$build/lvgl"
 
 # The firmware's own configuration file, plus the SDL driver. Same 16-bit colour
 # and same 64 kB heap as the panel, so a picture means what it means there.
-cflags="-O2 -DLV_CONF_INCLUDE_SIMPLE -I$here/lvconf -I$repo/include -I$repo/src -I$lvgl -I$here -I$here/stubs"
+# PANEL_SIM: the firmware's own uiLayout() steps aside and the simulator
+# supplies the profile it was asked for. That is the plan's compile-time choice
+# working, not a special case.
+cflags="-O2 -DPANEL_SIM -DLV_CONF_INCLUDE_SIMPLE -I$here/lvconf -I$repo/include -I$repo/src -I$lvgl -I$here -I$here/stubs"
 ldflags="-lSDL2 -lz -lm -lpthread"
 
 # The language is a build flag, so run.sh scans for it and builds accordingly -
@@ -93,6 +96,7 @@ c++ $cflags $lang \
     "$here/sim_stubs.cpp" \
     "$here/sim_data.cpp" \
     "$repo/src/gui/GuiApp.cpp" \
+    "$here/sim_board.cpp" \
     "$repo/src/ui/UiLayout.cpp" \
     "$repo"/src/i18n/Lang*.cpp \
     "$build"/schiff/*.o \

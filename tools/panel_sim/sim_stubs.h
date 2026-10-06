@@ -37,6 +37,11 @@
 // At speed 1 nothing is scaled at all.
 void simBegin(int breite, int hoehe, int speed);
 
+// The board to draw. Set before simBegin(), because the GUI asks for it from the
+// first object it creates.
+struct UiLayout;
+void simSetBoard(const UiLayout &board);
+
 // One collection run out of the JSON file, at the rate the firmware polls.
 void simPoll();
 

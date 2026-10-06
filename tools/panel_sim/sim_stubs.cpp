@@ -24,6 +24,7 @@
 #include "stubs/WiFi.h"
 #include "../../src/device/Device.h"
 #include "../../src/device/DeviceState.h"
+#include "../../src/ui/UiLayout.h"
 #include "../../src/storage/sdlog.h"
 
 namespace {

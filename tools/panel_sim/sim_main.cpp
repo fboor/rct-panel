@@ -24,6 +24,11 @@
 
 #include "../../src/gui/GuiApp.h"
 #include "sim_stubs.h"
+#include "../../src/ui/UiLayout.h"
+
+// The same accessor the GUI uses, so the tool and the firmware cannot disagree
+// about which board is being drawn.
+static inline const UiLayout &ui() { return uiLayout(); }
 #include "sim_data.h"
 
 namespace {
@@ -163,15 +168,17 @@ bool schreibeBild(const char *pfad, int w, int h) {
 
 }  // namespace
 
-// The navigation buttons, measured on the rendered frame rather than taken from
-// the source: the three buttons fill the bottom bar with 6 px of padding and 6 px
-// between them, so their centres are near 80, 240 and 390 at y = 442. A click does
-// not have to hit the icon, only the button, and the buttons are about 145 px wide.
+// Where the three navigation buttons are, DERIVED from the board rather than
+// written down: three equal cells across the bar, so their centres are at the sixths
+// of the width, and vertically in the middle of the bar.
+//
+// They were 80, 240 and 390 at y = 442 - measured on the frame, not read out of the
+// source - and those numbers only held at 480 px. At 800 px the click at 390 landed
+// in the middle button, so --page 3 showed the overview and --page 5 the same page
+// again: the screenshot tool was walking to a place that had moved.
 namespace {
-constexpr int kNavZurueckX = 80;
-constexpr int kNavStartX = 240;
-constexpr int kNavWeiterX = 390;
-constexpr int kNavY = 442;
+int navButtonX(int k) { return ui().screenW * (1 + 2 * k) / 6; }
+int navButtonY() { return ui().screenH - ui().navH / 2; }
 bool g_quit = false;
 
 int SDLCALL quitWatch(void *, SDL_Event *ev) {
@@ -259,6 +266,18 @@ int main(int argc, char **argv) {
     }
   }
 
+  // The window's size is the board's size. The simulator asks the tree which board
+  // it wants for these dimensions and says so plainly if there is none - drawing at
+  // 480 x 480 inside an 800 x 480 window would look like a working second
+  // resolution and be nothing of the kind.
+  const UiLayout *board = uiLayoutForSize(opt.breite, opt.hoehe);
+  if (board == nullptr) {
+    fprintf(stderr, "Kein Boardprofil fuer %d x %d in diesem Baum.\n", opt.breite,
+            opt.hoehe);
+    return 2;
+  }
+  simSetBoard(*board);
+
   if (!simDataLoad(opt.dataPath)) {
     return 1;
   }
@@ -298,12 +317,10 @@ int main(int argc, char **argv) {
   if (opt.seite > 0) {
     const int ziel = opt.seite;
     if (ziel == 1) {
-      klicke(kNavStartX, kNavY);
-    } else {
-      const int x = (ziel > 1) ? kNavWeiterX : kNavZurueckX;
-      const int n = (ziel > 1) ? (ziel - 1) : 0;
-      for (int i = 0; i < n; i++) {
-        klicks.push_back({x, kNavY});
+      klicke(navButtonX(1), navButtonY());
+    } else if (ziel > 1) {
+      for (int i = 0; i < ziel - 1; i++) {
+        klicks.push_back({navButtonX(2), navButtonY()});
       }
     }
   }

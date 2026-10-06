@@ -44,10 +44,14 @@ Erster Lauf: 419 LVGL-Dateien, danach Sekunden. `build/` ist nicht im Baum.
 ## Grenzen
 
 - **Kein 24-h-Diagramm** — Zweig wie eine Karte ohne Historie
-- **Keine zweite Auflösung** — die 480-Literale stecken noch in `GuiApp.cpp`
-  (Stufe 5/6 des Hardware-Plans); `--size 800x480` zeigt ein 480er-Layout
-- **Seitenwechsel per Klick** — echte SDL-Mausereignisse, Knopfmitten bei
-  x = 80 / 240 / 390, y = 442, gemessen am Bild
+- **800x480 ist ein Entwurf, kein fertiges Layout** — das Profil steht in
+  `src/ui/UiLayout.cpp` und ist von Hand gesetzt. Zwei Fehler sind sichtbar:
+  „Eigenverbrauchsquote" läuft aus der 186 px breiten Karte, und die Karten sind
+  mit 150 px Höhe zu hoch für ihren Inhalt. Beides ist Designarbeit, kein Codefehler
+- **Keine unbekannte Grösse** — `--size 123x456` sagt „kein Boardprofil" und
+  zeichnet nicht auf 480 runter
+- **Seitenwechsel per Klick** — echte SDL-Mausereignisse; die Knopfmitten kommen
+  aus dem Board (Sechstel der Breite, Mitte der Leiste)
 
 ## Dateien
 
@@ -57,4 +61,5 @@ Erster Lauf: 419 LVGL-Dateien, danach Sekunden. `build/` ist nicht im Baum.
 | `sim_stubs.cpp` | Uhr, Serial, SD, Netz, Relais, Web |
 | `sim_data.cpp` | JSON → `DeviceState` |
 | `stubs/` | `Arduino.h`, `Preferences.h`, `WiFi.h`, ESP-Teile |
+| `sim_board.cpp` | `uiLayout()` des Simulators: das gewünschte Profil statt der Firmware |
 | `data/rct_mock.json` | Mittag im Juli, alle vier Werte, einer negativ |

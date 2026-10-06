@@ -188,8 +188,8 @@ static inline FlowLayout flowLayoutFor(const DeviceCaps &caps,
   // the vertical line, so the line does not run through the digits - and free in
   // a layout without a house.
   L.valHouse.visible = kenneHaus;
-  L.valHouse.x = f.hubValX;
-  L.valHouse.y = f.hubValY;
+  L.valHouse.x = (int16_t)(f.hubX + f.hubValDx);
+  L.valHouse.y = (int16_t)(f.hubY + f.hubValDy);
   L.valHouse.w = f.valW;
   L.valHouse.centreY = false;
   L.valHouse.gross = false;
@@ -203,8 +203,8 @@ static inline FlowLayout flowLayoutFor(const DeviceCaps &caps,
     // value keeps the place the house's value had: right of that line, so the
     // line does not run through the digits. It is not centred here: there is
     // still a node below, and the number belongs to the one above.
-    L.valPv.x = f.hubValX;
-    L.valPv.y = f.hubValY;
+    L.valPv.x = (int16_t)(f.hubX + f.hubValDx);
+    L.valPv.y = (int16_t)(f.hubY + f.hubValDy);
   } else if (hubIstPv) {
     // Nothing below the node and nothing above but the circle: the value is the
     // content of the page, so it goes in the middle of the band between the two -
@@ -214,8 +214,10 @@ static inline FlowLayout flowLayoutFor(const DeviceCaps &caps,
     L.valPv.y = flowAlleinValY(ui);
     L.valPv.centreY = true;
   } else {
-    L.valPv.x = f.pvValX;
-    L.valPv.y = f.pvValY;
+    // Centred on the PV node: the label is valW wide and the node's centre is its
+    // middle, so the left edge is half a label to the left of the node.
+    L.valPv.x = (int16_t)(L.pv.x - f.valW / 2);
+    L.valPv.y = (int16_t)(L.pv.y + f.pvValDy);
   }
   L.grossPvIco = hubIstPv;
   // In the one-node layout the icon is drawn from its own font at its own size;
@@ -224,15 +226,15 @@ static inline FlowLayout flowLayoutFor(const DeviceCaps &caps,
   L.pvIcoNative = pvAllein;
 
   L.valGrid.visible = kenneNetz;
-  L.valGrid.x = f.gridValX;
-  L.valGrid.y = f.gridValY;
+  L.valGrid.x = (int16_t)(L.grid.x - f.valW / 2);
+  L.valGrid.y = (int16_t)(L.grid.y + f.gridValDy);
   L.valGrid.w = f.valW;
   L.valGrid.centreY = false;
   L.valGrid.gross = false;
 
   L.valBattery.visible = kenneAkku;
-  L.valBattery.x = f.batValX;
-  L.valBattery.y = f.batValY;
+  L.valBattery.x = (int16_t)(L.battery.x - f.valW / 2);
+  L.valBattery.y = (int16_t)(L.battery.y + f.batValDy);
   L.valBattery.w = f.valW;
   L.valBattery.centreY = false;
   L.valBattery.gross = false;

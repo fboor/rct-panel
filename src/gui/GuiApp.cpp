@@ -475,14 +475,15 @@ static const uint32_t kHistColor[HIST_SERIES] = {kChartColor[0], kChartColor[1],
 static const LangId kHistId[HIST_SERIES] = {
     T_D_SER_GRID, T_D_SER_CONSUMPTION, T_D_SER_PV,
     T_D_SER_EXT,  T_D_SER_BATTERY,      T_D_SER_SOC};
-static const int LEGEND_GAP = 24; // space between two legend entries
 // Chart frame on the Verlauf page. The card starts near the left edge because
 // the min/0/max scale markers sit inside it (see applyScaleMarkers) instead of
 // in a gutter beside it: the width that went into those labels goes into the
 // plot area instead.
-static const int kHistChartX = 10, kHistChartY = 52;
-static const int kHistChartW = 458, kHistChartH = 280;
-static const int kHistChartPad = 10;
+// The chart's card is the board's (src/ui/UiLayout.h). It does not start 10 px from
+// both sides and stop: the scale markers sit INSIDE the card (see applyScaleMarkers)
+// instead of in a gutter beside it, so the width that would have gone into a gutter
+// goes into the plot area instead - which is why the card is 458 px wide and not
+// 460.
 static lv_obj_t *s_chart = nullptr;
 static lv_chart_series_t *s_chartSer[HIST_SERIES] = {nullptr};
 // Scale markers of the primary (power) axis, drawn over the left end of the
@@ -1422,30 +1423,37 @@ static void pageBuildEnergy(AppPage *p) {
 static void pageBuildHeute(AppPage *p) {
   lv_obj_t *root = p->root;
 
-  struct {
-    int x, y, w, h;
-    LangId caption;
-    int valIdx, capIdx;
-  } cards[] = {
-      // Top row: three cards over the same 16..464 span as the two rows below.
-      // 448 px for three cards leaves 5 px between them (three times 4 would ask
-      // for 440, which no integer width divides) - and the third card used to be
-      // 144 px wide, which left the row 8 px short on the right and made this
-      // card look off-centre against the two below it.
-      {16, 36, 146, 96, T_D_CARD_PRODUCED, EN_GEN_VAL, EN_GEN_LBL},
-      {167, 36, 146, 96, T_D_CARD_SELFUSE, EN_SELF_VAL, EN_SELF_LBL},
-      {318, 36, 146, 96, T_D_CARD_FEDIN, EN_FEED_VAL, EN_FEED_LBL},
-      // Lower rows: two cards with the same 4 px gap as the first row, so
-      // 222 px wide starting at 16 and 242.
-      {16, 146, 222, 88, T_D_CARD_CONSUMED, EN_VERB_VAL, EN_VERB_LBL},
-      {242, 146, 222, 88, T_D_CARD_IMPORTED, EN_BEZU_VAL, EN_BEZU_LBL},
-      {16, 248, 222, 100, T_D_CARD_SELF, EN_AUT_VAL, EN_AUT_LBL},
-      {242, 248, 222, 100, T_D_CARD_SELFRATE, EN_EVB_VAL, EN_EVB_LBL},
-  };
-  for (unsigned i = 0; i < sizeof(cards) / sizeof(cards[0]); i++) {
-    makeStatCard(root, cards[i].x, cards[i].y, cards[i].w, cards[i].h,
-                 tr(cards[i].caption), &p->labels[cards[i].valIdx],
-                 &p->labels[cards[i].capIdx]);
+  // Which card goes in which cell, and in what order the page reads, is CONTENT and
+  // stays here. How many cards a row holds, how wide a cell is and how tall a row
+  // stands is GEOMETRY and comes from the board (src/ui/UiLayout.h).
+  //
+  // What this replaces is a table of seven x/y/w/h pairs. The arithmetic in
+  // uiCardW() reproduces both of this board's row widths exactly - 3 columns with a
+  // 5 px gap give 146, 2 columns with a 4 px gap give 222 - and a wider board only
+  // has to state how many cards it wants in a row.
+  static const LangId kCardCaption[7] = {
+      T_D_CARD_PRODUCED, T_D_CARD_SELFUSE, T_D_CARD_FEDIN, T_D_CARD_CONSUMED,
+      T_D_CARD_IMPORTED, T_D_CARD_SELF,   T_D_CARD_SELFRATE};
+  static const int kCardValIdx[7] = {EN_GEN_VAL, EN_SELF_VAL, EN_FEED_VAL,
+                                     EN_VERB_VAL, EN_BEZU_VAL, EN_AUT_VAL,
+                                     EN_EVB_VAL};
+  static const int kCardCapIdx[7] = {EN_GEN_LBL, EN_SELF_LBL, EN_FEED_LBL,
+                                     EN_VERB_LBL, EN_BEZU_LBL, EN_AUT_LBL,
+                                     EN_EVB_LBL};
+
+  const UiLayout &u = ui();
+  const int karten = (u.cards.n < 7) ? u.cards.n : 7;
+  for (int i = 0; i < karten; i++) {
+    const int zeile = u.cards.cardRow[i];
+    const int spalte = u.cards.cardCol[i];
+    if (zeile >= u.cards.rows || spalte >= u.cards.row[zeile].cols) {
+      continue;   // der Board nennt eine Zelle, die er nicht hat
+    }
+    const int w = uiCardW(u, zeile);
+    const int x = u.cards.x0 + spalte * (w + u.cards.row[zeile].gap);
+    makeStatCard(root, x, u.cards.row[zeile].y, w, u.cards.row[zeile].h,
+                 tr(kCardCaption[i]), &p->labels[kCardValIdx[i]],
+                 &p->labels[kCardCapIdx[i]]);
   }
   p->labelCount = EN_LABEL_COUNT;
 }
@@ -1455,16 +1463,31 @@ static void pageBuildHeute(AppPage *p) {
 // values start at the same x no matter how long they are. One padded string per
 // row did align them, but right-aligned - and a negative battery power would
 // have shifted its own unit by one character.
-static const int ROW_VAL_X = 156;
+// The value column. From the board, like the row's y and pitch: a wider board puts
+// the value further right, or splits into two columns.
 
 // Add one "name / value" row. Only the value label is stored in the page: the
 // names never change.
+// One row: a name on the left, its value at a fixed x. Name and value are separate
+// labels, so the values start at the same x however long they are.
+//
+// With two columns the row index says which half of the page it is in and how far
+// down: row i goes into column i % cols, at index i / cols. A board that wants one
+// column gets cols = 1 and the arithmetic is the identity.
 static void makeRow(AppPage *p, lv_obj_t *root, int i, const char *name,
                     const char *value) {
+  const UiInfoRows &r = ui().rows;
+  const int spalte = r.cols > 0 ? (i % r.cols) : 0;
+  const int zeile = r.cols > 0 ? (i / r.cols) : i;
+  // The second column starts half a page in, and both columns keep the same
+  // distances inside them - so a board states the offsets once.
+  const int spaltenBreite = r.cols > 1 ? (ui().screenW / r.cols) : ui().screenW;
+  const int dx = spalte * spaltenBreite;
   lv_obj_t *n = makeLabel(root, name, &lv_font_montserrat_16_uml, uiText());
-  lv_obj_align(n, LV_ALIGN_TOP_LEFT, 24, ROW_Y0 + i * ROW_PITCH);
+  lv_obj_align(n, LV_ALIGN_TOP_LEFT, dx + r.nameX, r.y0 + zeile * r.pitch);
   p->labels[i] = makeLabel(root, value, &lv_font_montserrat_16_uml, uiText());
-  lv_obj_align(p->labels[i], LV_ALIGN_TOP_LEFT, ROW_VAL_X, ROW_Y0 + i * ROW_PITCH);
+  lv_obj_align(p->labels[i], LV_ALIGN_TOP_LEFT, dx + r.valX,
+               r.y0 + zeile * r.pitch);
 }
 
 static void pageBuildInfo(AppPage *p) {
@@ -2232,8 +2255,8 @@ static void setScaleVal(lv_obj_t *l, float v) {
 // 0..100 axis spans the full chart height by construction.
 static void applyScaleMarkers(float loW, float hiW) {
   if (s_scaleMax == nullptr) return;
-  const int plotTop = kHistChartY + kHistChartPad;
-  const int plotBot = kHistChartY + kHistChartH - kHistChartPad;
+  const int plotTop = ui().chart.y + ui().chart.pad;
+  const int plotBot = ui().chart.y + ui().chart.h - ui().chart.pad;
   const int plotH = plotBot - plotTop;
   const float span = hiW - loW;
   auto yOf = [plotBot, plotH, span, loW](float w) -> int {
@@ -2243,7 +2266,7 @@ static void applyScaleMarkers(float loW, float hiW) {
   // Inside the card, two pixels left of the plot area's edge: the digits cover
   // the first few pixels of every series, so the gap they cut out of the lines
   // sits as far left as it goes without clipping at the card border.
-  const int labelX = kHistChartX + kHistChartPad - 2;
+  const int labelX = ui().chart.x + ui().chart.pad - 2;
   // 14 px font, ~18 px line box plus 2 px padding per side. Both outer labels
   // ride above their line: the top one would be clipped by the card edge, the
   // bottom one by the plot edge, and a label hanging over a grid line reads
@@ -2319,27 +2342,29 @@ static void pageBuildGraph(AppPage *p) {
   int lx = 20;
   for (int i = 0; i < HIST_SERIES; i++) {
     lv_obj_t *dot = lv_obj_create(root);
-    lv_obj_set_size(dot, 10, 10);
-    lv_obj_set_pos(dot, lx, 32);
+    lv_obj_set_size(dot, ui().chart.legendDot, ui().chart.legendDot);
+    lv_obj_set_pos(dot, lx, ui().chart.legendY);
     lv_obj_set_style_bg_color(dot, lv_color_hex(kHistColor[i]), 0);
     lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_border_width(dot, 0, 0);
     lv_obj_set_style_shadow_width(dot, 0, 0);
     lv_obj_t *nm =
         makeLabel(root, tr(kHistId[i]), &lv_font_montserrat_14_uml, uiText());
-    lv_obj_set_pos(nm, lx + 14, 29);
+    lv_obj_set_pos(nm, lx + ui().chart.legendTextDx,
+                 ui().chart.legendY + ui().chart.legendTextDy);
     lv_obj_update_layout(nm);
-    lx += 14 + lv_obj_get_width(nm) + LEGEND_GAP;
+    lx += ui().chart.legendTextDx + lv_obj_get_width(nm) +
+           ui().chart.legendGap;
   }
 
   // Chart. Points are seeded with LV_CHART_POINT_NONE so nothing is drawn
   // until real 5-minute samples arrive (no fake zero history after boot).
   s_chart = lv_chart_create(root);
-  lv_obj_set_pos(s_chart, kHistChartX, kHistChartY);
-  // kHistChartY + kHistChartH = 332, and the gap summary sits directly under
+  lv_obj_set_pos(s_chart, ui().chart.x, ui().chart.y);
+  // ui().chart.y + ui().chart.h = 332, and the gap summary sits directly under
   // the chart at 336..~354 so it stays inside ui().contentH() (364) - no scrolling
   // to read it.
-  lv_obj_set_size(s_chart, kHistChartW, kHistChartH);
+  lv_obj_set_size(s_chart, ui().chart.w, ui().chart.h);
   lv_obj_set_style_bg_color(s_chart, COL_CARD, 0);
   lv_obj_set_style_radius(s_chart, 10, 0);
   lv_obj_set_style_border_width(s_chart, 1, 0);

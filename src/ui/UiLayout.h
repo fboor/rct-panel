@@ -68,16 +68,87 @@ struct UiFlow {
   // labels are created with and the only one that fits the 16 px font; the one-node
   // layout states a wider one for its 36 px number.
   int16_t valW;
-  int16_t hubValX, hubValY;
-  int16_t pvValX, pvValY;
-  int16_t gridValX, gridValY;
-  int16_t batValX, batValY;
+  // A value's place is stated RELATIVE TO ITS NODE, never in page coordinates. That
+  // is the change a wider board forces: with absolute positions, moving a node
+  // leaves its number behind, and the 800 x 480 profile put the grid's value in the
+  // middle of the battery's line.
+  //
+  // Three of the four values are centred on their node and stand this far below its
+  // centre. The three distances are 36, 38 and 37 px and are stated separately
+  // because they were measured separately - one shared value would move two of the
+  // three by a pixel, and a refactor that moves a pixel is not a refactor.
+  int16_t pvValDy, gridValDy, batValDy;
+  // The hub's value is the exception: it stands RIGHT of the vertical battery line,
+  // so the line does not run through the digits. Its width is valW like the rest.
+  int16_t hubValDx, hubValDy;
   // The value under the PV when it is the only node: centred, and in the middle of
   // the empty band between the circle above and the pill below. A 200 px label with
   // its text centred puts its left edge at hubX - 100, and 200 px is what the 36 px
   // font needs for "1,23 kW".
   int16_t alleinValW;
 };
+
+// The "today" page as a grid: how many columns a row has, how wide a cell is, and
+// which cell each card occupies.
+//
+// Not a uniform grid, and the reason is worth writing down because a second board
+// will hit it too. On this panel the first row carries three cards of 146 px and the
+// two rows below carry two of 222 px each. A cell is therefore NOT a span of the
+// narrow cell - 222 is neither 146 nor 2 x 146 + gap. What IS true is that each
+// row states its own column count and its own gap, and the cell width follows:
+//   row 1: 3 columns, 5 px gap  -> (480 - 32 - 2*5) / 3 = 146
+//   row 2: 2 columns, 4 px gap  -> (480 - 32 - 4)   / 2 = 222
+// Both exact, and both with the same 16 px margin at each side. So the board states
+// columns and gap, and the arithmetic gives the width - which is also what a wider
+// board would need, since it only has to state how many cards it wants in a row.
+struct UiCardRow {
+  int cols;
+  int y;
+  int h;
+  int gap;
+};
+
+struct UiCardGrid {
+  int x0;                 // margin at the left and, mirrored, at the right
+  int rows;
+  UiCardRow row[3];
+  // Which cell each of the seven cards takes. Row and column SEPARATELY, and not as
+  // one running index: the first version numbered the cells across all rows and the
+  // cards below the first row landed in the first row as well - which put four
+  // cards on top of three others and left the page with three cards on it.
+  //
+  // Which caption a card carries and in what order the page reads is CONTENT and
+  // belongs to the page builder; only the cell it stands in is the board's business.
+  uint8_t cardRow[7];
+  uint8_t cardCol[7];
+  int n;                  // how many of the seven are used
+};
+
+// The rows on the info and device pages: a name at the left, its value at a fixed x,
+// both on a fixed pitch.
+//
+// cols is 1 on this panel, and it is here rather than nowhere because a wider board
+// wants two columns of half the width and twice the rows, and that is the same
+// question asked twice.
+struct UiInfoRows {
+  int nameX;
+  int valX;
+  int y0;
+  int pitch;
+  int cols;
+};
+
+// The 24 h chart: the card, its inner padding, and the legend above it.
+struct UiChartPlot {
+  int x, y, w, h;
+  int pad;                // inside the card; the scale markers live in here
+  int legendY;            // top of the legend row
+  int legendDot;          // the coloured dot's diameter
+  int legendTextDx;       // text offset from the dot's left edge
+  int legendTextDy;
+  int legendGap;          // space between two legend entries
+};
+
 
 struct UiLayout {
   // --- the screen ---
@@ -103,10 +174,27 @@ struct UiLayout {
 
   // --- the flow diagram ---
   UiFlow flow;
+
+  UiCardGrid cards;
+  UiInfoRows rows;
+  UiChartPlot chart;
 };
+
+// How wide a card is in a row with this many columns and this gap. Derived, because
+// it is what makes the row fill the width exactly - see UiCardGrid for why it is
+// per row and not a span of a narrower cell.
+inline int uiCardW(const UiLayout &u, int row) {
+  const UiCardRow &r = u.cards.row[row];
+  return (u.screenW - 2 * u.cards.x0 - (r.cols - 1) * r.gap) / r.cols;
+}
 
 // The board's layout. One per board, chosen at compile time; the simulator passes
 // the same one it renders at, which is what makes a second resolution testable.
 const UiLayout &uiLayout();
+
+// The layout for a given screen size, for the simulator. The firmware calls
+// uiLayout() and gets its own board; this is how a build machine asks what a
+// different size would look like without a second board in the tree.
+const UiLayout *uiLayoutForSize(int screenW, int screenH);
 
 #endif  // RCT_UI_UILAYOUT_H

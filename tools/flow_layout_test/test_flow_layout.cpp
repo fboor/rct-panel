@@ -141,7 +141,7 @@ static void testWithoutHouseMeter() {
   // Nur der eine Knoten rueckt ab: bei einem Akku darunter waere eine andere
   // Mitte genau der Fehler, den diese Aenderung sonst wiederholt.
   check(L.pv.y == ui().flow.hubY, "ohne Hauszaehler: mit Akku in der Zeile geblieben");
-  check(L.valPv.x == ui().flow.hubValX && L.valPv.y == ui().flow.hubValY,
+  check(L.valPv.x == ui().flow.hubX + ui().flow.hubValDx && L.valPv.y == ui().flow.hubY + ui().flow.hubValDy,
         "ohne Hauszaehler: mit Akku und Netz bleibt der Wert, wo der Hauswert war");
   check(L.grossPvIco, "ohne Hauszaehler: das PV-Icon wird wie das eines "
                       "Mittelpunkts skaliert");
