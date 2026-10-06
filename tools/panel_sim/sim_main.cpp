@@ -24,6 +24,7 @@
 
 #include "../../src/device/Device.h"
 #include "../../src/device/DeviceDriver.h"
+#include "../../src/config/Configuration.h"
 #include "../../src/device/DeviceConfig.h"
 #include "../../src/gui/GuiApp.h"
 #include "../../src/web/WebServer.h"
@@ -340,7 +341,13 @@ int main(int argc, char **argv) {
     lvAdvance(millis());
     lv_timer_handler();
   });
-  deviceBegin(cfg);
+  // Through the same door the settings page uses, so that a switch from the browser
+  // and a switch at startup are the same code - the first version called deviceBegin
+  // here and webDeviceSwitch from the browser, which were two ways of doing one thing.
+  snprintf(device_type, sizeof(device_type), "%s", cfg.type);
+  snprintf(device_host, sizeof(device_host), "%s", cfg.host);
+  snprintf(device_port, sizeof(device_port), "%s", cfg.port);
+  webDeviceSwitch();
 
   // The panel's own web interface, on the loopback interface and on 8081 rather than
   // 80 (src/web/WebServer.cpp decides which under PANEL_SIM). Started before the

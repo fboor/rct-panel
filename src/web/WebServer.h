@@ -63,5 +63,12 @@ const char *webCode(const char *newCode);
 // code) - the panel is the only place the code is ever visible, so it is also
 // the only place it can be replaced.
 const char *webNewCode();
+#ifdef PANEL_SIM
+// Restart the DEVICE with the settings as they stand. A panel restarts the whole
+// machine instead and never calls this; the simulator has no restart, so this is what
+// makes a switch from the settings page take effect. Defined in
+// tools/panel_sim/sim_switch.cpp.
+void webDeviceSwitch();
+#endif
 
 #endif // RCT_WEB_WEBSERVER_H

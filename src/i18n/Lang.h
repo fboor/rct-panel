@@ -167,6 +167,9 @@ enum LangId : int {
   T_LBL_THEME,
   T_OPT_TYPE_RCT,
   T_OPT_TYPE_OIG,
+  // Only ever shown by a simulator build (see the settings page), so both languages
+  // carry it and neither panel shows it.
+  T_OPT_TYPE_SIM,
   T_BTN_SAVE,
   T_NOTE_RESTART,
   T_OK_SAVED,

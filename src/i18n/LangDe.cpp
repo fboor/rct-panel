@@ -150,6 +150,7 @@ const char *const kLang[T_COUNT] = {
     "Hintergrund",                      // T_LBL_THEME
     "RCT Power (TCP 8899)",             // T_OPT_TYPE_RCT
     "OpenInverterGateway (HTTP 80)",    // T_OPT_TYPE_OIG
+    "Simulation (ohne Geraet)",      // T_OPT_TYPE_SIM
     "Speichern",                        // T_BTN_SAVE
     "Die Einstellungen werden dauerhaft gespeichert. Das Panel startet neu, "
     "damit der gew&auml;hlte Treiber und die neue Adresse wirksam werden.",

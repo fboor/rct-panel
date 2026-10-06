@@ -14,8 +14,28 @@ tools/panel_sim/run.sh --size 800x480                    # zweites Boardprofil
 tools/panel_sim/run.sh --device RCT --host 192.168.1.83  # echter Wechselrichter
 ```
 
-Weboberfläche: **http://127.0.0.1:8081/**, solange das Fenster läuft.
+Weboberfläche: **http://localhost:8081/**, solange das Fenster läuft.
 Wartungscode steht beim Start in der Konsole.
+
+## Umschalten im Browser
+
+`/einstellungen` → **Typ**. Drei Einträge: Simulation, RCT Power, OpenInverterGateway.
+Umschalten wirkt sofort — der Treiber wird beendet und mit den neuen Einstellungen
+neu begonnen, wie beim Neustart eines Panels.
+
+| Von → Auf | Antwort |
+|---|---|
+| SIM → RCT, echte Adresse | 200, danach echte Daten des Wechselrichters |
+| RCT → SIM | 200, danach die emulierte Tageskurve |
+| beliebig → OIG ohne erreichbares Gateway | 200, danach „Haus nein, Akku nein, Netz nein" |
+| RCT ohne Adresse | 400, es wird nichts gespeichert |
+| unbekannter Typ | 400 |
+
+| Startzeile | Bedeutung |
+|---|---|
+| `--device SIM` | Vorgabe |
+| `--device RCT --host … --port …` | echter Wechselrichter über TCP |
+| `--device OIG --host …` | OpenInverterGateway |
 
 Voraussetzungen: SDL2, zlib, C/C++-Compiler, LVGL unter `.pio/libdeps/esp32-s3/lvgl`
 (sonst `LVGL_DIR`).

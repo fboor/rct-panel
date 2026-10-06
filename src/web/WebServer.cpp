@@ -1505,11 +1505,22 @@ void handleSettingsPage() {
   // chosen here, which is the point - the page cannot offer a device family the
   // firmware has no driver for.
   {
-    struct {
+    struct Typ {
       const char *id;
       LangId label;
-    } types[] = {{"RCT", T_OPT_TYPE_RCT}, {"OIG", T_OPT_TYPE_OIG}};
-    for (const auto &ty : types) {
+    };
+    Typ types[3] = {{"RCT", T_OPT_TYPE_RCT}, {"OIG", T_OPT_TYPE_OIG}, {"", (LangId)0}};
+    int typeAnzahl = 2;
+#ifdef PANEL_SIM
+    // Only in a simulator build. A panel has no emulated inverter to choose, and
+    // listing one there would offer a selection that answers with invented numbers
+    // - so the option is compiled in only where the driver is. The array has three
+    // slots either way, so the loop below is not written twice.
+    types[2] = {"SIM", T_OPT_TYPE_SIM};
+    typeAnzahl = 3;
+#endif
+    for (int ti = 0; ti < typeAnzahl; ti++) {
+      const Typ &ty = types[ti];
       const bool on = strcmp(device_type, ty.id) == 0;
       b += F("<option value=\"");
       b += ty.id;
@@ -1596,13 +1607,26 @@ void handleSettingsSave() {
   // and the panel would come up with no device at all - a setting that looks
   // saved and is not.
   const String typ = s_server.arg("typ");
-  if (typ != "RCT" && typ != "OIG") {
+  bool typOk = (typ == "RCT" || typ == "OIG");
+#ifdef PANEL_SIM
+  // The emulated inverter is a family like the others here, and the same check that
+  // refuses an unknown one accepts it - because the driver is in THIS build. On a
+  // panel the name is not in the list and not accepted here, so the two cannot drift.
+  typOk = typOk || (typ == "SIM");
+#endif
+  if (!typOk) {
     sendMsg(400, tr(T_ERR_BAD_TYPE));
     return;
   }
 
+  // The host may be empty only for the emulated inverter, which connects to nothing.
+  // For every other family it is the one field there is no default for.
   const String host = s_server.arg("host");
-  if (host.length() == 0) {
+  bool hostOk = host.length() > 0;
+#ifdef PANEL_SIM
+  hostOk = hostOk || (typ == "SIM");
+#endif
+  if (!hostOk) {
     sendMsg(400, tr(T_ERR_BAD_HOST));
     return;
   }
@@ -1613,7 +1637,16 @@ void handleSettingsSave() {
   const String portStr = s_server.arg("port");
   char *end = nullptr;
   const long port = strtol(portStr.c_str(), &end, 10);
-  if (end == portStr.c_str() || *end != '\0' || port < 1 || port > 65535) {
+  bool portOk = (end != portStr.c_str() && *end == '\0' && port >= 1 && port <= 65535);
+#ifdef PANEL_SIM
+  // The emulated inverter has no port: it opens none. Its default from the factory is
+  // "0", so the form sends "0" and the check above refuses it - which is what happened,
+  // and the settings page could not be switched TO the simulator, only away from it.
+  // So port 0 is allowed for SIM alone, and the range check stands for everyone else.
+  portOk = portOk || (typ == "SIM" && end != portStr.c_str() && *end == '\0' &&
+                      port >= 0 && port <= 65535);
+#endif
+  if (!portOk) {
     sendMsg(400, tr(T_ERR_BAD_PORT));
     return;
   }
@@ -1645,8 +1678,17 @@ void handleSettingsSave() {
   // browser gets the confirmation while there is still a server to send it.
   sendMsg(200, tr(T_OK_SAVED));
   delay(500);
+#ifdef PANEL_SIM
+  // On a panel the save is followed by a restart, which is what makes the new device
+  // take effect. A simulator has no restart - ESP.restart() here does nothing on
+  // purpose - so without this line the settings page would save the choice, show it,
+  // and go on talking to the old device. Switching has to ACT, which is the whole
+  // point of switching from a browser.
+  webDeviceSwitch();
+#else
   webStop();
   ESP.restart();
+#endif
 }
 
 void handleAction() {
@@ -1660,8 +1702,14 @@ void handleAction() {
     Serial.println(F("Web: Neustart angefordert"));
     sendMsg(200, tr(T_OK_RESTART));
     delay(500);
+#ifdef PANEL_SIM
+    // Same as the settings page: restart the DEVICE, not the process. The window
+    // stays open, which is what makes the choice worth making from a browser.
+    webDeviceSwitch();
+#else
     webStop();
     ESP.restart();
+#endif
     return;
   }
   if (was == "setup") {
@@ -1740,6 +1788,7 @@ void makeCode() {
 } // namespace
 
 void webSetYieldHook(void (*fn)()) { s_yieldHook = fn; }
+
 
 void webStart() {
   if (s_serverStarted || provisioningApActive()) {

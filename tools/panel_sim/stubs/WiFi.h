@@ -10,6 +10,7 @@
 #define RCT_PANEL_SIM_WIFI_H
 
 #include <errno.h>
+#include <sys/ioctl.h>
 #include <fcntl.h>
 #include <netdb.h>
 #include <sys/select.h>
@@ -90,26 +91,26 @@ class WiFiClient {
     return (k > 0) ? (size_t)k : 0;
   }
 
-  // Read everything that has arrived, the way the panel's driver expects: the
-  // buffer is ours to drain, and nothing is buffered behind our back.
+  // HOW MANY BYTES ARE WAITING - and it must not consume one.
+  //
+  // The first version did recv() into a local buffer, counted the bytes and threw
+  // them away, which reads like a drain and is not one: the driver asks available()
+  // and then calls read() once per byte, so every frame the inverter sent was
+  // counted and then dropped. The symptom was silence rather than an error - no CRC
+  // mismatches, no exceptions, and 0/60 fresh forever, with the TCP port open the
+  // whole time.
+  //
+  // FIONREAD asks the kernel how much is in the receive queue and leaves it there,
+  // which is what WiFiClient::available() does.
   int available() {
     if (m_fd < 0) {
       return 0;
     }
-    uint8_t tmp[512];
-    int gesamt = 0;
-    for (;;) {
-      const ssize_t k = recv(m_fd, tmp, sizeof(tmp), MSG_DONTWAIT);
-      if (k > 0) {
-        gesamt += (int)k;
-        if ((size_t)k < sizeof(tmp)) {
-          break;
-        }
-        continue;
-      }
-      break;
+    int anzahl = 0;
+    if (ioctl(m_fd, FIONREAD, &anzahl) != 0) {
+      return 0;
     }
-    return gesamt;
+    return anzahl;
   }
 
   int read() {

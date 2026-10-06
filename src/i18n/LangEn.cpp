@@ -147,6 +147,7 @@ const char *const kLang[T_COUNT] = {
     "Background",                       // T_LBL_THEME
     "RCT Power (TCP 8899)",             // T_OPT_TYPE_RCT
     "OpenInverterGateway (HTTP 80)",    // T_OPT_TYPE_OIG
+    "Simulation (no device)",       // T_OPT_TYPE_SIM
     "Save",                             // T_BTN_SAVE
     "The settings are stored permanently. The panel restarts so that the "
     "chosen driver and the new address take effect.",
