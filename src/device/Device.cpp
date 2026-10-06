@@ -8,6 +8,8 @@
 // SPDX-License-Identifier: MIT
 #include "Device.h"
 
+#include <cstring>
+
 #include "DeviceDriver.h"
 #include "TcpTransport.h"
 
@@ -62,6 +64,28 @@ void deviceBegin(const DeviceConfig &cfg) {
                   cfg.type);
     s_device.connected = false;
     return;
+  }
+  // Clear the identity before the new driver writes its own, because not every
+  // driver writes every field and the state is static - it survives a driver change.
+  //
+  // MEASURED: OIG -> SIM -> OIG in one process, no restart. The second OIG wrote
+  // its own name (Growatt1000s) but NOT firmwareVersion - it has none - so the
+  // field still held what the SIM driver had put there, and the page showed a
+  // Growatt with the simulator's version:
+  //
+  //   OIG -> SIM   Name: Simulation (ohne Geraet)   Software: 0.0.0-sim
+  //   SIM -> OIG   Name: Growatt1000s               Software: 0.0.0-sim
+  //
+  // On a panel a device change reboots, which hides this. The emulator can switch
+  // without one, and so can a future live switch, and "the backend delivers no
+  // version" has to mean the placeholder and not the last device's answer.
+  //
+  // Only the identity is cleared, and only when the type actually changes: a
+  // settings save with the same device must not blank the name while the first
+  // message is still on its way.
+  if (strcmp(s_driver != nullptr ? s_driver->typeName() : "", drv->typeName()) != 0) {
+    s_device.deviceName[0] = '\0';
+    s_device.firmwareVersion[0] = '\0';
   }
   drv->setTransport(&s_tcpLink);
   drv->begin(cfg);
