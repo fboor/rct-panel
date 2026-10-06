@@ -90,6 +90,17 @@ const UiLayout kGuition4848S040 = {
         /* legendTextDx */ 14, /* legendTextDy */ -3,
         /* legendGap */ 24,
     },
+    // The energy bars: 480 px content, 20 px margin, so the track is 440 px and the
+    // value's right edge lands exactly on the track's right edge (340 + 120 = 460 =
+    // 20 + 440). These six numbers plus the value's x and width were literals in
+    // GuiApp.cpp until the second board asked for a wider bar and could not get one.
+    /* bars */
+    {
+        /* x */ 20, /* w */ 440, /* h */ 16,
+        /* labelGap */ 24,
+        /* row0Y */ 82, /* rowH */ 58,
+        /* valX */ 340, /* valW */ 120,
+    },
 };
 
 // --- a second size, as the plan asks: a hand-set 800 x 480 profile ------------
@@ -155,6 +166,13 @@ const UiLayout kBreit800x480 = [] {
   // not taller than the one that gets 280.
   l.chart.w = 778;
   l.chart.legendGap = 32;
+  // BARS: the same 20 px margin and the same heights, and the track takes the width
+  // that is left over - 800 - 2*20 = 760. MEASURED before: the track ran x=20..460,
+  // 440 px, and the right third of an 800 px screen stayed empty. The value label
+  // keeps its right edge on the track's right edge, which is what 340 + 120 = 460 =
+  // 20 + 440 was doing on the 480: 660 + 120 = 780 = 20 + 760.
+  l.bars.w = 760;
+  l.bars.valX = 660;
   return l;
 }();
 

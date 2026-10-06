@@ -149,6 +149,24 @@ struct UiChartPlot {
   int legendGap;          // space between two legend entries
 };
 
+// The energy page's bars: one row per series, a label line (name left, value right)
+// over a full-width bar. The name doubles as the legend, so the bar can use the whole
+// width and there is no separate legend to keep in step.
+//
+// This used to be six literals in GuiApp.cpp, which is why a second board could not
+// widen its bars: the page asked for 440 px and got 440 px on an 800 px screen. The
+// numbers are the panel's, so they belong with the rest of the panel's numbers.
+struct UiBars {
+  int x;        // left edge of the bar, and of the name above it
+  int w;        // bar length; the widest value fills it
+  int h;        // bar height
+  int labelGap; // name line to bar: the label's line box plus air
+  int row0Y;    // first name line, below the heading and the period selector
+  int rowH;     // per-series pitch: label + gap + bar + air
+  int valX;     // the value's left edge, right-aligned so it ends with the bar
+  int valW;     // the value label's width
+};
+
 
 struct UiLayout {
   // --- the screen ---
@@ -178,6 +196,7 @@ struct UiLayout {
   UiCardGrid cards;
   UiInfoRows rows;
   UiChartPlot chart;
+  UiBars bars;
 };
 
 // How wide a card is in a row with this many columns and this gap. Derived, because

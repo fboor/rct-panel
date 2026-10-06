@@ -73,7 +73,7 @@ void deviceBegin(const DeviceConfig &cfg) {
   // field still held what the SIM driver had put there, and the page showed a
   // Growatt with the simulator's version:
   //
-  //   OIG -> SIM   Name: Simulation (ohne Geraet)   Software: 0.0.0-sim
+  //   OIG -> SIM   Name: Simulation                       Software: 0.0.0-sim
   //   SIM -> OIG   Name: Growatt1000s               Software: 0.0.0-sim
   //
   // On a panel a device change reboots, which hides this. The emulator can switch

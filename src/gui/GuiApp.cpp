@@ -306,6 +306,11 @@ static const char kSolarIcon[] =
 #define OV_BTN_X0 6
 #define OV_BTN_DX (ui().flow.pillW + ui().flow.pillGap) // 152 px plus the 6 px gap
 #define OV_BTN_Y (ui().flow.pillY)
+// The pill's icon and the room beside it. Every glyph in lv_font_mdi_icons_24 has
+// adv_w 384, i.e. 24 px at this size, so the icon ends at 36 whatever it is - the
+// text is centred in what starts there.
+#define OV_ICO_X 12
+#define OV_ICO_W 24
 // What counts as "nothing happening" for the buttons: below 10 W there is no
 // household draw and no battery current to name, and the grid only counts as
 // importing from 20 W (the device regulates around zero below that).
@@ -748,15 +753,10 @@ static void makeStatCard(lv_obj_t *parent, int x, int y, int w, int h,
 // ---------------------------------------------------------------------------
 // "Energie" page helpers
 // ---------------------------------------------------------------------------
-// Bar geometry: 480 px content, 20 px margin. Per row a label line (name left,
-// value right) over a full-width bar, so the label doubles as the legend and
-// the bar can use the whole width.
-static const int EB_BAR_X = 20;
-static const int EB_BAR_W = 440;
-static const int EB_BAR_H = 16;
-static const int EB_LABEL_GAP = 24; // label line (20 px) + 4 px air to the bar
-static const int EB_ROW0_Y = 82;   // first label line (below heading + selector)
-static const int EB_ROW_H = 58;     // label (20) + gap (4) + bar (16) + air (18)
+// The bar geometry lives in the board's layout now - see UiBars. It used to be the
+// six literals below, and a second board could not widen its bars because this page
+// asked for 440 px and got 440 px whatever the screen was: on an 800 px panel the
+// track stopped at 460 and the right third of the screen stayed empty.
 
 // "< 1000 kWh" prints as "12,4 kWh", above that in MWh ("1,23 MWh"). The
 // decimal separator is a comma, as in the portal.
@@ -1039,28 +1039,35 @@ static void pageBuildOverview(AppPage *p) {
     lv_obj_set_style_radius(btn, OV_BTN_R, 0);
     lv_obj_set_style_border_width(btn, 0, 0);
     lv_obj_set_style_pad_all(btn, 0, 0);
-    // Icon and text at fixed places: the icon 12 px from the left edge of the pill,
-    // the text at the same x in all three. Centring the two as a group was tried
-    // first and looks wrong in a row - the icons end up at three different x, and
-    // three icons that are supposed to be a column are not.
+    // The icon stays where it is; the text is centred in the room the icon leaves.
     //
-    // The gap is the same for all three because the glyphs are: every icon in
-    // lv_font_mdi_icons_24 has adv_w 384, i.e. 24 px at this size, so the icon
-    // ends at 36 whatever it is. The text then starts at 42 - a 6 px gap, which
-    // reads as one group. At 46 the gap was 10 px, and with a word of 104 px
-    // ("keine Batterie") only 6 px were left at the right edge of a 152 px pill,
-    // so that one looked pushed out while the short ones looked centred.
+    // Not the two as a group: that was tried and looks wrong in a row, because the
+    // icons then end up at three different x and three icons that are meant to be a
+    // column are not. So the icon keeps its fixed place and the text is centred in
+    // what follows it.
     //
-    // The consumption pill's "nothing happening" text is the row's own word rather
-    // than a sentence about it ("Verbrauch" and not "kein Verbrauch"): the grey
-    // of the pill already says that nothing is happening, the sentence needed the
-    // space, and a pill that says what it is about is the same in all three
-    // states instead of only in the one that is not happening.
+    // The room starts at 36 because every glyph in lv_font_mdi_icons_24 has
+    // adv_w 384, i.e. 24 px at this size, whatever the icon is. Centring is done in
+    // an invisible object rather than by computing an x: the words change at run time
+    // - "keine Batterie" is 104 px and "Verbrauch" is 68 - and a computed x has to be
+    // recomputed for every one of them, where a centred child moves by itself.
     lv_obj_t *ico = makeLabel(btn, pills[i].icon, pills[i].font, FLOW_WHITE);
-    lv_obj_align(ico, LV_ALIGN_LEFT_MID, 12, 0);
+    lv_obj_align(ico, LV_ALIGN_LEFT_MID, OV_ICO_X, 0);
+
+    lv_obj_t *raum = lv_obj_create(btn);
+    lv_obj_set_pos(raum, OV_ICO_X + OV_ICO_W, 0);
+    lv_obj_set_size(raum, ui().flow.pillW - OV_ICO_X - OV_ICO_W, ui().flow.pillH);
+    lv_obj_set_style_bg_opa(raum, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(raum, 0, 0);
+    lv_obj_set_style_pad_all(raum, 0, 0);
+    lv_obj_remove_flag(raum, LV_OBJ_FLAG_SCROLLABLE);
+
     p->labels[pills[i].labelIdx] =
-        makeLabel(btn, tr(pills[i].id), &lv_font_montserrat_14_uml, FLOW_WHITE);
-    lv_obj_align(p->labels[pills[i].labelIdx], LV_ALIGN_LEFT_MID, 42, 0);
+        makeLabel(raum, tr(pills[i].id), &lv_font_montserrat_14_uml, FLOW_WHITE);
+    // CLIP, not the default WRAP: a fixed-width parent makes LVGL wrap, and a pill
+    // that breaks its word over two lines is taller than the pill that holds it.
+    lv_label_set_long_mode(p->labels[pills[i].labelIdx], LV_LABEL_LONG_MODE_CLIP);
+    lv_obj_align(p->labels[pills[i].labelIdx], LV_ALIGN_CENTER, 0, 0);
     s_ovBtn[i] = btn;
     s_ovLabel[i] = pills[i].labelIdx;
   }
@@ -1379,23 +1386,23 @@ static void pageBuildEnergy(AppPage *p) {
   // bar. The name takes the series color, the bar below it the same one - that
   // is the whole legend.
   for (int i = 0; i < ENERGY_ROWS; i++) {
-    const int y = EB_ROW0_Y + i * EB_ROW_H;
+    const int y = ui().bars.row0Y + i * ui().bars.rowH;
     const lv_color_t c = lv_color_hex(kEnergyColor[i]);
 
     // Label white: the bar underneath already carries the series color, a
     // colored name on top of a colored bar was just noise.
     lv_obj_t *name =
         makeLabel(root, tr(kEnergyId[i]), &lv_font_montserrat_16_uml, uiText());
-    lv_obj_set_pos(name, EB_BAR_X, y);
+    lv_obj_set_pos(name, ui().bars.x, y);
 
     p->labels[i] = makeLabel(root, "--", &lv_font_montserrat_16_uml, uiText());
-    lv_obj_set_width(p->labels[i], 120);
+    lv_obj_set_width(p->labels[i], ui().bars.valW);
     lv_obj_set_style_text_align(p->labels[i], LV_TEXT_ALIGN_RIGHT, 0);
-    lv_obj_set_pos(p->labels[i], 340, y);
+    lv_obj_set_pos(p->labels[i], ui().bars.valX, y);
 
     lv_obj_t *track = lv_obj_create(root);
-    lv_obj_set_size(track, EB_BAR_W, EB_BAR_H);
-    lv_obj_set_pos(track, EB_BAR_X, y + EB_LABEL_GAP);
+    lv_obj_set_size(track, ui().bars.w, ui().bars.h);
+    lv_obj_set_pos(track, ui().bars.x, y + ui().bars.labelGap);
     lv_obj_set_style_bg_color(track, COL_CARD, 0);
     lv_obj_set_style_radius(track, 4, 0);
     lv_obj_set_style_border_width(track, 0, 0);
@@ -1403,7 +1410,7 @@ static void pageBuildEnergy(AppPage *p) {
     lv_obj_set_style_shadow_width(track, 0, 0);
 
     lv_obj_t *fill = lv_obj_create(track);
-    lv_obj_set_size(fill, 0, EB_BAR_H);
+    lv_obj_set_size(fill, 0, ui().bars.h);
     lv_obj_set_pos(fill, 0, 0);
     lv_obj_set_style_bg_color(fill, c, 0);
     lv_obj_set_style_radius(fill, 4, 0);
@@ -2826,7 +2833,7 @@ static void refreshCb(lv_timer_t *t) {
       // non-zero value still gets a visible stub.
       int w = 0;
       if (maxV > 0.0f && known[i]) {
-        w = (int)(v[i] / maxV * (float)EB_BAR_W);
+        w = (int)(v[i] / maxV * (float)ui().bars.w);
         if (w == 0 && v[i] > 0.0f) {
           w = 3;
         }
