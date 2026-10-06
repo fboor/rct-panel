@@ -102,10 +102,12 @@ const UiLayout kGuition4848S040 = {
 //   bars    the same 44 and 72: they are text heights, not fractions of anything
 //   flow    the row stretched to the wider page, the hub's size kept, three pills of
 //           254 px so they still fill the width exactly
-//   cards   four columns on top and four below - eight cells, seven cards
+//   cards   three columns instead of the 480's mixed three-and-two, and the same
+//           three rows at the same heights - the board is 480 px TALL as well, so
+//           there is no more height to spend, only width
 //   rows    two columns, because half of 800 px is a comfortable row while one
 //           column puts the name 700 px away from its value
-//   chart   wider and shorter: a landscape page has width to spend and no height
+//   chart   wider, and NOT shorter: see the card and chart notes below
 const UiLayout kBreit800x480 = [] {
   UiLayout l = kGuition4848S040;
   l.screenW = 800;
@@ -115,22 +117,43 @@ const UiLayout kBreit800x480 = [] {
   l.flow.gridX = 650;
   l.flow.pillW = 254;
   l.flow.pageW = 800;
-  l.cards.x0 = 16;
-  l.cards.rows = 2;
-  l.cards.row[0] = UiCardRow{4, 36, 150, 8};
-  l.cards.row[1] = UiCardRow{4, 200, 150, 8};
+  // CARDS: three columns, so a card is (800 - 32 - 16) / 3 = 250 px.
+  //
+  // MEASURED, why not four. Four columns give 186 px, and the longest label -
+  // "Eigenverbrauchsquote" - runs out of its card at that width: measured on the
+  // 480 build it needs at least 222 px, which is what its two-column rows have. So
+  // four columns overflow by 36 px and three fit with 28 px to spare. The label is
+  // the same text at the same size on both boards; only the card differs.
+  //
+  // The three rows keep the 480 heights (96 / 88 / 100 at y 36 / 146 / 248). Both
+  // boards are 480 px tall, so the vertical arrangement that is known to fit fits
+  // here unchanged. What changed before was the number of rows and their heights,
+  // and that is what produced two rows of 150 px with 160 px of dead space below.
+  //
+  // Seven cards in three columns reads 3 + 3 + 1: the last row has one card and two
+  // empty cells. Uniform widths were preferred over the 480's mixed 146/222, which
+  // look wrong side by side on a landscape page.
+  l.cards.rows = 3;
+  l.cards.row[0] = UiCardRow{3, 36, 96, 8};
+  l.cards.row[1] = UiCardRow{3, 146, 88, 8};
+  l.cards.row[2] = UiCardRow{3, 248, 100, 8};
   l.cards.cardRow[0] = 0; l.cards.cardCol[0] = 0;
   l.cards.cardRow[1] = 0; l.cards.cardCol[1] = 1;
   l.cards.cardRow[2] = 0; l.cards.cardCol[2] = 2;
   l.cards.cardRow[3] = 1; l.cards.cardCol[3] = 0;
   l.cards.cardRow[4] = 1; l.cards.cardCol[4] = 1;
-  l.cards.cardRow[5] = 1; l.cards.cardCol[5] = 2;
-  l.cards.cardRow[6] = 1; l.cards.cardCol[6] = 3;
+  l.cards.cardRow[5] = 2; l.cards.cardCol[5] = 0;
+  l.cards.cardRow[6] = 2; l.cards.cardCol[6] = 1;
   l.cards.n = 7;
   l.rows.cols = 2;
   l.rows.valX = 216;
+  // CHART: 778 px wide, and the 280 px height is inherited rather than reduced.
+  // The chart starts below the 44 px page head, so 280 runs to y = 375 on a 480
+  // screen and the gap summary fits under it inside contentH(). Measured on the
+  // device and in the simulator alike: y = 96..375, 280 px. The 200 px this profile
+  // carried left 80 px of empty screen below the chart for no reason - the board is
+  // not taller than the one that gets 280.
   l.chart.w = 778;
-  l.chart.h = 200;
   l.chart.legendGap = 32;
   return l;
 }();
