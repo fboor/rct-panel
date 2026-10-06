@@ -43,6 +43,36 @@ Nachrichtentext steht. Notieren statt beheben.
 
 - Commit-Nachrichten: englisch
 - `docs/`, Handbuch: deutsch, weil sie gelesen werden. Dateinamen unverändert.
+- `AGENTS.md`: deutsch, wie `docs/`.
+
+## Fremde Angaben gegenprüfen
+
+Werte aus einer Doku gelten als **Vermutung**, bis sie gegen das Werkzeug geprüft
+sind, das zum Chip gehört. Die Doku ist am vertrauenswürdigsten und am wenigsten
+geprüft.
+
+| Angabe | Gegengeprüft an |
+|---|---|
+| Bootloader-Adresse beim Flashen | dem Builder der Platform (`espressif32/builder/`), der dieselbe Adresse benutzt |
+| Flash-Parameter | dem, was `flash_id` am Gerät meldet |
+| Register einer Chip-Erweiterung | einer zweiten Implementierung (ESPHome fährt denselben Chip) |
+| Pinbelegung | der Konfigurationsdatei, die der Hersteller selbst kompiliert |
+
+Belegte Fälle:
+
+- ESP Web Tools nennt `4096` für den Bootloader — das ist der **ESP32**. Der S3
+  nimmt `0x0`, sonst bootet ein Panel nicht, das vorher lief.
+- Drei Stellen, an denen ein fremdes Beispiel, eine Fremdquelle oder eine
+  Annahme das Bild verstellt haben, sind in `3388eaa`, `6457f02` und `9fe4481`
+  beschrieben.
+
+## Reihenfolge beim Fehlersuchen
+
+Die einfache Erklärung zuerst. Zwei Flash-Vorgänge mit demselben Ergebnis
+(`invalid header 0xFFFFFFFF`) wurden zuerst mit den Flash-Parametern erklärt; die
+Bytes waren gleich, nur die Adresse nicht. Und der Vorschlag „das musst du am
+falschen Gerät probieren" war falsch, weil eine Installation vorher löscht — jedes
+Ziel ist danach ein leeres Gerät.
 
 ## Dokumentation
 
