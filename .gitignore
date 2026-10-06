@@ -13,5 +13,5 @@ tools/panel_sim/data/simulator.json
 # The manifests are ignored too, and for a different reason: they carry the release
 # number from include/FirmwareVersion.h, so a checked-in one could only ever be a
 # stale one. tools/pack_web_install.sh regenerates them.
-docs/install/*.bin
-docs/install/manifest-*.json
+website/install/*.bin
+website/install/manifest-*.json
