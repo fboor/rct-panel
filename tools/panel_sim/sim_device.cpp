@@ -139,17 +139,33 @@ class SimDriver : public DeviceDriver {
     s.houseW[1] = last * 0.31f;
     s.houseW[2] = last * 0.35f;
 
+    // The balance, the battery and what is left for the grid - in the panel's sign
+    // conventions, which are the ones GuiApp.cpp states: batW > 0 discharges and
+    // batW < 0 charges ("pBat > 0 = discharging (measured)"), and gridExchangeW > 0
+    // draws from the grid.
+    //
+    // The first version had it the other way round. A surplus was written as a
+    // POSITIVE battery power, which means discharging, so a panel filling up was
+    // drawn emptying, the arrow pointed into the house instead of into the battery,
+    // and the state of charge fell while it charged. The state of charge formula was
+    // written for the right convention all along and therefore never worked either.
+    // The tell was in the two branch comments: the surplus one said "discharges".
     const float bilanz = erzeugung - last;   // + = surplus
-    float akku = 0.0f;
+    float akku = 0.0f;                       // negative = charging
+    float rest = bilanz;                     // what the battery did not take
     if (bilanz > 0.0f) {
-      akku = (bilanz < m_akkuW) ? bilanz : m_akkuW;          // discharges
+      const float nimm = (bilanz < m_akkuW) ? bilanz : m_akkuW;
+      akku = -nimm;         // charging: current flows into the battery
+      rest = bilanz - nimm; // and whatever is left goes out to the grid
     } else {
-      akku = (bilanz > -m_akkuW) ? bilanz : -m_akkuW;        // charges
+      const float gib = (bilanz > -m_akkuW) ? bilanz : -m_akkuW;
+      akku = -gib;         // discharging: current flows out of the battery
+      rest = bilanz - gib; // and whatever is missing is drawn from the grid
     }
-    s.gridExchangeW = bilanz - akku;          // + = import, - = feed-in
     s.batW = akku;
+    s.gridExchangeW = -rest;
     s.batA = (s.batV > 1.0f) ? (s.batW / s.batV) : 0.0f;
-    s.batV = m_simBatV - 0.01f * akku / 100.0f;   // a little under load
+    s.batV = m_simBatV - 0.01f * akku / 100.0f;  // rises while charging, sags under load
 
     // State of charge follows the power, and stops at the ends rather than running
     // past them - a battery past 100 % is the kind of thing a reader notices.
