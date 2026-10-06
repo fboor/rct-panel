@@ -24,6 +24,8 @@
   "monthGridDrawWh": 1900, "yearGridDrawWh": 482400, "gridDrawTotalWh": 1548500,
   "monthExtWh": 21300, "yearExtWh": 1399500, "totalExtWh": 1545900,
 
+  "_identitaet": "Diese beiden Werte werden absichtlich NICHT angezeigt. Sie stehen hier, weil sie zu einem echten Mitschnitt dieser Anlage gehoeren - und der SIM-Treiber ueberschreibt sie nach dem Einlesen mit SIMULIERT / 0.0.0-sim (sim_device.cpp, setzeIdentitaet). Grund: ein Screenshot des Emulators darf nicht wie ein Screenshot des Panels aussehen. Wer diese Werte loescht, verliert nichts Anzeigbares; wer sie in eine echte Zahl aendert, auch nicht - sie werden ohnehin ersetzt. Die Warnung steht hier, weil eine Identitaet mit sechs Stellen hinter dem Komma nach echtem Geraet aussieht und deshalb nach Fehler aussieht.",
+
   "deviceName": "PS 10.0 32WB",
   "firmwareVersion": "2.3.5689",
   "coreTemp": 30.2, "heatSinkTemp": 23.4

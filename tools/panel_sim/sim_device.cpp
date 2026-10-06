@@ -28,6 +28,8 @@
 #include <cstring>
 #include <string>
 
+#include "i18n/Lang.h"
+
 #include "../../src/device/Device.h"
 #include "../../src/device/Json.h"
 #include "../../src/device/SimDriver.h"
@@ -202,13 +204,39 @@ class SimDriver : public DeviceDriver {
     return s;
   }
 
+  // The name and version the emulator reports. Both have to be things a real
+  // inverter cannot report, so that nobody mistakes a run here for the panel:
+  //
+  //   the name says SIMULIERT - a real device answers with its model
+  //   the version is 0.0.0 with a marker - a real one answers with a number
+  //                                above 1000, seen in a capture of this plant
+  //
+  // firmwareVersion is 24 bytes; the marker has to fit or strlcpy truncates it and
+  // the difference is gone - which would be the same bug in a new place.
+  static void setzeIdentitaet(DeviceState &s) {
+    // The name is the string the settings page already offers for this device type,
+    // so it comes out in the language the emulator is running in. Writing a German
+    // literal here instead was what the first version did, and it showed up as
+    // "SIMULIERT (kein Geraet)" on the English page - a German sentence on an
+    // English screen, in the emulator whose whole job is to show what the panel
+    // shows.
+    //
+    // 23 characters plus the terminator against deviceName[40]: strlcpy truncates
+    // silently at the buffer, and a truncated identity is indistinguishable from a
+    // real one.
+    snprintf(s.deviceName, sizeof(s.deviceName), "%s", tr(T_OPT_TYPE_SIM));
+    snprintf(s.firmwareVersion, sizeof(s.firmwareVersion), "0.0.0-sim");
+  }
+
   void leereAnlagen() {
     DeviceState &s = m_state;
     s.semantics.loadMeterSeesExternal = false;
     s.semantics.genCounterSeesExternal = false;
     s.semantics.feedCounterNegative = true;
-    snprintf(s.deviceName, sizeof(s.deviceName), "Simulation");
-    snprintf(s.firmwareVersion, sizeof(s.firmwareVersion), "0.0.0");
+    // Identity, set again in fuelleAusDerDatei() AFTER the file has been read - see
+    // the note there. Kept here too so that a run without a file still says what it
+    // is.
+    setzeIdentitaet(s);
     s.socPct = 42.0f;
     s.batV = m_simBatV;
     s.batterySoh = 100.0f;
@@ -276,9 +304,18 @@ class SimDriver : public DeviceDriver {
     zahl("totalExtWh", &s.totalExtWh);
     zahl("coreTemp", &s.coreTemp);
     zahl("heatSinkTemp", &s.heatSinkTemp);
+    // The file may carry a real capture's deviceName and firmwareVersion, and it
+    // does - the bundled mock has the values of a real inverter in it. Read them,
+    // because they are part of what a capture is, and then overwrite them again: a
+    // screenshot of the emulator must not be mistakable for a screenshot of the
+    // panel, and "PS 10.0 32WB" + "2.3.5689" is exactly a real inverter's identity.
+    //
+    // Read first, then set: the other order was the bug, and it is a quiet one
+    // because everything else in the file loads correctly.
     getString(j, n, "deviceName", s.deviceName, sizeof(s.deviceName));
     getString(j, n, "firmwareVersion", s.firmwareVersion,
               sizeof(s.firmwareVersion));
+    setzeIdentitaet(s);
 
     // The plant the curve is built from, taken out of the file so that a real
     // capture's magnitudes can be used without editing this file.
