@@ -65,9 +65,42 @@ static void saveConfigCallback() {
 }
 
 static WiFiManagerParameter section_rct("<hr><h3>Inverter options</h3>");
-// The type is not a field yet: there is one implemented driver, and a list of
-// one is noise. It becomes a list the day a second family exists, and the saved
-// value is the prefix of the log files.
+// The driver IS a field now: there are two families (RCT and OIG/Growatt), and the
+// web interface already offers them as a proper list. What the portal cannot offer
+// is the same shape - a <select> is not reachable here.
+//
+// Why, measured in the library rather than guessed:
+//   WiFiManager.cpp renders every parameter that has an ID from the fixed template
+//   HTTP_FORM_PARAM, which is an <input>. A parameter with no ID is emitted as raw
+//   HTML and never receives its value back, because the library copies
+//   request->arg(id) per parameter and arg("") is empty.
+//   And there is no other way to read the request: setSaveConfigCallback and
+//   setPreSaveParamsCallback take no argument, and the WebServer member is not
+//   public - there is no accessor.
+//   (_length > 99999 is no way in either. It is a scope guard: the library logs
+//   "WiFiManagerParameter is out of scope" and returns an empty form.)
+//
+// So the portal gets a number with the list spelled out, exactly like relay_mode
+// below, and the pleasant place to set it stays the panel's own web page. Choosing
+// the driver at first setup is worth having even as a number: the wrong one means a
+// panel that shows no data at all, and this field is then the only way to say which
+// inverter is behind the wall without the maintenance code.
+//
+// 1 = RCT Power (port 8899)   2 = OIG / Growatt gateway (port 80)
+//
+// The onchange carries the port along, because the two go together and getting it
+// wrong is silent: OIG on 8899 connects to nothing and the panel shows no data with
+// nothing to indicate why. The port field's id is the library's, taken from the
+// parameter ID, so it can be reached from here; the guard is for the case where the
+// field is not on the page at all.
+static WiFiManagerParameter p_device_type(
+    "device_type",
+    "<b>Inverter type</b><br>1 = RCT Power &middot; 2 = OIG / Growatt. "
+    "The port follows this choice. Easier to change later in the panel's web page "
+    "(settings).",
+    "1", 2,
+    "type=\"number\" min=\"1\" max=\"2\" onchange=\"var p="
+    "document.getElementById('device_port');if(p){p.value=this.value=='2'?80:8899;}\"");
 static WiFiManagerParameter p_device_host("device_host",
                                        "<b>Address</b><br>IP address or hostname "
                                        "of the inverter",
@@ -166,6 +199,11 @@ static void startProvisioningAp() {
   // actually in use. The WiFiManagerParameter defaults are captured at file
   // scope - before readConfig() and any dev override run - so without this a
   // save would re-submit the stale compile-time host and clobber NVS.
+  // The driver, shown as the number the field takes. The portal works in numbers
+  // because that is what an <input> can carry; the two names live in the device
+  // layer, so the mapping is done here rather than guessed twice.
+  p_device_type.setValue(
+      (strcmp(device_type, "OIG") == 0) ? "2" : "1", 1);
   p_device_host.setValue(device_host, sizeof(device_host) - 1);
   p_device_port.setValue(device_port, sizeof(device_port) - 1);
   // Same reason for the output fields: their defaults are also compile-time
@@ -222,6 +260,19 @@ static void finishWifiUp() {
     // place, so adopt the submitted RCT settings and persist everything.
     strcpy(device_host, p_device_host.getValue());
     strcpy(device_port, p_device_port.getValue());
+    // The driver, from the portal's number back to the name the device layer
+    // knows. Anything else is ignored rather than guessed at, like relay_mode
+    // below: the wrong driver gives a panel that reads nothing, and quietly
+    // falling back to RCT would hide the typo instead of reporting it.
+    const char *typ = p_device_type.getValue();
+    if (strcmp(typ, "2") == 0) {
+      strcpy(device_type, "OIG");
+    } else if (strcmp(typ, "1") == 0) {
+      strcpy(device_type, "RCT");
+    } else {
+      Serial.printf("Portal: device_type '%s' ignoriert, bleibe bei %s\n", typ,
+                    device_type);
+    }
     saveConfig();
     // The switched output goes with it - this is the only way to reach these
     // settings when the panel is not in the home network and its own web
@@ -288,6 +339,7 @@ void networkSetup() {
   wm.setTitle("RCT Panel");
   wm.setSaveConfigCallback(saveConfigCallback);
   wm.addParameter(&section_rct);
+  wm.addParameter(&p_device_type);
   wm.addParameter(&p_device_host);
   wm.addParameter(&p_device_port);
   wm.addParameter(&p_relay_mode);
