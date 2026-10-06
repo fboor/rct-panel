@@ -47,7 +47,8 @@ zu den Seiten stehen in Kapitel 3, zur Einrichtung ab Kapitel 1.
 
 Im Browser im Heimnetz finden Sie unter `http://<IP des Panels>/einstellungen`
 Gerätetyp, Adresse, Port und Theme — dort lässt sich das Gerät später wechseln,
-ohne das WLAN neu zu konfigurieren (Kapitel 1.4).
+ohne das WLAN neu zu konfigurieren (Kapitel 1.4). Die IP-Adresse des Panels steht
+oben links auf der **Service-Seite** (Abschnitt 3.7).
 
 Die Messwerte liegen außerdem auf der SD-Karte und lassen sich später im
 Browser abrufen: IP-Adresse und Code dafür stehen auf der **Service-Seite**
