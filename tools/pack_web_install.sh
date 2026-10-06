@@ -37,7 +37,7 @@
 #
 # ONE LIST, TWO READERS
 #
-# website/install/devices.json says which devices exist and which build environment
+# docs/install/devices.json says which devices exist and which build environment
 # each language of each device comes from. The page reads it to fill its device
 # picker, this script reads it to know what to build. Adding a device is an edit
 # there and nowhere else.
@@ -59,7 +59,7 @@
 set -e
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-OUT="$ROOT/website/install"
+OUT="$ROOT/docs/install"
 HEADER="$ROOT/include/FirmwareVersion.h"
 LIST="$OUT/devices.json"
 PIO=${PIO:-pio}

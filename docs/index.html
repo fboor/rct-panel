@@ -7,9 +7,14 @@
 <!--
   The site root. One link, because there is one thing to do here.
 
-  It lives in website/ and not in docs/ on purpose: docs/ is the German user
-  documentation and is read as text, while this is served as a page. GitHub Pages
-  publishes whichever folder is configured, and the two do not belong in one.
+  It is docs/index.html because that is the one folder GitHub Pages can be pointed at
+  without a workflow: Settings, Pages, "Deploy from a branch", folder /docs. The
+  repository root has no index.html and never had one - it has a README, and Pages
+  serves that as text rather than as a page - so /docs is the folder that needs no
+  build step and no configuration beyond the one setting.
+
+  The German documentation lives here too and is published alongside it. Serving a
+  .md file shows its text, which is harmless and is what a reader gets anyway.
 -->
 <style>
   body {
