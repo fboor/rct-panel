@@ -363,20 +363,30 @@ static inline FlowLayout flowLayoutFor(const DeviceCaps &caps,
     a.ry = f.ry;
     return a;
   };
-  // The three arrowheads, and the direction each points:
-  //   oben  300 Grad, towards INCREASING angle: the panels are at 210 and the meter at
-  //         330, so the power runs that way.
-  //   Akku  180 Grad, towards DECREASING: from the panels at 210 down to the battery at
-  //         90, which at the ring's left extreme is straight down.
-  //   Netz  360 Grad, either way - it is the one sector with two. Down for the meter
-  //         paying the battery, up for the other way round.
-  L.keilOben = keil(kGradPv, kGradNetz, 300.0f, ringDa);
-  L.keilAkku = keil(kGradAkku - 360.0f, kGradPv, 180.0f, ringDa && kenneAkku);
+  // The three arrowheads, each on its sector's MIDDLE - half way between the two ends,
+  // which is where the eye looks for a direction mark and what makes a mark on an arc an
+  // arrow rather than a decoration - and each turned so it lies along the arc there.
+  //
+  // It was once off the middle, on the axes at 300/180/360, because a turned glyph is a
+  // multiple of 90 there and still looks like an arrow instead of a hook. That bought a
+  // cleaner glyph and lost the one thing that matters: 300 degrees says nothing about the
+  // middle of that sector.
+  //
+  //   oben  270 Grad, towards INCREASING angle: the panels are at 210 and the meter at
+  //         330, so the power runs that way. 270 is the ring's highest point, and the
+  //         10 px its 21 px label needs above the arc is why the ring is 116 and not 120.
+  //   Akku  150 Grad, towards DECREASING: from the panels at 210 down to the battery at
+  //         90.
+  //   Netz  390 Grad, either way - it is the one sector with two. Towards decreasing for
+  //         the battery paying the meter, towards increasing for the other way round.
+  L.keilOben = keil(kGradPv, kGradNetz, 270.0f, ringDa);
+  L.keilAkku = keil(kGradAkku - 360.0f, kGradPv, 150.0f, ringDa && kenneAkku);
   // Without a battery the lower right sector grows over the whole lower half, so the ring
   // stays closed: left out, it would stop in mid-air under where the battery node used
-  // to be, on a page with nothing there.
+  // to be, on a page with nothing there. Its middle is then 360 of a 240 degree sector.
   L.keilNetz =
-      keil(kGradNetz, kenneAkku ? kGradAkku : kGradPv + 360.0f, 360.0f, ringDa);
+      keil(kGradNetz, kenneAkku ? kGradAkku : kGradPv + 360.0f,
+           kenneAkku ? 390.0f : 360.0f, ringDa);
 
   // One pill per quantity that is drawn: a pill for something the diagram does
   // not show would be saying something about a measurement that is not being
@@ -429,7 +439,7 @@ static inline void flowLinkMidpoint(const FlowLink &l, int16_t *cx, int16_t *cy)
 //
 // The arrow stands ON the ring at the sector's middle, turned along it. Both the place
 // and the angle come out of the ring's own radii and the one angle, and neither is
-// written down as a number: the sector is 77 degrees long and a number here would be
+// written down as a number: the sector is 120 degrees long and a number here would be
 // wrong the next time the ring changes shape. laeuftAuf is the direction the power runs:
 // true means towards INCREASING angle, which on this sector means the meter paying the
 // battery.

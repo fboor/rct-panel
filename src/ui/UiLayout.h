@@ -81,12 +81,19 @@ struct UiFlow {
   // between the circle and the pill can only be measured in the container - which is
   // what flowPillYInFlow below is for.
   //
-  // 30 CENTRES the drawing: the heading ends 6 px lower than this and the pills start 1 px
-  // below the container, so the band it has to sit in runs from 29 to 316 and the drawing
-  // is 276 px tall - 11 px of slack in all. 30 puts 5 above and 6 below; at 35 it was 10
-  // and 1, which read as sitting on the pills. There is no more to give: the ring's
-  // diameter and the battery's value under it are what they are.
+  // 20 puts the drawing 10 px higher than the 30 that once centred it, and the
+  // heading's line moved to the top of the page to pay for it: the ring's highest
+  // point is 10 px below this, and at 30 that left the arc 5 px under "Ueberschrift"
+  // while the battery's value was 6 px above the pills. There is no way to move the
+  // drawing up without also making room for the ring at the top, and "Ueberschrift"
+  // is short enough that a line it does not fill loses nothing.
   int16_t flowY;
+  // The container's height, and it is a number of its own because the drawing is not
+  // 280 px any more: the battery's value hangs 19 px below the battery node and its
+  // line is 21 px tall, so the lowest ink is at 284. 288 leaves 4 px under it, which
+  // is what it had against 280, and costs the gap to the pills 8 of its 18 px - the
+  // pills hang off the page and not off this, so there is nothing above to hit.
+  int16_t flowH;
 
   // --- values ---
   // The hub's value is right of the vertical battery line, so the line does not run

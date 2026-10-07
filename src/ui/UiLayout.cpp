@@ -23,7 +23,7 @@ const UiLayout kGuition4848S040 = {
     /* rotation */ 0,
     /* statusH */ 44,
     /* navH */ 72,
-    /* headY */ 8,
+    /* headY */ 0,
     // The first row on the info and device pages, below the heading, and the pitch
     // there. 14 rows have to fit in contentH: 40 + 13*22 + 20 = 346 < 364, with
     // the 16 px font's 20 px line box leaving 2 px of air per row.
@@ -31,36 +31,51 @@ const UiLayout kGuition4848S040 = {
     /* rowPitch */ 22,
     /* flow */
     {
-        /* hubY */ 124,      // the hub's centre, and the ring's with it
+        /* hubY */ 126,      // the hub's centre, and the ring's with it
         /* sideD */ 60,      // PV, grid, battery
-        /* hubD */ 92,       // the house
+        // 70, and 5 px less than the 80 it was: the circle in the middle is the one
+        // thing the eye lands on first, and next to a 116 px ring an 80 px house looked
+        // heavy. The icon inside it does not shrink with it - the house glyph is 26 px of
+        // ink either way, drawn at 100 % out of lv_font_montserrat_36 - so 70 px leaves
+        // 22 px of white on each side where 80 left 27. A side effect worth having: the
+        // house's value, which stands 53 px to the right and 29 px down, used to clip
+        // the circle's rim by 2 px and now clears it by 6.
+        /* hubD */ 70,
         /* alleinD */ 190,   // the PV as the only node on the page
-        // 24 px ABOVE the hub row, which puts this one-node circle back at the y = 100 it
+        // 26 px ABOVE the hub row, which puts this one-node circle back at the y = 100 it
         // has always had: it is placed against the TOP of the container with a measured
-        // 5 px of air over it, and the row is at 124 because the ring wanted it there.
-        // A 190 px circle under a row at 124 would show 29 px of nothing above it.
-        /* aloneDY */ -24,
+        // 5 px of air over it, and the row is at 126 because the ring wanted it there.
+        // A 190 px circle under a row at 126 would show 31 px of nothing above it.
+        /* aloneDY */ -26,
         /* hubX */ 240,
-        /* batDY */ 244,     // the ring's lowest point: hubY + ry
-        // 120 x 120: A CIRCLE, and that is the request. 120 is what the 280 px of
-        // container allows once the battery's value no longer hangs below its node: the
-        // ring's top sits 4 px down and the battery node's bottom at 274. It is 240 px
-        // across, so 120 px of margin on each side - the width is not a choice here at
-        // all, which is what lets the three sectors be three equal 120 degree arcs.
-        /* rx */ 120, /* ry */ 120,
+        // The battery's row, and with it the ring's lowest point: hubY + ry is 242, and
+        // the node is written 2 px further out so its circle overlaps the arc by its own
+        // 2 px rather than stopping 2 px short of it.
+        /* batDY */ 244,
+        // 116 x 116: A CIRCLE, and that is the request - it was 120 and is 4 px less for
+        // one reason. The top sector's arrowhead stands on the ring's HIGHEST point, and
+        // its 21 px label has to fit inside the container, so the ring's top needs 10 px
+        // of air and not 4. That is what the page gave up: the heading's line moved to
+        // the top of the page and the drawing 10 px up with it. The battery's value ends
+        // 4 px above the container's bottom, so there is nothing else to give.
+        // The width stopped being a choice long ago, which is what lets the three sectors
+        // be three equal 120 degree arcs.
+        /* rx */ 116, /* ry */ 116,
         /* pillW */ 152,
         /* pillH */ 34,
         /* pillGap */ 6,
-        /* pillY */ 316,
+        /* pillY */ 318,
         /* pageW */ 480,
-        /* flowY */ 30,
+        /* flowY */ 20,
+        /* flowH */ 288,
         /* valW */ 120,
-        // The three on the ring: 70 px sideways - to the left for the PV, because the
-        // house is on its right - and 38 px down. The battery only 15 px down, it is the
-        // ring's lowest point and 38 would reach past the container. See the reason next
-        // to pvValDx.
-        /* pvValDx */ -70, /* gridValDx */ 70, /* batValDx */ 70, /* hubValDx */ 70,
-        /* pvValDy */ 38,  /* gridValDy */ 38,  /* batValDy */ 15,  /* hubValDy */ 38,
+        // The three on the ring: a quarter less sideways - to the left for the PV, because
+        // the house is on its right - and down by the same factor, so every value is 25 %
+        // closer to its node's centre along the SAME ray it was on. The battery's sideways
+        // is 60 and not 53: its node is 60 px across, and at 53 the number would start
+        // inside the circle.
+        /* pvValDx */ -53, /* gridValDx */ 53, /* batValDx */ 60, /* hubValDx */ 53,
+        /* pvValDy */ 29,  /* gridValDy */ 29,  /* batValDy */ 19,  /* hubValDy */ 29,
         /* alleinValW */ 200,
     },
     // The "today" cards. Three columns on top, two below, and the cell width comes
@@ -137,13 +152,14 @@ const UiLayout kBreit800x480 = [] {
   // fit fits here unchanged. PV and grid therefore stand 300 px out instead of 172,
   // which on 800 px leaves them 70 px from the edge.
   l.flow.hubX = 400;
-  // 240 x 120 instead of 300 x 92. Not a circle - a 120 px circle would leave 280 px of
+  // 240 x 116 instead of 300 x 92. Not a circle - a 116 px circle would leave 284 px of
   // margin on an 800 px page and the diagram would be a stamp in the middle - but 2 : 1
   // instead of 3.3 : 1, which is what read as pulled apart. 144 px of margin each side
-  // is the price.
+  // is the price. Only the radius across changes: the 116 down the page is the 480's, and
+  // it is the number the top arrowhead's room above the ring depends on.
   l.flow.rx = 240;
-  l.flow.hubY = 124;
-  l.flow.batDY = 244;
+  l.flow.hubY = 126;
+  l.flow.batDY = 242;
   l.flow.pillW = 254;
   l.flow.pageW = 800;
   // CARDS: three columns, so a card is (800 - 32 - 16) / 3 = 250 px.

@@ -62,35 +62,35 @@ static DeviceCaps capsOf(bool haus, bool akku, bool netz) {
 static void testFullDeviceIsUnchanged() {
   const FlowLayout L = flowLayoutFor(capsOf(true, true, true), ui());
 
-  check(L.pv.visible && L.pv.x == 136 && L.pv.y == 64 && L.pv.d == 60,
+  check(L.pv.visible && L.pv.x == 139 && L.pv.y == 68 && L.pv.d == 60,
         "voll: PV-Knoten links oben auf dem Ring");
-  check(L.house.visible && L.house.x == 240 && L.house.y == 124 && L.house.d == 92,
+  check(L.house.visible && L.house.x == 240 && L.house.y == 126 && L.house.d == 70,
         "voll: Haus-Knoten in der Mitte des Rings");
-  check(L.grid.visible && L.grid.x == 343 && L.grid.y == 64 && L.grid.d == 60,
+  check(L.grid.visible && L.grid.x == 340 && L.grid.y == 68 && L.grid.d == 60,
         "voll: Netz-Knoten rechts oben auf dem Ring");
   check(L.battery.visible && L.battery.x == 240 && L.battery.y == 244 &&
             L.battery.d == 60,
         "voll: Akku-Knoten unten auf dem Ring");
 
-  check(L.linkPv.x1 == 240 && L.linkPv.y1 == 124 && L.linkPv.x2 == 136 &&
-            L.linkPv.y2 == 64,
+  check(L.linkPv.x1 == 240 && L.linkPv.y1 == 126 && L.linkPv.x2 == 139 &&
+            L.linkPv.y2 == 68,
         "voll: PV-Leitung schraeg nach links oben");
-  check(L.linkGrid.x1 == 240 && L.linkGrid.y1 == 124 && L.linkGrid.x2 == 343 &&
-            L.linkGrid.y2 == 64,
+  check(L.linkGrid.x1 == 240 && L.linkGrid.y1 == 126 && L.linkGrid.x2 == 340 &&
+            L.linkGrid.y2 == 68,
         "voll: Netz-Leitung schraeg nach rechts oben");
-  check(L.linkBattery.x1 == 240 && L.linkBattery.y1 == 124 && L.linkBattery.x2 == 240 &&
+  check(L.linkBattery.x1 == 240 && L.linkBattery.y1 == 126 && L.linkBattery.x2 == 240 &&
             L.linkBattery.y2 == 244,
         "voll: Akku-Leitung senkrecht nach unten");
 
   // The three on the ring stand in the free corner at their node's lower side: the PV
-  // to the LEFT, because the house is on its right. 6 = 136 - 70 - 60, where the 60 is
+  // to the LEFT, because the house is on its right. 26 = 139 - 53 - 60, where the 60 is
   // half the label: an x is the left edge, the offset is the number's middle.
-  check(L.valPv.x == 6 && L.valPv.y == 102 && !L.valPv.gross,
+  check(L.valPv.x == 26 && L.valPv.y == 97 && !L.valPv.gross,
         "voll: PV-Wert links unten am Knoten und klein");
-  check(L.valHouse.x == 250 && L.valHouse.y == 162, "voll: Haus-Wert rechts der Akkuleitung");
-  check(L.valGrid.x == 353 && L.valGrid.y == 102,
+  check(L.valHouse.x == 233 && L.valHouse.y == 155, "voll: Haus-Wert rechts der Akkuleitung");
+  check(L.valGrid.x == 333 && L.valGrid.y == 97,
         "voll: Netz-Wert rechts unten am Knoten");
-  check(L.valBattery.x == 250 && L.valBattery.y == 259,
+  check(L.valBattery.x == 240 && L.valBattery.y == 263,
         "voll: Akku-Wert rechts unten am Knoten");
 
   check(L.pills == 0x07, "voll: drei Pillen");
@@ -118,8 +118,8 @@ static void testTheRingAndItsSectors() {
   check(L.ring.visible, "Ring: vorhanden, wenn Haus und Netz da sind");
   checkEq(L.ring.x, f.hubX, "Ring: Mittelpunkt ist der Mittelpunkt des Hauses");
   checkEq(L.ring.y, f.hubY, "Ring: und auf derselben Hoehe");
-  checkEq(L.ring.rx, 120, "Ring: 120 px breit");
-  checkEq(L.ring.ry, 120, "Ring: 120 px hoch - ein KREIS auf dem kleinen Display");
+  checkEq(L.ring.rx, 116, "Ring: 116 px breit");
+  checkEq(L.ring.ry, 116, "Ring: 116 px hoch - ein KREIS auf dem kleinen Display");
   checkEq(L.ring.rx, L.ring.ry, "Ring: und beide gleich, das ist der Unterschied");
 
   // ONE number decides where the nodes stand and where the sectors begin and end. 30
@@ -158,25 +158,41 @@ static void testTheRingAndItsSectors() {
     return (int16_t)(f.rx * sqrtf(1.0f - tt * tt));
   };
   const int16_t pvTextRechts = (int16_t)(L.valPv.x + f.valW / 2 + textHalb);
-  checkEq(ringWeite(L.valPv.y), 117, "Ring: auf der Hoehe des PV-Werts 117 px links aus der Mitte");
-  checkEq(pvTextRechts, 93, "PV-Zahl: rechter Rand bei 93");
-  checkEq(ringWeite(L.valPv.y) - pvTextRechts, 24,
-          "Ring: 24 px Luft zwischen Bogen und PV-Zahl");
+  checkEq(ringWeite(L.valPv.y), 112, "Ring: auf der Hoehe des PV-Werts 112 px links aus der Mitte");
+  checkEq(pvTextRechts, 113, "PV-Zahl: rechter Rand bei 113");
+  // The gap is the BOG's x (a position on the page) less the text's right edge (also a
+  // position), not the offset from the middle less the same edge: that mixed an offset
+  // with a coordinate and only came out right while both were the same number.
+  checkEq((f.hubX - ringWeite(L.valPv.y)) - pvTextRechts, 15,
+          "Ring: 15 px Luft zwischen Bogen und PV-Zahl");
   const int16_t netzTextLinks = (int16_t)(L.valGrid.x + f.valW / 2 - textHalb);
-  checkEq(netzTextLinks - (f.hubX + ringWeite(L.valGrid.y)), 29,
-          "Ring: 29 px Luft zwischen Bogen und Netz-Zahl");
+  checkEq(netzTextLinks - (f.hubX + ringWeite(L.valGrid.y)), 14,
+          "Ring: 14 px Luft zwischen Bogen und Netz-Zahl");
   checkEq((f.hubX + ringWeite(L.valHouse.y)) -
               (L.valHouse.x + f.valW / 2 + textHalb),
-          16, "Ring: 16 px Luft zwischen Bogen und Haus-Zahl");
-  // And the counter-check, so none of the three can pass by accident: 70 px the other
-  // way, which is where the PV value was before it moved to the outside, and its right
-  // edge lands 25 px INSIDE the arc.
-  check(pvTextRechts + 70 + 25 > f.hubX - ringWeite(L.valPv.y),
+          32, "Ring: 32 px Luft zwischen Bogen und Haus-Zahl");
+  // The house's value has a second circle to clear, its own node - and at the hub's
+  // diameter it had when the value's offsets were set, it did not: at 29 px below the
+  // centre an 80 px circle is 27.6 px wide, and the text's left edge was at 266 against
+  // a rim at 267.6. A radius is the only thing between the two numbers.
+  {
+    const float dy = (float)(L.valHouse.y - L.house.y);
+    const float halb =
+        sqrtf((float)(f.hubD / 2) * (float)(f.hubD / 2) - dy * dy);
+    checkEq((long)((L.valHouse.x + f.valW / 2 - textHalb) -
+                   (L.house.x + halb)),
+            6, "Haus-Zahl: 6 px Luft zum eigenen Kreis, nicht auf ihm");
+  }
+  // And the counter-check, so none of the three can pass by accident: 53 px the other
+  // way, which is where the PV value would be on the inside, and its right edge lands
+  // 40 px INSIDE the arc.
+  check(pvTextRechts + 53 + 40 > f.hubX - ringWeite(L.valPv.y),
         "Ring: die Platzierung nach aussen ist noetig, nicht Kosmetik");
   // The battery is the ring's lowest point, so its value has only the container's
-  // bottom below it and 15 px is what fits.
-  check(L.valBattery.y + 21 <= 280, "Akku-Zahl: endet ueber dem unteren Rand");
-  checkEq(280 - (L.valBattery.y + 21), 0, "Akku-Zahl: genau am Rand, kein Platz mehr");
+  // bottom below it - which is why the container is 288 and not 280: at 280 the line
+  // this hangs on would end 4 px outside it.
+  check(L.valBattery.y + 21 <= f.flowH, "Akku-Zahl: endet ueber dem unteren Rand");
+  checkEq(f.flowH - (L.valBattery.y + 21), 4, "Akku-Zahl: 4 px bis zum unteren Rand");
 
   // Without a battery the lower right sector grows over the whole lower half, so the ring
   // stays closed and the two still tile it.
@@ -197,7 +213,8 @@ static void testTheRingAndItsSectors() {
   check(!oHaus.ring.visible, "ohne Hauszaehler: kein Ring, denn keine Mitte");
 }
 
-// The one arrow on the ring, both directions.
+// The arrowhead on the ring: three points, tip ON the ring at the sector's middle, the
+// two arms out in the open.
 //
 // THE THIRD SECTOR CANNOT BE LIT IN THE EMULATOR. Its two states are the battery
 // paying the meter and the meter paying the battery, and the simulator's balance
@@ -206,41 +223,91 @@ static void testTheRingAndItsSectors() {
 static void testTheRingArrow() {
   const FlowLayout L = flowLayoutFor(capsOf(true, true, true), ui());
   const UiFlow &f = ui().flow;
-  const float grad = L.keilNetz.pfeilGrad; // 360: the ring's right extreme
-  checkEq((int)(grad + 0.5f), 360, "Pfeil: am rechten Extrem des Rings");
+  checkEq((int)(L.keilNetz.pfeilGrad + 0.5f), 390,
+          "Pfeil: in der Mitte des rechten unteren Keils");
 
-  int16_t x, y;
-  float dreh;
-  // On the ring, and only the turn says which way. At 360 the tangent of a circle runs
-  // straight down, so the two directions are 90 and -90 degrees - and the glyph is a clean
-  // arrow either way instead of a turned one.
-  flowKeilPfeil(ui().flow, grad, true, &x, &y, &dreh);
-  checkEq(x, 360, "Pfeil: auf dem Ring bei x = 360");
-  checkEq(y, 124, "Pfeil: auf dem Ring bei y = 124, auf der Höhe des Hauses");
-  check(dreh > 82.0f && dreh < 98.0f, "Pfeil Netz->Akku: 90 Grad, gerade nach unten");
-  flowKeilPfeil(ui().flow, grad, false, &x, &y, &dreh);
-  checkEq(x, 360, "Pfeil: dieselbe Stelle");
-  checkEq(y, 124, "Pfeil: dieselbe Stelle");
-  check(dreh < -82.0f && dreh > -98.0f, "Pfeil Akku->Netz: -90 Grad, gerade nach oben");
-  // And it must not land on anything. It stands at the ring's right extreme, level with
-  // the house and 62 px below the netz node, so the distances are what say so - not an
-  // axis, because it is off both.
-  auto abstand = [&](int16_t nx, int16_t ny) {
-    const int dx = x - nx, dy = y - ny;
+  const FlowPfeil fp = flowKeilPfeil(f, L.keilNetz.pfeilGrad);
+  checkEq(fp.spitzeX, 340, "Spitze: auf dem Ring bei x = 340");
+  checkEq(fp.spitzeY, 184, "Spitze: auf dem Ring bei y = 184, unter dem Netz-Knoten");
+
+  // ON the ring, which is the whole of the first half of the request. Measured on the
+  // ellipse and not as a distance, because the ring is 240 x 116 on the wide board and
+  // a circle's radius would be wrong there.
+  const float tx = (float)(fp.spitzeX - f.hubX) / (float)f.rx;
+  const float ty = (float)(fp.spitzeY - f.hubY) / (float)f.ry;
+  const float abweichung = fabsf(sqrtf(tx * tx + ty * ty) - 1.0f);
+  check(abweichung < 0.01f, "Spitze: liegt auf dem Ring, nicht daneben");
+
+  // Both arms 9 px long and 30 degrees off the radius, which is what makes the three
+  // points a chevron and not a spike or a bracket. The angle is measured between the
+  // arm and the radius OUT of the ellipse at that angle, not between the arm and the
+  // sector's bisector - on an ellipse those two differ by up to 8 degrees.
+  const float g = L.keilNetz.pfeilGrad * 0.0174532925f;
+  const float nx = (float)f.ry * cosf(g), ny = (float)f.rx * sinf(g);
+  const float nl = sqrtf(nx * nx + ny * ny);
+  for (int i = 0; i < 2; i++) {
+    const float ax = (float)(fp.armX[i] - fp.spitzeX);
+    const float ay = (float)(fp.armY[i] - fp.spitzeY);
+    const float laenge = sqrtf(ax * ax + ay * ay);
+    check(fabsf(laenge - kPfeilLaenge) < 0.8f, "Arm: 9 px lang");
+    // THE DISTANCE TO THE LINE, which is what the two ends of a chevron have to agree
+    // on: the tip stands on the ring and the ends stand off it, and they have to stand
+    // off it by the SAME amount or one arm reads as longer than the other. Measured
+    // against the radius out of the ellipse at that angle - the perpendicular to the
+    // line - and not against the sector's bisector: on an ellipse those two differ by up
+    // to 8 degrees, which the 116 px circle of the 480 hides and the 240 x 116 of the
+    // wide board would not.
+    //
+    // 0.8 px of slack, and that is the pixel grid talking: an arm 9 px long is rounded
+    // to whole pixels at each end, which is up to 0.7 px of length. Without the slack
+    // the check would fail on a mark that is correct to the eye, and a check that has to
+    // be loosened later is a check nobody reads.
+    const float abstand = (ax * nx + ay * ny) / nl;
+    check(fabsf(abstand - 7.794f) < 0.8f, "Arm: gleicher Abstand zur Linie");
+  }
+  // And the two arms on different sides of the radius, which the distance above alone
+  // would not catch: both of them could point out of the ring and both to the left.
+  const float q1 = (float)(fp.armX[0] - fp.spitzeX) * ny -
+                   (float)(fp.armY[0] - fp.spitzeY) * nx;
+  const float q2 = (float)(fp.armX[1] - fp.spitzeX) * ny -
+                   (float)(fp.armY[1] - fp.spitzeY) * nx;
+  check((q1 > 0.0f) != (q2 > 0.0f), "Arme: spiegelbildlich, nicht beide derselbe");
+  // On the top sector the radius runs straight down the pixel grid, and there the two
+  // ends have to be EXACTLY as far from the tip as each other - no slack, because there
+  // is no rounding to hide behind: the offsets are +-4.5 and a truncation would make
+  // them 4 and 5.
+  const FlowPfeil fo0 = flowKeilPfeil(f, L.keilOben.pfeilGrad);
+  check(abs((int)fo0.armX[0] - fo0.spitzeX) == abs((int)fo0.armX[1] - fo0.spitzeX) &&
+            abs((int)fo0.armY[0] - fo0.spitzeY) == abs((int)fo0.armY[1] - fo0.spitzeY),
+        "Pfeil oben: beide Enden gleich weit von der Spitze");
+
+  // And nothing may be in the way. The tip stands at the ring's lower right, 60 px
+  // below the netz node and 116 px out from the middle, so the distances are what say
+  // so - not an axis, because it is on none.
+  auto abstand = [&](int16_t nx2, int16_t ny2) {
+    const int dx = fp.spitzeX - nx2, dy = fp.spitzeY - ny2;
     return (int16_t)sqrtf((float)(dx * dx + dy * dy));
   };
-  check(abstand(L.grid.x, L.grid.y) > f.sideD / 2, "Pfeil: 62 px vom Netzknoten, nicht auf ihm");
-  check(abstand(L.battery.x, L.battery.y) > f.sideD / 2, "Pfeil: vom Akku-Knoten weg");
-  // Level with the house, 120 px out - the ring's radius - so it clears the house by
-  // 74 px rather than by a margin on one axis.
-  check(abstand(L.house.x, L.house.y) > f.hubD / 2, "Pfeil: 120 px vom Haus, nicht auf ihm");
+  check(abstand(L.grid.x, L.grid.y) > f.sideD / 2,
+        "Spitze: 60 px vom Netzknoten, nicht auf ihm");
+  check(abstand(L.battery.x, L.battery.y) > f.sideD / 2, "Spitze: vom Akku-Knoten weg");
+  // 116 px out from the middle - the ring's radius - so it clears the house by 81 px
+  // rather than by a margin on one axis.
+  check(abstand(L.house.x, L.house.y) > f.hubD / 2, "Spitze: 116 px vom Haus, nicht auf ihm");
+
+  // The top sector's arms reach UP, out of the ring, and that is the one place where
+  // there is something to hit: the container's top edge is 10 px above the ring's
+  // highest point and the arms are 9 long, so this is the check that says the mark fits.
+  checkEq(fo0.spitzeY, 10, "Spitze oben: 10 px unter der Oberkante des Containers");
+  check(fo0.armY[0] > 0 && fo0.armY[1] > 0,
+        "Pfeil oben: beide Arme bleiben im Container");
 }
 
 // No battery: the house stays the hub, the battery and its connector go.
 static void testWithoutBattery() {
   const FlowLayout L = flowLayoutFor(capsOf(true, false, true), ui());
-  check(L.pv.x == 136 && L.pv.y == 64 && L.pv.d == 60, "ohne Akku: PV bleibt aussen");
-  check(L.house.x == 240 && L.house.y == 124 && L.house.d == 92,
+  check(L.pv.x == 139 && L.pv.y == 68 && L.pv.d == 60, "ohne Akku: PV bleibt aussen");
+  check(L.house.x == 240 && L.house.y == 126 && L.house.d == 70,
         "ohne Akku: Haus bleibt die Mitte");
   check(!L.battery.visible, "ohne Akku: Akku-Knoten weg");
   check(!L.linkBattery.visible, "ohne Akku: Akku-Leitung weg");
@@ -254,7 +321,7 @@ static void testWithoutBattery() {
   checkEq(L.pillX[FLOW_PILL_HOUSE], 85 + 158, "ohne Akku: die zweite daneben");
   // The row keeps its place. A diagram that moves when a device changes is
   // less readable on a wall than one with room left empty.
-  check(L.pv.y == 64, "ohne Akku: die PV bleibt, wo sie war");
+  check(L.pv.y == 68, "ohne Akku: die PV bleibt, wo sie war");
 }
 
 // No household meter: the PV becomes the hub - big, in the middle, with the
@@ -264,7 +331,7 @@ static void testWithoutHouseMeter() {
   check(!L.house.visible, "ohne Hauszaehler: Haus-Knoten weg");
   check(!L.valHouse.visible, "ohne Hauszaehler: Haus-Wert weg");
 
-  check(L.pv.x == 240 && L.pv.y == 124 && L.pv.d == 92,
+  check(L.pv.x == 240 && L.pv.y == 126 && L.pv.d == 70,
         "ohne Hauszaehler: PV sitzt als Mittelpunkt in der Mitte und ist gross");
   check(L.valPv.gross, "ohne Hauszaehler: PV-Wert gross");
   // With a node below it the number belongs to the node above, so it stays where
@@ -288,9 +355,9 @@ static void testWithoutHouseMeter() {
   // The connectors now start at the PV node, which is the hub.
   check(!L.linkPv.visible,
         "ohne Hauszaehler: die PV hat keine Verbindung - sie ist die Mitte");
-  check(L.linkGrid.x1 == 240 && L.linkGrid.y1 == 124 && L.linkGrid.x2 == 343,
+  check(L.linkGrid.x1 == 240 && L.linkGrid.y1 == 126 && L.linkGrid.x2 == 340,
         "ohne Hauszaehler: Netz haengt an der PV");
-  check(L.linkBattery.x1 == 240 && L.linkBattery.y1 == 124 &&
+  check(L.linkBattery.x1 == 240 && L.linkBattery.y1 == 126 &&
             L.linkBattery.x2 == 240 && L.linkBattery.y2 == 244,
         "ohne Hauszaehler: Akku haengt an der PV");
 
@@ -318,7 +385,7 @@ static void testOnlyGeneration() {
   // in one coordinate system, and flowPillYInFlow() is the function that converts - the
   // test used to write the conversion out as (316 - 35), which is how a move of flowY goes
   // unnoticed and the value lands 3 px low.
-  checkEq(flowAlleinValY(ui()), 232, "Band zwischen Kreis und Pille");
+  checkEq(flowAlleinValY(ui()), 238, "Band zwischen Kreis und Pille");
   checkEq(L.valPv.y,
           (int16_t)((flowAlleinY(ui()) + ui().flow.alleinD / 2 + flowPillYInFlow(ui()) -
                       34 / 2) / 2),
