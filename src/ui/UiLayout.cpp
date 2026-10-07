@@ -23,7 +23,11 @@ const UiLayout kGuition4848S040 = {
     /* rotation */ 0,
     /* statusH */ 44,
     /* navH */ 72,
-    /* headY */ 0,
+    // 2 px, not 0: the heading moved to the top of the page to make room for the ring's
+    // arrowhead at its apex (see flowY), and at 0 the text's ink started 4 px below the
+    // status bar with nothing between it and the diagram. 2 px is a small margin back -
+    // the ring's highest point is still 10 px below this.
+    /* headY */ 2,
     // The first row on the info and device pages, below the heading, and the pitch
     // there. 14 rows have to fit in contentH: 40 + 13*22 + 20 = 346 < 364, with
     // the 16 px font's 20 px line box leaving 2 px of air per row.
@@ -48,10 +52,17 @@ const UiLayout kGuition4848S040 = {
         // A 190 px circle under a row at 126 would show 31 px of nothing above it.
         /* aloneDY */ -26,
         /* hubX */ 240,
-        // The battery's row, and with it the ring's lowest point: hubY + ry is 242, and
-        // the node is written 2 px further out so its circle overlaps the arc by its own
-        // 2 px rather than stopping 2 px short of it.
-        /* batDY */ 244,
+        // The battery's centre, and it is NOT the ring's lowest point - it is where the
+        // sector lines come out of the node's circle.
+        //
+        // The ring's lowest point is hubY + ry, 242, and the two sector lines run along
+        // the node's sides and vanish behind it a few pixels before they get there: the
+        // ring curves away faster than a 60 px circle does, and over the node's own
+        // radius that difference is the sagitta (30^2) / (2 * 116) = 3.9 px. Put the
+        // node's centre there and the lines leave it in the middle; put it at the ring's
+        // lowest point, as it was, and they left it 4 px above the middle - which is
+        // what "the spokes' lines no longer start in the middle" is.
+        /* batDY */ 238,
         // 116 x 116: A CIRCLE, and that is the request - it was 120 and is 4 px less for
         // one reason. The top sector's arrowhead stands on the ring's HIGHEST point, and
         // its 21 px label has to fit inside the container, so the ring's top needs 10 px
@@ -159,7 +170,7 @@ const UiLayout kBreit800x480 = [] {
   // it is the number the top arrowhead's room above the ring depends on.
   l.flow.rx = 240;
   l.flow.hubY = 126;
-  l.flow.batDY = 242;
+  l.flow.batDY = 238;
   l.flow.pillW = 254;
   l.flow.pageW = 800;
   // CARDS: three columns, so a card is (800 - 32 - 16) / 3 = 250 px.

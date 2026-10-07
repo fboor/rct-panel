@@ -68,7 +68,7 @@ static void testFullDeviceIsUnchanged() {
         "voll: Haus-Knoten in der Mitte des Rings");
   check(L.grid.visible && L.grid.x == 340 && L.grid.y == 68 && L.grid.d == 60,
         "voll: Netz-Knoten rechts oben auf dem Ring");
-  check(L.battery.visible && L.battery.x == 240 && L.battery.y == 244 &&
+  check(L.battery.visible && L.battery.x == 240 && L.battery.y == 238 &&
             L.battery.d == 60,
         "voll: Akku-Knoten unten auf dem Ring");
 
@@ -79,7 +79,7 @@ static void testFullDeviceIsUnchanged() {
             L.linkGrid.y2 == 68,
         "voll: Netz-Leitung schraeg nach rechts oben");
   check(L.linkBattery.x1 == 240 && L.linkBattery.y1 == 126 && L.linkBattery.x2 == 240 &&
-            L.linkBattery.y2 == 244,
+            L.linkBattery.y2 == 238,
         "voll: Akku-Leitung senkrecht nach unten");
 
   // The three on the ring stand in the free corner at their node's lower side: the PV
@@ -90,8 +90,21 @@ static void testFullDeviceIsUnchanged() {
   check(L.valHouse.x == 233 && L.valHouse.y == 155, "voll: Haus-Wert rechts der Akkuleitung");
   check(L.valGrid.x == 333 && L.valGrid.y == 97,
         "voll: Netz-Wert rechts unten am Knoten");
-  check(L.valBattery.x == 240 && L.valBattery.y == 263,
+  check(L.valBattery.x == 240 && L.valBattery.y == 257,
         "voll: Akku-Wert rechts unten am Knoten");
+
+  // The battery node's centre is where the two sector lines come OUT of its circle, so
+  // they start in its middle. The ring curves away faster than a 60 px circle does, and
+  // over the node's own radius that difference is the sagitta (30^2) / (2 * 116) = 3.9 px
+  // below the ring's lowest point - which is 4 px, and at the ring's lowest point the
+  // lines left the circle 4 px above its middle.
+  {
+    const UiFlow &uf = ui().flow;
+    const float rr = (float)uf.sideD / 2.0f;
+    const float sagitta = rr * rr / (2.0f * (float)uf.ry);
+    check(fabsf((uf.hubY + uf.ry - sagitta) - (float)L.battery.y) < 1.5f,
+          "voll: die Keillinie setzt in der Mitte des Akku-Kreises an");
+  }
 
   check(L.pills == 0x07, "voll: drei Pillen");
   checkEq(L.pillX[0], 6, "voll: erste Pille bei 6");
@@ -190,9 +203,10 @@ static void testTheRingAndItsSectors() {
         "Ring: die Platzierung nach aussen ist noetig, nicht Kosmetik");
   // The battery is the ring's lowest point, so its value has only the container's
   // bottom below it - which is why the container is 288 and not 280: at 280 the line
-  // this hangs on would end 4 px outside it.
+  // this hangs on would end 4 px outside it. It ends 6 px higher than it did, because
+  // the node it hangs under moved 6 px up to where the sector lines leave it.
   check(L.valBattery.y + 21 <= f.flowH, "Akku-Zahl: endet ueber dem unteren Rand");
-  checkEq(f.flowH - (L.valBattery.y + 21), 4, "Akku-Zahl: 4 px bis zum unteren Rand");
+  checkEq(f.flowH - (L.valBattery.y + 21), 10, "Akku-Zahl: 10 px bis zum unteren Rand");
 
   // Without a battery the lower right sector grows over the whole lower half, so the ring
   // stays closed and the two still tile it.
@@ -226,74 +240,81 @@ static void testTheRingArrow() {
   checkEq((int)(L.keilNetz.pfeilGrad + 0.5f), 390,
           "Pfeil: in der Mitte des rechten unteren Keils");
 
-  const FlowPfeil fp = flowKeilPfeil(f, L.keilNetz.pfeilGrad);
+  const FlowPfeil fp = flowKeilPfeil(f, L.keilNetz.pfeilGrad, true);
   checkEq(fp.spitzeX, 340, "Spitze: auf dem Ring bei x = 340");
   checkEq(fp.spitzeY, 184, "Spitze: auf dem Ring bei y = 184, unter dem Netz-Knoten");
 
   // ON the ring, which is the whole of the first half of the request. Measured on the
   // ellipse and not as a distance, because the ring is 240 x 116 on the wide board and
   // a circle's radius would be wrong there.
-  const float tx = (float)(fp.spitzeX - f.hubX) / (float)f.rx;
-  const float ty = (float)(fp.spitzeY - f.hubY) / (float)f.ry;
-  const float abweichung = fabsf(sqrtf(tx * tx + ty * ty) - 1.0f);
+  const float ex = (float)(fp.spitzeX - f.hubX) / (float)f.rx;
+  const float ey = (float)(fp.spitzeY - f.hubY) / (float)f.ry;
+  const float abweichung = fabsf(sqrtf(ex * ex + ey * ey) - 1.0f);
   check(abweichung < 0.01f, "Spitze: liegt auf dem Ring, nicht daneben");
 
-  // Both arms 9 px long and 30 degrees off the radius, which is what makes the three
-  // points a chevron and not a spike or a bracket. The angle is measured between the
-  // arm and the radius OUT of the ellipse at that angle, not between the arm and the
-  // sector's bisector - on an ellipse those two differ by up to 8 degrees.
+  // THE TWO PROPERTIES THE REQUEST NAMES. The tip stands on the ring - see above - and
+  // the two barbs behind it are the same distance from the ring and on OPPOSITE sides of
+  // it. Both were wrong before: the arms were mirrored about the RADIUS, so both ends
+  // stood OUTSIDE the line, and two ends on one side of a line is not an arrowhead but
+  // a tick that leans.
+  //
+  // Measured against the radius out of the ellipse at that angle, which is the
+  // perpendicular to the line - and not against the sector's bisector: on an ellipse those
+  // two differ by up to 8 degrees, which the 116 px circle of the 480 hides and the
+  // 240 x 116 of the wide board would not.
   const float g = L.keilNetz.pfeilGrad * 0.0174532925f;
   const float nx = (float)f.ry * cosf(g), ny = (float)f.rx * sinf(g);
   const float nl = sqrtf(nx * nx + ny * ny);
+  float abstand[2];
   for (int i = 0; i < 2; i++) {
     const float ax = (float)(fp.armX[i] - fp.spitzeX);
     const float ay = (float)(fp.armY[i] - fp.spitzeY);
-    const float laenge = sqrtf(ax * ax + ay * ay);
-    check(fabsf(laenge - kPfeilLaenge) < 0.8f, "Arm: 9 px lang");
-    // THE DISTANCE TO THE LINE, which is what the two ends of a chevron have to agree
-    // on: the tip stands on the ring and the ends stand off it, and they have to stand
-    // off it by the SAME amount or one arm reads as longer than the other. Measured
-    // against the radius out of the ellipse at that angle - the perpendicular to the
-    // line - and not against the sector's bisector: on an ellipse those two differ by up
-    // to 8 degrees, which the 116 px circle of the 480 hides and the 240 x 116 of the
-    // wide board would not.
-    //
-    // 0.8 px of slack, and that is the pixel grid talking: an arm 9 px long is rounded
-    // to whole pixels at each end, which is up to 0.7 px of length. Without the slack
-    // the check would fail on a mark that is correct to the eye, and a check that has to
-    // be loosened later is a check nobody reads.
-    const float abstand = (ax * nx + ay * ny) / nl;
-    check(fabsf(abstand - 7.794f) < 0.8f, "Arm: gleicher Abstand zur Linie");
+    check(fabsf(sqrtf(ax * ax + ay * ay) - kPfeilLaenge) < 0.8f, "Arm: 13 px lang");
+    abstand[i] = (ax * nx + ay * ny) / nl;
   }
-  // And the two arms on different sides of the radius, which the distance above alone
-  // would not catch: both of them could point out of the ring and both to the left.
-  const float q1 = (float)(fp.armX[0] - fp.spitzeX) * ny -
-                   (float)(fp.armY[0] - fp.spitzeY) * nx;
-  const float q2 = (float)(fp.armX[1] - fp.spitzeX) * ny -
-                   (float)(fp.armY[1] - fp.spitzeY) * nx;
-  check((q1 > 0.0f) != (q2 > 0.0f), "Arme: spiegelbildlich, nicht beide derselbe");
+  // SIGNED, and the sign is the point: one end has to be outside the ring and the other
+  // inside it. 0.8 px of slack on the magnitude, and that is the pixel grid talking - an
+  // arm 13 px long is rounded to whole pixels at each end, which is up to 0.9 px of
+  // length. A check without the slack fails on a mark that is right to the eye, and a
+  // check that has to be loosened later is one nobody reads.
+  check(fabsf(abstand[0]) > 5.0f && fabsf(abstand[1]) > 5.0f,
+        "Arme: beide 6.5 px von der Linie");
+  check((abstand[0] > 0.0f) != (abstand[1] > 0.0f),
+        "Arme: auf verschiedenen Seiten der Linie, nicht beide ausserhalb");
+  check(fabsf(fabsf(abstand[0]) - fabsf(abstand[1])) < 0.8f,
+        "Arme: gleicher Abstand zur Linie auf beiden Seiten");
+  // And both of them BEHIND the tip: the wedge points the way the power runs along the
+  // ring, which is what makes the barbs trailing rather than leading.
+  const float tx = -(float)f.rx * sinf(g), ty = (float)f.ry * cosf(g);
+  const float tl = sqrtf(tx * tx + ty * ty);
+  for (int i = 0; i < 2; i++) {
+    const float ax = (float)(fp.armX[i] - fp.spitzeX);
+    const float ay = (float)(fp.armY[i] - fp.spitzeY);
+    check((ax * tx + ay * ty) / tl < -8.0f, "Arm: liegt hinter der Spitze");
+  }
   // On the top sector the radius runs straight down the pixel grid, and there the two
   // ends have to be EXACTLY as far from the tip as each other - no slack, because there
-  // is no rounding to hide behind: the offsets are +-4.5 and a truncation would make
-  // them 4 and 5.
-  const FlowPfeil fo0 = flowKeilPfeil(f, L.keilOben.pfeilGrad);
+  // is no rounding to hide behind: the offsets are +-6.5 and a truncation would make them
+  // 6 and 7.
+  const FlowPfeil fo0 = flowKeilPfeil(f, L.keilOben.pfeilGrad, true);
   check(abs((int)fo0.armX[0] - fo0.spitzeX) == abs((int)fo0.armX[1] - fo0.spitzeX) &&
             abs((int)fo0.armY[0] - fo0.spitzeY) == abs((int)fo0.armY[1] - fo0.spitzeY),
         "Pfeil oben: beide Enden gleich weit von der Spitze");
 
+
   // And nothing may be in the way. The tip stands at the ring's lower right, 60 px
   // below the netz node and 116 px out from the middle, so the distances are what say
   // so - not an axis, because it is on none.
-  auto abstand = [&](int16_t nx2, int16_t ny2) {
+  auto knotenAbstand = [&](int16_t nx2, int16_t ny2) {
     const int dx = fp.spitzeX - nx2, dy = fp.spitzeY - ny2;
     return (int16_t)sqrtf((float)(dx * dx + dy * dy));
   };
-  check(abstand(L.grid.x, L.grid.y) > f.sideD / 2,
+  check(knotenAbstand(L.grid.x, L.grid.y) > f.sideD / 2,
         "Spitze: 60 px vom Netzknoten, nicht auf ihm");
-  check(abstand(L.battery.x, L.battery.y) > f.sideD / 2, "Spitze: vom Akku-Knoten weg");
+  check(knotenAbstand(L.battery.x, L.battery.y) > f.sideD / 2, "Spitze: vom Akku-Knoten weg");
   // 116 px out from the middle - the ring's radius - so it clears the house by 81 px
   // rather than by a margin on one axis.
-  check(abstand(L.house.x, L.house.y) > f.hubD / 2, "Spitze: 116 px vom Haus, nicht auf ihm");
+  check(knotenAbstand(L.house.x, L.house.y) > f.hubD / 2, "Spitze: 116 px vom Haus, nicht auf ihm");
 
   // The top sector's arms reach UP, out of the ring, and that is the one place where
   // there is something to hit: the container's top edge is 10 px above the ring's
@@ -358,7 +379,7 @@ static void testWithoutHouseMeter() {
   check(L.linkGrid.x1 == 240 && L.linkGrid.y1 == 126 && L.linkGrid.x2 == 340,
         "ohne Hauszaehler: Netz haengt an der PV");
   check(L.linkBattery.x1 == 240 && L.linkBattery.y1 == 126 &&
-            L.linkBattery.x2 == 240 && L.linkBattery.y2 == 244,
+            L.linkBattery.x2 == 240 && L.linkBattery.y2 == 238,
         "ohne Hauszaehler: Akku haengt an der PV");
 
   check(L.pills == 0x05, "ohne Hauszaehler: zwei Pillen (Erzeugung, Akku)");

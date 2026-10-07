@@ -57,18 +57,14 @@ enum FlowPill { FLOW_PILL_PRODUCTION = 0, FLOW_PILL_HOUSE, FLOW_PILL_BATTERY };
 struct FlowArc {
   bool visible;
   float vonGrad, bisGrad;
-  // Where this sector's ARROWHEAD stands, in degrees.
+  // Where this sector's ARROWHEAD stands, in degrees - and it is the sector's MIDDLE,
+  // half way between its two ends, which is where the eye looks for a direction mark.
   //
-  // Chosen, not placed: an arrowhead is a glyph turned onto the arc, and the turn is the
-  // tangent's angle. On the axes - 90, 180, 270, 360 - that is a multiple of 90 and the
-  // turned glyph still looks like an arrow. At 150 it is 60 degrees and reads as a hook.
-  // So the two lower ones stand on the ring's left and right extremes, where the tangent
-  // runs straight down and the glyph points down (or up, for the one sector with two
-  // ways) without looking bent.
-  //
-  // The top one cannot: 270 is the ring's highest point, 4 px below the top of the
-  // container, and a 13 px glyph centred there has its tip cut off by the frame. 300 is
-  // 30 degrees along the arc, which is the least turn the sector allows.
+  // It was once off the middle, on the axes at 300/180/360, because a glyph turned there
+  // is a multiple of 90 and still looks like an arrow rather than a hook. That bought a
+  // cleaner glyph and lost the one thing that matters: 300 degrees says nothing about the
+  // middle of that sector. The mark is not a glyph any more (see flowKeilPfeil), so the
+  // turn is not a question at all - only the place is.
   float pfeilGrad;
   int16_t x, y;   // the ellipse's centre
   int16_t rx, ry; // its radii
@@ -363,22 +359,15 @@ static inline FlowLayout flowLayoutFor(const DeviceCaps &caps,
     a.ry = f.ry;
     return a;
   };
-  // The three arrowheads, each on its sector's MIDDLE - half way between the two ends,
+  // The three arrowheads, each on its sector's middle - half way between the two ends,
   // which is where the eye looks for a direction mark and what makes a mark on an arc an
-  // arrow rather than a decoration - and each turned so it lies along the arc there.
+  // arrow rather than a decoration. Where the mark points is flowKeilPfeil()'s business
+  // and is the same for all three: at the ring, from outside.
   //
-  // It was once off the middle, on the axes at 300/180/360, because a turned glyph is a
-  // multiple of 90 there and still looks like an arrow instead of a hook. That bought a
-  // cleaner glyph and lost the one thing that matters: 300 degrees says nothing about the
-  // middle of that sector.
-  //
-  //   oben  270 Grad, towards INCREASING angle: the panels are at 210 and the meter at
-  //         330, so the power runs that way. 270 is the ring's highest point, and the
-  //         10 px its 21 px label needs above the arc is why the ring is 116 and not 120.
-  //   Akku  150 Grad, towards DECREASING: from the panels at 210 down to the battery at
-  //         90.
-  //   Netz  390 Grad, either way - it is the one sector with two. Towards decreasing for
-  //         the battery paying the meter, towards increasing for the other way round.
+  //   oben  270 Grad: the ring's highest point, and the 10 px the mark's 9 px arms need
+  //         above the arc are why the ring is 116 and not 120.
+  //   Akku  150 Grad: between the battery at 90 and the PV at 210.
+  //   Netz  390 Grad: between the meter at 330 and the battery at 90.
   L.keilOben = keil(kGradPv, kGradNetz, 270.0f, ringDa);
   L.keilAkku = keil(kGradAkku - 360.0f, kGradPv, 150.0f, ringDa && kenneAkku);
   // Without a battery the lower right sector grows over the whole lower half, so the ring
@@ -426,37 +415,100 @@ static inline FlowLayout flowLayoutFor(const DeviceCaps &caps,
 // The arrow on a connector sits on its midpoint, and the island triangle 25 px
 // above the grid link - the same places as before, computed from the layout so
 // they follow it.
+// A line's place and its middle, in the container's coordinates.
 static inline void flowLinkMidpoint(const FlowLink &l, int16_t *cx, int16_t *cy) {
   *cx = (int16_t)((l.x1 + l.x2) / 2);
   *cy = (int16_t)((l.y1 + l.y2) / 2);
 }
 
-// Where the one arrow on the ring stands, and how far it is turned.
+// The arrowhead on the ring: three points for ONE polyline, the tip in the middle and
+// the two arm ends behind it.
 //
-// Two of the three sectors have a single possible direction - panels into the meter,
-// panels into the battery - so the two nodes they join say which way it is. The third
-// joins the battery and the meter, which can each pay the other, and gets this.
+// WHY LINES AND NOT A GLYPH. It was LV_SYMBOL_RIGHT, turned onto the arc. A font's
+// arrowhead is a 4 px solid stroke and cannot be made thinner, and its ink does not sit
+// where its own label box says: LVGL turns a label about its TOP LEFT CORNER by default,
+// so an arrowhead placed at the sector's middle turned up to 10 px away from it - and the
+// same default had to be corrected by hand on the two node icons for exactly this reason.
+// Drawing the three points here puts the tip on the arc to the pixel and leaves the
+// stroke width a number of its own.
 //
-// The arrow stands ON the ring at the sector's middle, turned along it. Both the place
-// and the angle come out of the ring's own radii and the one angle, and neither is
-// written down as a number: the sector is 120 degrees long and a number here would be
-// wrong the next time the ring changes shape. laeuftAuf is the direction the power runs:
-// true means towards INCREASING angle, which on this sector means the meter paying the
-// battery.
-//
-// Returned in degrees, so nothing here has to know LVGL's tenths.
-static inline void flowKeilPfeil(const UiFlow &f, float grad, bool laeuftAuf,
-                                 int16_t *x, int16_t *y, float *drehGrad) {
+// WHY THE ARMS STRADDLE THE ARC. The tip is ON it and the two ends are the same distance
+// from it - one on each side. They were both OUTSIDE it, mirrored about the radius, and
+// two ends on the same side of the line is not an arrowhead: it is a tick that leans.
+// So the two arms are mirrored about the ARC instead, both leaning the same way ALONG
+// it and behind the tip, which is what an arrowhead is: a point and two barbs trailing
+// away from it. The bisector of the two arms therefore lies along the ring, and laeuftAuf
+// is the direction it points - which is also why the direction is a parameter again: a
+// mark that lies along the line can carry it, and one across it could not.
+struct FlowPfeil {
+  int16_t spitzeX, spitzeY;
+  int16_t armX[2], armY[2];
+};
+
+// 13 px of arm at 30 degrees off the arc on each side, which is the usual arrowhead: the
+// two barbs 60 degrees apart, and each end 6.5 px from the line the tip is on. The arm
+// has to be long enough for a barb to get 4 px clear of the 5 px arc it lies across - at
+// 9 px the barbs ended inside the arc's own thickness and there was nothing to see.
+static const float kPfeilLaenge = 13.0f;
+
+static inline FlowPfeil flowKeilPfeil(const UiFlow &f, float grad, bool laeuftAuf) {
   const float t = grad * 0.0174532925f;
-  // The ellipse's tangent at that angle, which is the direction the power runs in.
-  const float s = laeuftAuf ? 1.0f : -1.0f;
-  const float tx = s * -f.rx * sinf(t);
-  const float ty = s * f.ry * cosf(t);
-  const float px = f.hubX + f.rx * cosf(t);
-  const float py = f.hubY + f.ry * sinf(t);
-  *x = (int16_t)px;
-  *y = (int16_t)py;
-  *drehGrad = atan2f(ty, tx) * 57.2957795f;
+  const float rx = (float)f.rx, ry = (float)f.ry;
+  const float st = sinf(t), ct = cosf(t);
+  FlowPfeil p;
+  p.spitzeX = (int16_t)(f.hubX + rx * ct);
+  p.spitzeY = (int16_t)(f.hubY + ry * st);
+  // The tangent at that angle - the direction the power runs along the ring - and the
+  // radius out of the ellipse at the same place, perpendicular to it by construction.
+  const float tx = -rx * st, ty = ry * ct;
+  const float nx = ry * ct, ny = rx * st;
+  const float tl = sqrtf(tx * tx + ty * ty), nl = sqrtf(nx * nx + ny * ny);
+  const float c = 0.8660254f, s = 0.5f; // cos und sin von 30 Grad
+  const float lauf = laeuftAuf ? 1.0f : -1.0f;
+  for (int i = 0; i < 2; i++) {
+    const float seite = (i == 0) ? 1.0f : -1.0f;
+    // Both arms lean BACKWARD along the arc, away from where the power goes; the plus and
+    // the minus are the two sides of the line, and nothing else separates them.
+    const float dx = kPfeilLaenge * (seite * s * nx / nl - c * lauf * tx / tl);
+    const float dy = kPfeilLaenge * (seite * s * ny / nl - c * lauf * ty / tl);
+    // The offset is rounded and then added, and not the sum: (int16)(240 + 4.5) is 244
+    // and (int16)(240 - 4.5) is 235, which leaves the two arm ends 4 px and 5 px from
+    // the tip - one pixel apart along the mark's own axis, on the one thing the two ends
+    // of a chevron must not be. lroundf rounds halves away from zero, so +4.5 and -4.5
+    // become +5 and -5 and the ends are 10 px apart either way.
+    p.armX[i] = p.spitzeX + (int16_t)lroundf(dx);
+    p.armY[i] = p.spitzeY + (int16_t)lroundf(dy);
+  }
+  return p;
+}
+
+// The connector's arrowhead: the same mark as the ring's, on the line instead of the
+// arc, and the same 2 px of stroke - a 4 px glyph on a 2 px line says two different
+// things at once.
+//
+// The tip stands on the connector at its middle and the two barbs trail behind it, so the
+// mark straddles the line the way the ring's straddles the arc. It always points TOWARDS
+// THE HUB: a connector is only lit when the power runs that way, so the arrow has one
+// direction to be and it is the one the link is stored against - the links run hub to
+// node, and the power runs the other way round.
+static inline FlowPfeil flowLinkPfeil(const FlowLink &l) {
+  const float dx = (float)(l.x1 - l.x2), dy = (float)(l.y1 - l.y2);
+  const float len = sqrtf(dx * dx + dy * dy);
+  FlowPfeil p;
+  p.spitzeX = (int16_t)((l.x1 + l.x2) / 2);
+  p.spitzeY = (int16_t)((l.y1 + l.y2) / 2);
+  // The unit direction of travel towards the hub, and the two sides of the line: the
+  // same perpendicular, rotated, without an ellipse to take it from.
+  const float ux = (len > 0.0f) ? dx / len : 0.0f, uy = (len > 0.0f) ? dy / len : 0.0f;
+  const float c = 0.8660254f, s = 0.5f; // cos und sin von 30 Grad
+  for (int i = 0; i < 2; i++) {
+    const float seite = (i == 0) ? 1.0f : -1.0f;
+    const float ox = kPfeilLaenge * (-c * ux - seite * s * uy);
+    const float oy = kPfeilLaenge * (-c * uy + seite * s * ux);
+    p.armX[i] = p.spitzeX + (int16_t)lroundf(ox);
+    p.armY[i] = p.spitzeY + (int16_t)lroundf(oy);
+  }
+  return p;
 }
 
 #endif // RCT_GUI_FLOWLAYOUT_H
