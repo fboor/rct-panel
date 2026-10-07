@@ -2864,7 +2864,22 @@ static void refreshCb(lv_timer_t *t) {
     // local: what counts as a flow on a line and what counts as a flow on a sector has
     // to be the same number, or the picture argues with itself.
 
+    // TWO states of "nothing to show", and they are not the same thing.
+    //
+    //   dash   nothing has been measured at all - the device has not reported yet. It
+    //          is a statement about the device, so it stays where it is.
+    //   blank  it HAS been measured and the answer is "not happening": 12 W where the
+    //          threshold is 20. A dash there claims the device has not reported, which
+    //          is false, and it stands under a node whose ring is drawn and whose number
+    //          has simply nothing to say.
+    //
+    // The three pills below have kept these apart for a while (see the comment on the
+    // inactive production pill) and the four values did not; now they do.
+    //
+    // A space and not an empty string: a label with no text has no line, and the line
+    // is what the value is placed by.
     const char *dash = "--";
+    const char *blank = " ";
     float pTot = s.gridExchangeW;
     float pvTotal = ruleGenerationW(s);
     float pBat = s.batW;
@@ -2903,7 +2918,7 @@ static void refreshCb(lv_timer_t *t) {
         setPower(ov.labels[OV_GRID_VAL], pTot);
         lv_obj_set_style_text_color(ov.labels[OV_GRID_VAL], FLOW_RED, 0);
       } else {
-        lv_label_set_text(ov.labels[OV_GRID_VAL], dash);
+        lv_label_set_text(ov.labels[OV_GRID_VAL], blank);
         lv_obj_set_style_text_color(ov.labels[OV_GRID_VAL], FLOW_WHITE, 0);
       }
       lv_obj_set_style_line_color(s_lineGrid, fliesst ? FLOW_RED : FLOW_LINE, 0);
@@ -2925,7 +2940,7 @@ static void refreshCb(lv_timer_t *t) {
       lv_obj_set_style_text_color(ov.labels[OV_PV_VAL], FLOW_RED, 0);
       lv_obj_set_style_line_color(s_linePv, FLOW_RED, 0);
     } else {
-      lv_label_set_text(ov.labels[OV_PV_VAL], dash);
+      lv_label_set_text(ov.labels[OV_PV_VAL], has ? blank : dash);
       lv_obj_set_style_text_color(ov.labels[OV_PV_VAL], FLOW_WHITE, 0);
       lv_obj_set_style_line_color(s_linePv, FLOW_LINE, 0);
     }
@@ -2947,7 +2962,7 @@ static void refreshCb(lv_timer_t *t) {
           setPower(ov.labels[OV_BAT_VAL], pBat);
           lv_obj_set_style_text_color(ov.labels[OV_BAT_VAL], FLOW_RED, 0);
         } else {
-          lv_label_set_text(ov.labels[OV_BAT_VAL], dash);
+          lv_label_set_text(ov.labels[OV_BAT_VAL], has ? blank : dash);
           lv_obj_set_style_text_color(ov.labels[OV_BAT_VAL], FLOW_WHITE, 0);
         }
         const bool fliesst = has && fs.battToHouse >= kFlowBatActiveW;
@@ -2961,11 +2976,16 @@ static void refreshCb(lv_timer_t *t) {
     }
 
     // --- Haus (total household demand: Power Sensor + S0 generator) ---
+    //
+    // A measured zero used to be written out as "0.00 kW", which says the meter works.
+    // It is the same case as the three above it - measured, nothing happening - and now
+    // says the same thing they do, which is nothing. What is left to say "the meter works"
+    // is that its node and its three lines are drawn at all.
     if (has && house >= 5.0f) {
       setPower(ov.labels[OV_HOUSE_VAL], house);
       lv_obj_set_style_text_color(ov.labels[OV_HOUSE_VAL], FLOW_RED, 0);
     } else {
-      lv_label_set_text(ov.labels[OV_HOUSE_VAL], has ? "0.00 kW" : dash);
+      lv_label_set_text(ov.labels[OV_HOUSE_VAL], has ? blank : dash);
       lv_obj_set_style_text_color(ov.labels[OV_HOUSE_VAL], FLOW_LINE, 0);
     }
 
