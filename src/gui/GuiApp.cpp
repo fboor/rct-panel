@@ -353,6 +353,9 @@ enum OvLabel {
   OV_PV_ARROW,     // direction arrow on the PV connector
   OV_BAT_ARROW,    // direction arrow on the battery connector
   OV_ISLAND,       // warning triangle on the grid connector (island mode)
+  // The one mark on the ring that is not a sector: the direction of the lower right one,
+  // which joins two nodes that can each pay the other.
+  OV_KEIL_ARROW,
   OV_T_ERZ,        // status table: Erzeugung
   OV_T_VERB,       // status table: Verbrauch
   OV_T_NETZ,       // status table: Netz
@@ -716,6 +719,73 @@ static void placeArrow(lv_obj_t *label, lv_coord_t cx, lv_coord_t cy) {
                   cy - lv_obj_get_height(label) / 2);
 }
 
+// One sector of the ring: a single polyline from one node's angle to the next.
+//
+// Not an lv_arc, which would be the obvious tool: it takes its radius from
+// min(width, height), so it can only ever draw a circle, and the ring here is 172 x 92.
+//
+// The points go into a static array and stay there: lv_line_set_points() keeps the
+// pointer it is handed, and a local array would be gone before the first draw. Four
+// degrees a step, so 45 points for the long sector - 1.5 px of deviation on a 172 px
+// ellipse - and 544 bytes for all three.
+struct KeilLinie {
+  lv_obj_t *ln;
+  lv_point_precise_t p[46];
+};
+static KeilLinie s_keil[3]; // 0 = PV -> Netz, 1 = PV -> Akku, 2 = Akku <-> Netz
+
+static int16_t keilPunkte(lv_point_precise_t *p, int16_t max, const UiFlow &f,
+                          float vonGrad, float bisGrad) {
+  int16_t n = (int16_t)((bisGrad - vonGrad) / 4.0f);
+  if (n > max - 2) {
+    n = max - 2;
+  }
+  if (n < 1) {
+    n = 1; // a sector narrower than a step still has two ends to draw
+  }
+  for (int16_t i = 0; i <= n; i++) {
+    const float g =
+        (vonGrad + (bisGrad - vonGrad) * (float)i / (float)n) * 0.0174532925f;
+    p[i].x = (int16_t)(f.hubX + f.rx * cosf(g));
+    p[i].y = (int16_t)(f.hubY + f.ry * sinf(g));
+  }
+  return n + 1;
+}
+
+// Colour one sector's two polylines and write the figure in its gap.
+//
+// BOTH FROM ONE NUMBER, which is the point: a sector that is red while its figure says
+// "--" would be a diagram arguing with itself, and this way it cannot - the colour and
+// the text are decided by the same comparison against the same threshold.
+// Colour one sector: red and thick while something goes that way, thin and grey while
+// nothing does.
+//
+// The FIGURE that used to stand on each sector is gone, and the gap it stood in with it
+// - a hole in the ring with nothing in it is not a design, it is a gap. Seven numbers on
+// a 480 px screen is one too many: four of them are the values under the nodes, and
+// three more on the ring were more than the picture could carry at a glance. What the
+// ring still has to say is which ways are open, and that is what a lit arc says.
+static void keilSetzen(int k, bool fliesst) {
+  // fliesst, not aktiv: the i18n check reads the sources with the comments stripped
+  // and refuses a German UI text appearing in an identifier, and "aktiv" is the text
+  // of T_D_BADGE_LIVE. The panel already calls this fliesst everywhere else.
+  const lv_color_t farbe = fliesst ? FLOW_RED : FLOW_LINE;
+  const int breite = fliesst ? 5 : 3;
+  lv_obj_set_style_line_color(s_keil[k].ln, farbe, 0);
+  lv_obj_set_style_line_width(s_keil[k].ln, breite, 0);
+}
+
+// The one arrow on the ring. Where it stands and how far it is turned is
+// flowKeilPfeil()'s work and is host-tested there; this only hands the answer to LVGL,
+// whose rotation is in tenths of a degree.
+static void keilPfeilSetzen(lv_obj_t *pfeil, float grad, bool laeuftAuf) {
+  int16_t x, y;
+  float dreh;
+  flowKeilPfeil(ui().flow, grad, laeuftAuf, &x, &y, &dreh);
+  placeArrow(pfeil, x, y);
+  lv_obj_set_style_transform_rotation(pfeil, (int32_t)(dreh * 10.0f), 0);
+}
+
 // Summary card (portal "info-box"): one red value line with the unit appended
 // inline ("12,3 kWh", "87 %") and a muted caption at the bottom. The value is
 // refreshed from data; the caption stays static.
@@ -874,8 +944,23 @@ static void energyPeriodCb(lv_event_t *e) {
 
 // Energiefluss diagram (reference layout: PV left, haus center, batterie
 // bottom-centre below haus, netz right).
+// Defined further down with flowCapsKey(), and used up here: the ring's six polylines
+// need the layout's sector angles, and the layout needs the stored capabilities. The
+// declaration is here rather than the definition because the page that draws the
+// diagram comes first.
+static DeviceCaps capsFromKey(uint8_t key);
+
 static void pageBuildOverview(AppPage *p) {
   lv_obj_t *root = p->root;
+
+  // The layout of the last device that answered, not of this one: the caps are in the
+  // answer and the answer has not come yet. With nothing stored the key is 0xFF, which
+  // yields the full layout - the one this page was drawn for. Built first because the
+  // ring's three polylines need the sector angles and the netz node needs its place;
+  // every position below that looks hardcoded is overwritten by applyFlowLayout() with
+  // these same values.
+  const FlowLayout fl = flowLayoutFor(capsFromKey(s_flowKey), ui());
+  const UiFlow &fu = ui().flow;
 
   // The diagram gets a container of its own, so the room the four buttons free up
   // below can be given to the whole thing by moving one object. Its background is
@@ -940,9 +1025,8 @@ static void pageBuildOverview(AppPage *p) {
   s_nodeBat = bat;
 
   // NETZ node: the transmission tower.
-  s_icoGrid =
-      makeNode(flow, ui().flow.gridX, ui().flow.rowY, ui().flow.sideD,
-               kFlowGridIcon, &lv_font_mdi_icons_28);
+  s_icoGrid = makeNode(flow, fl.grid.x, fl.grid.y, ui().flow.sideD, kFlowGridIcon,
+                       &lv_font_mdi_icons_28);
   s_nodeGrid = lv_obj_get_parent(s_icoGrid);
 
   // Connector lines (haus <-> node), animated later via color/style.
@@ -968,6 +1052,34 @@ static void pageBuildOverview(AppPage *p) {
   lv_obj_move_background(s_linePv);
   lv_obj_move_background(s_lineBat);
 
+  // The ring, and its three sectors. This is the part of the diagram that changed for
+  // the design: the three outer nodes now stand ON an ellipse, and the three direct
+  // ways between them - panels into the meter over the top, panels into the battery
+  // down the left, battery and meter across the lower right - are three sectors cut out
+  // of that ellipse. The connection is not drawn as a line of its own; the sector IS the
+  // connection, and a lit one reads as a way from one node to the next because both its
+  // ends land on nodes.
+  //
+  // Grey while nothing goes that way, red while something does, which is why all six
+  // polylines exist from the start and are only recoloured: the ring has to be there
+  // when nothing moves, or the diagram loses its shape.
+  //
+  // Drawn before the nodes, like the connectors: a node circle is opaque and covers the
+  // end of the sector it stands on.
+  {
+    const FlowArc *keile[3] = {&fl.keilOben, &fl.keilAkku, &fl.keilNetz};
+    for (int k = 0; k < 3; k++) {
+      const int16_t n = keilPunkte(s_keil[k].p, 46, fu, keile[k]->vonGrad,
+                                    keile[k]->bisGrad);
+      s_keil[k].ln = lv_line_create(flow);
+      lv_line_set_points(s_keil[k].ln, s_keil[k].p, n);
+      lv_obj_set_style_line_rounded(s_keil[k].ln, true, 0);
+      lv_obj_set_style_line_width(s_keil[k].ln, 3, 0);
+      lv_obj_set_style_line_color(s_keil[k].ln, FLOW_LINE, 0);
+      lv_obj_move_background(s_keil[k].ln);
+    }
+  }
+
   // Values under each node. The netz direction ("Bezug" / "Einspeisung") is not
   // spelled out: the sign is already visible in the value, the arrow on the
   // connector shows where the power goes, and the status table below names it.
@@ -980,6 +1092,14 @@ static void pageBuildOverview(AppPage *p) {
   p->labels[OV_HOUSE_VAL] = makeValueLabel(flow, 250, 120);
   p->labels[OV_PV_VAL] = makeValueLabel(flow, 0, 116);
   p->labels[OV_BAT_VAL] = makeValueLabel(flow, 180, 247);
+
+  // The one sector with two ways: the battery and the meter can each pay the other.
+  // The two other sectors have only one - panels to meter, panels to battery - so their
+  // direction is read off the two nodes they join and needs no sign. This one gets an
+  // arrow, standing on the ring where the sector is widest clear of both nodes.
+  p->labels[OV_KEIL_ARROW] =
+      makeLabel(flow, LV_SYMBOL_RIGHT, &lv_font_montserrat_16_uml, FLOW_RED);
+  lv_obj_add_flag(p->labels[OV_KEIL_ARROW], LV_OBJ_FLAG_HIDDEN);
 
   // Direction arrows on the connectors (point toward the flow source),
   // centred exactly on the line: grid/PV lines run at y=81 at these x
@@ -1073,10 +1193,7 @@ static void pageBuildOverview(AppPage *p) {
   }
   p->labelCount = OV_LABEL_COUNT;
 
-  // The layout of the last device that answered, not of this one: the caps are
-  // in the answer and the answer has not come yet. With nothing stored the key
-  // is 0xFF, which yields the full layout - the one this page was drawn for.
-  applyFlowLayout(flowLayoutFor(capsFromKey(s_flowKey), ui()), p);
+  applyFlowLayout(fl, p);
 }
 
 // ---------------------------------------------------------------------------
@@ -1328,6 +1445,24 @@ static void applyFlowLayout(const FlowLayout &L, AppPage *ov) {
   setValueShown(ov != nullptr ? ov->labels[OV_HOUSE_VAL] : nullptr, L.valHouse);
   setValueShown(ov != nullptr ? ov->labels[OV_GRID_VAL] : nullptr, L.valGrid);
   setValueShown(ov != nullptr ? ov->labels[OV_BAT_VAL] : nullptr, L.valBattery);
+  // The ring's three sectors and the three figures in their gaps. The two go together:
+  // a sector without its figure would be a hole in the ring with nothing in it, and the
+  // figures only stand in the ring where there is a sector.
+  {
+    const FlowArc *keile[3] = {&L.keilOben, &L.keilAkku, &L.keilNetz};
+    for (int k = 0; k < 3; k++) {
+      if (keile[k]->visible) {
+        lv_obj_remove_flag(s_keil[k].ln, LV_OBJ_FLAG_HIDDEN);
+      } else {
+        lv_obj_add_flag(s_keil[k].ln, LV_OBJ_FLAG_HIDDEN);
+      }
+    }
+  }
+  // The arrow belongs to the one sector with two ways; where the whole ring is gone
+  // there is nothing for it to point along.
+  if (ov != nullptr && ov->labels[OV_KEIL_ARROW] != nullptr && !L.keilNetz.visible) {
+    lv_obj_add_flag(ov->labels[OV_KEIL_ARROW], LV_OBJ_FLAG_HIDDEN);
+  }
 
   // The pills: one per quantity that is drawn, centred as a group.
   for (int i = 0; i < 3; i++) {
@@ -2755,6 +2890,36 @@ static void refreshCb(lv_timer_t *t) {
     } else {
       lv_label_set_text(ov.labels[OV_HOUSE_VAL], has ? "0.00 kW" : dash);
       lv_obj_set_style_text_color(ov.labels[OV_HOUSE_VAL], FLOW_LINE, 0);
+    }
+
+    // --- The ring: the three ways that do not pass the house ---
+    //
+    // Panels into the meter over the top, panels into the battery down the left, and
+    // the battery and the meter across the lower right. What goes there is not measured
+    // - four numbers are measured and ruleFlowSplit() divides them - and the thresholds
+    // are the same ones the three connectors use, so a sector and the connector beside
+    // it cannot disagree about whether 30 W is a flow.
+    //
+    // Three comparisons and nothing more: the figure that used to stand on each sector
+    // is gone, so a sector is now only lit or not.
+    if (s_layout.keilOben.visible) {
+      const FlowSplit fs = ruleFlowSplit(s);
+      const bool ohneDaten = !has;
+      keilSetzen(0, !ohneDaten && fs.pvToGrid >= kFlowPvActiveW);
+      keilSetzen(1, !ohneDaten && fs.pvToBattery >= kFlowPvActiveW);
+      // The lower right one has two ways, so its arrow says which. It is the only mark
+      // on the ring that is not a sector.
+      const bool akkuAnNetz = !ohneDaten && fs.battToGrid >= kFlowBatActiveW;
+      const bool netzAnAkku = !ohneDaten && fs.gridToBattery >= kFlowBatActiveW;
+      keilSetzen(2, akkuAnNetz || netzAnAkku);
+      if ((akkuAnNetz || netzAnAkku) && s_layout.keilNetz.visible &&
+          ov.labels[OV_KEIL_ARROW] != nullptr) {
+        keilPfeilSetzen(ov.labels[OV_KEIL_ARROW], s_layout.keilNetz.mitteGrad,
+                        netzAnAkku);
+        lv_obj_remove_flag(ov.labels[OV_KEIL_ARROW], LV_OBJ_FLAG_HIDDEN);
+      } else if (ov.labels[OV_KEIL_ARROW] != nullptr) {
+        lv_obj_add_flag(ov.labels[OV_KEIL_ARROW], LV_OBJ_FLAG_HIDDEN);
+      }
     }
 
     // --- The three buttons under the diagram ---

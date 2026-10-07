@@ -51,37 +51,47 @@ static DeviceCaps capsOf(bool haus, bool akku, bool netz) {
   return c;
 }
 
-// A full device: exactly the numbers the fixed layout used. If this case moves,
-// the panel's screenshots and the manual's pictures are stale.
+// A full device. If this case moves, the panel's screenshots and the manual's
+// pictures are stale.
+//
+// THE FIGURES BELOW ALL MOVED ON PURPOSE, once, when the three outer nodes were put
+// on a ring instead of in an inverted T: PV from 60 to 68, the grid from 420 to 412,
+// the row from 80 to 116, the battery from 210 to 208. The one-node case was the one
+// thing that did not move (see testOnlyGeneration), because that circle is placed
+// against the top of the container and not against the row.
 static void testFullDeviceIsUnchanged() {
   const FlowLayout L = flowLayoutFor(capsOf(true, true, true), ui());
 
-  check(L.pv.visible && L.pv.x == 60 && L.pv.y == 80 && L.pv.d == 60,
-        "voll: PV-Knoten unveraendert");
-  check(L.house.visible && L.house.x == 240 && L.house.y == 82 && L.house.d == 92,
-        "voll: Haus-Knoten unveraendert");
-  check(L.grid.visible && L.grid.x == 420 && L.grid.y == 80 && L.grid.d == 60,
-        "voll: Netz-Knoten unveraendert");
-  check(L.battery.visible && L.battery.x == 240 && L.battery.y == 210 &&
+  check(L.pv.visible && L.pv.x == 136 && L.pv.y == 64 && L.pv.d == 60,
+        "voll: PV-Knoten links oben auf dem Ring");
+  check(L.house.visible && L.house.x == 240 && L.house.y == 124 && L.house.d == 92,
+        "voll: Haus-Knoten in der Mitte des Rings");
+  check(L.grid.visible && L.grid.x == 343 && L.grid.y == 64 && L.grid.d == 60,
+        "voll: Netz-Knoten rechts oben auf dem Ring");
+  check(L.battery.visible && L.battery.x == 240 && L.battery.y == 244 &&
             L.battery.d == 60,
-        "voll: Akku-Knoten unveraendert");
+        "voll: Akku-Knoten unten auf dem Ring");
 
-  check(L.linkPv.x1 == 240 && L.linkPv.y1 == 82 && L.linkPv.x2 == 60 &&
-            L.linkPv.y2 == 80,
-        "voll: PV-Leitung unveraendert");
-  check(L.linkGrid.x1 == 240 && L.linkGrid.y1 == 82 && L.linkGrid.x2 == 420 &&
-            L.linkGrid.y2 == 80,
-        "voll: Netz-Leitung unveraendert");
-  check(L.linkBattery.x1 == 240 && L.linkBattery.y1 == 82 && L.linkBattery.x2 == 240 &&
-            L.linkBattery.y2 == 210,
-        "voll: Akku-Leitung unveraendert");
+  check(L.linkPv.x1 == 240 && L.linkPv.y1 == 124 && L.linkPv.x2 == 136 &&
+            L.linkPv.y2 == 64,
+        "voll: PV-Leitung schraeg nach links oben");
+  check(L.linkGrid.x1 == 240 && L.linkGrid.y1 == 124 && L.linkGrid.x2 == 343 &&
+            L.linkGrid.y2 == 64,
+        "voll: Netz-Leitung schraeg nach rechts oben");
+  check(L.linkBattery.x1 == 240 && L.linkBattery.y1 == 124 && L.linkBattery.x2 == 240 &&
+            L.linkBattery.y2 == 244,
+        "voll: Akku-Leitung senkrecht nach unten");
 
-  check(L.valPv.x == 0 && L.valPv.y == 116 && !L.valPv.gross,
-        "voll: PV-Wert unveraendert und klein");
-  check(L.valHouse.x == 250 && L.valHouse.y == 120, "voll: Haus-Wert unveraendert");
-  check(L.valGrid.x == 360 && L.valGrid.y == 118, "voll: Netz-Wert unveraendert");
-  check(L.valBattery.x == 180 && L.valBattery.y == 247,
-        "voll: Akku-Wert unveraendert");
+  // The three on the ring stand in the free corner at their node's lower side: the PV
+  // to the LEFT, because the house is on its right. 6 = 136 - 70 - 60, where the 60 is
+  // half the label: an x is the left edge, the offset is the number's middle.
+  check(L.valPv.x == 6 && L.valPv.y == 102 && !L.valPv.gross,
+        "voll: PV-Wert links unten am Knoten und klein");
+  check(L.valHouse.x == 250 && L.valHouse.y == 162, "voll: Haus-Wert rechts der Akkuleitung");
+  check(L.valGrid.x == 353 && L.valGrid.y == 102,
+        "voll: Netz-Wert rechts unten am Knoten");
+  check(L.valBattery.x == 250 && L.valBattery.y == 259,
+        "voll: Akku-Wert rechts unten am Knoten");
 
   check(L.pills == 0x07, "voll: drei Pillen");
   checkEq(L.pillX[0], 6, "voll: erste Pille bei 6");
@@ -98,11 +108,129 @@ static void testFullDeviceIsUnchanged() {
         "voll: PV-Wert wie die anderen drei");
 }
 
+// The ring and its three sectors. These are the parts that are new, and the checks
+// are the properties rather than the pixels, because a property survives the next
+// board while a pixel does not.
+static void testTheRingAndItsSectors() {
+  const FlowLayout L = flowLayoutFor(capsOf(true, true, true), ui());
+  const UiFlow &f = ui().flow;
+
+  check(L.ring.visible, "Ring: vorhanden, wenn Haus und Netz da sind");
+  checkEq(L.ring.x, f.hubX, "Ring: Mittelpunkt ist der Mittelpunkt des Hauses");
+  checkEq(L.ring.y, f.hubY, "Ring: und auf derselben Hoehe");
+  checkEq(L.ring.rx, 120, "Ring: 120 px breit");
+  checkEq(L.ring.ry, 120, "Ring: 120 px hoch - ein KREIS auf dem kleinen Display");
+  checkEq(L.ring.rx, L.ring.ry, "Ring: und beide gleich, das ist der Unterschied");
+
+  // ONE number decides where the nodes stand and where the sectors begin and end. 30
+  // degrees above the horizontal puts one node every 120 degrees round the ring, so the
+  // ring divides into three EQUAL arcs and the four nodes stand at the corners of a
+  // triangle - which is the whole of what was asked for.
+  checkEq((int)(kKnotenGrad * 10.0f + 0.5f), 300, "Knoten: 30 Grad ueber der Waagerechten");
+  const float oben = L.keilOben.bisGrad - L.keilOben.vonGrad;
+  const float akku = L.keilAkku.bisGrad - L.keilAkku.vonGrad;
+  const float netz = L.keilNetz.bisGrad - L.keilNetz.vonGrad;
+  checkEq((int)(oben + 0.5f), 120, "Keil oben: 120 Grad");
+  checkEq((int)(akku + 0.5f), 120, "Keil Akku: 120 Grad");
+  checkEq((int)(netz + 0.5f), 120, "Keil Netz: 120 Grad");
+  checkEq((int)(oben + akku + netz + 0.5f), 360,
+          "die drei Keile sind gleich und fuellen den Ring genau");
+
+  // Each sector's two ends are ON the two nodes it joins. That is the whole property: a
+  // lit sector reads as a way from one node to the next because both ends are on one.
+  checkEq((int)(L.keilOben.vonGrad + 0.5f), 210, "Keil oben: beginnt am PV-Winkel 210");
+  checkEq((int)(L.keilOben.bisGrad + 0.5f), 330, "Keil oben: endet am Netz-Winkel 330");
+  checkEq((int)(L.keilAkku.vonGrad + 0.5f), 90, "Keil Akku: beginnt unten bei 90");
+  checkEq((int)(L.keilAkku.bisGrad + 0.5f), 210, "Keil Akku: endet am PV-Winkel");
+  checkEq((int)(L.keilNetz.vonGrad + 0.5f), 330, "Keil Netz: beginnt am Netz-Winkel");
+  checkEq((int)(L.keilNetz.bisGrad + 0.5f), 450, "Keil Netz: endet unten bei 450");
+  check(L.keilOben.visible && L.keilAkku.visible && L.keilNetz.visible,
+        "Keile: alle drei da");
+
+  // The four values stand in the free corner at their node's lower side, the same rule
+  // the house has used all along. The PV's goes LEFT because the house is on its right -
+  // which is the one place this does not follow the house.
+  //
+  // What has to hold is that no arc reaches any of the four. Half of "1,76 kW" is 27 px.
+  const float textHalb = 27.0f;
+  auto ringWeite = [&f](int16_t y) {
+    const float tt = (float)(y - f.hubY) / (float)f.ry;
+    return (int16_t)(f.rx * sqrtf(1.0f - tt * tt));
+  };
+  const int16_t pvTextRechts = (int16_t)(L.valPv.x + f.valW / 2 + textHalb);
+  checkEq(ringWeite(L.valPv.y), 117, "Ring: auf der Hoehe des PV-Werts 117 px links aus der Mitte");
+  checkEq(pvTextRechts, 93, "PV-Zahl: rechter Rand bei 93");
+  checkEq(ringWeite(L.valPv.y) - pvTextRechts, 24,
+          "Ring: 24 px Luft zwischen Bogen und PV-Zahl");
+  const int16_t netzTextLinks = (int16_t)(L.valGrid.x + f.valW / 2 - textHalb);
+  checkEq(netzTextLinks - (f.hubX + ringWeite(L.valGrid.y)), 29,
+          "Ring: 29 px Luft zwischen Bogen und Netz-Zahl");
+  checkEq((f.hubX + ringWeite(L.valHouse.y)) -
+              (L.valHouse.x + f.valW / 2 + textHalb),
+          16, "Ring: 16 px Luft zwischen Bogen und Haus-Zahl");
+  // And the counter-check, so none of the three can pass by accident: 70 px the other
+  // way, which is where the PV value was before it moved to the outside, and its right
+  // edge lands 25 px INSIDE the arc.
+  check(pvTextRechts + 70 + 25 > f.hubX - ringWeite(L.valPv.y),
+        "Ring: die Platzierung nach aussen ist noetig, nicht Kosmetik");
+  // The battery is the ring's lowest point, so its value has only the container's
+  // bottom below it and 15 px is what fits.
+  check(L.valBattery.y + 21 <= 280, "Akku-Zahl: endet ueber dem unteren Rand");
+  checkEq(280 - (L.valBattery.y + 21), 0, "Akku-Zahl: genau am Rand, kein Platz mehr");
+
+  // Without a battery the lower right sector grows over the whole lower half, so the ring
+  // stays closed and the two still tile it.
+  const FlowLayout oAkku = flowLayoutFor(capsOf(true, false, true), ui());
+  check(oAkku.ring.visible && !oAkku.keilAkku.visible,
+        "ohne Akku: der Ring bleibt, nur sein unterer linker Keil faellt weg");
+  checkEq((int)(oAkku.keilNetz.bisGrad - oAkku.keilNetz.vonGrad + 0.5f), 240,
+          "ohne Akku: der untere rechte Keil waechst auf 240 Grad");
+  checkEq((int)(oAkku.keilOben.bisGrad - oAkku.keilOben.vonGrad +
+                oAkku.keilNetz.bisGrad - oAkku.keilNetz.vonGrad + 0.5f),
+          360, "ohne Akku: die beiden fuellen den Ring genau");
+  // Without a grid there is no right-hand end for the lower right sector, and without a
+  // house there is no centre: no ring at all.
+  const FlowLayout oNetz = flowLayoutFor(capsOf(true, true, false), ui());
+  check(!oNetz.ring.visible && !oNetz.keilOben.visible,
+        "ohne Netzknoten: kein Ring, denn kein rechter Endpunkt");
+  const FlowLayout oHaus = flowLayoutFor(capsOf(false, true, true), ui());
+  check(!oHaus.ring.visible, "ohne Hauszaehler: kein Ring, denn keine Mitte");
+}
+
+// The one arrow on the ring, both directions.
+//
+// THE THIRD SECTOR CANNOT BE LIT IN THE EMULATOR. Its two states are the battery
+// paying the meter and the meter paying the battery, and the simulator's balance
+// charges the battery out of a surplus and discharges it into a shortfall - never the
+// other way round. So this is the only test of it that there is.
+static void testTheRingArrow() {
+  const FlowLayout L = flowLayoutFor(capsOf(true, true, true), ui());
+  const float grad = L.keilNetz.mitteGrad; // 390: the middle of 330..450
+  checkEq((int)(grad + 0.5f), 390, "Pfeil: in der Mitte des unteren rechten Keils");
+
+  int16_t x, y;
+  float dreh;
+  // On the ring, and only the turn says which way. 390 degrees is 30, where the tangent
+  // of a circle points at 120 degrees - the angle plus ninety - and 180 from that is -60.
+  flowKeilPfeil(ui().flow, grad, true, &x, &y, &dreh);
+  checkEq(x, 343, "Pfeil: auf dem Ring bei x = 343");
+  checkEq(y, 184, "Pfeil: auf dem Ring bei y = 184");
+  check(dreh > 112.0f && dreh < 128.0f, "Pfeil Netz->Akku: 120 Grad, nach links unten");
+  flowKeilPfeil(ui().flow, grad, false, &x, &y, &dreh);
+  checkEq(x, 343, "Pfeil: dieselbe Stelle");
+  checkEq(y, 184, "Pfeil: dieselbe Stelle");
+  check(dreh < -52.0f && dreh > -68.0f, "Pfeil Akku->Netz: -60 Grad, nach rechts oben");
+  // And it must not land on a node or on a value: the battery node reaches to y = 274 and
+  // the battery's value is beside it at x = 282.
+  check(y < L.battery.y - 30, "Pfeil: ueber dem Akku-Knoten, nicht auf ihm");
+  check(y < L.valBattery.y, "Pfeil: ueber dem Akku-Wert");
+}
+
 // No battery: the house stays the hub, the battery and its connector go.
 static void testWithoutBattery() {
   const FlowLayout L = flowLayoutFor(capsOf(true, false, true), ui());
-  check(L.pv.x == 60 && L.pv.y == 80 && L.pv.d == 60, "ohne Akku: PV bleibt aussen");
-  check(L.house.x == 240 && L.house.y == 82 && L.house.d == 92,
+  check(L.pv.x == 136 && L.pv.y == 64 && L.pv.d == 60, "ohne Akku: PV bleibt aussen");
+  check(L.house.x == 240 && L.house.y == 124 && L.house.d == 92,
         "ohne Akku: Haus bleibt die Mitte");
   check(!L.battery.visible, "ohne Akku: Akku-Knoten weg");
   check(!L.linkBattery.visible, "ohne Akku: Akku-Leitung weg");
@@ -116,7 +244,7 @@ static void testWithoutBattery() {
   checkEq(L.pillX[FLOW_PILL_HOUSE], 85 + 158, "ohne Akku: die zweite daneben");
   // The row keeps its place. A diagram that moves when a device changes is
   // less readable on a wall than one with room left empty.
-  check(L.pv.y == 80, "ohne Akku: die Reihe rueckt nicht nach");
+  check(L.pv.y == 64, "ohne Akku: die PV bleibt, wo sie war");
 }
 
 // No household meter: the PV becomes the hub - big, in the middle, with the
@@ -126,7 +254,7 @@ static void testWithoutHouseMeter() {
   check(!L.house.visible, "ohne Hauszaehler: Haus-Knoten weg");
   check(!L.valHouse.visible, "ohne Hauszaehler: Haus-Wert weg");
 
-  check(L.pv.x == 240 && L.pv.y == 82 && L.pv.d == 92,
+  check(L.pv.x == 240 && L.pv.y == 124 && L.pv.d == 92,
         "ohne Hauszaehler: PV sitzt als Mittelpunkt in der Mitte und ist gross");
   check(L.valPv.gross, "ohne Hauszaehler: PV-Wert gross");
   // With a node below it the number belongs to the node above, so it stays where
@@ -141,7 +269,8 @@ static void testWithoutHouseMeter() {
   // Nur der eine Knoten rueckt ab: bei einem Akku darunter waere eine andere
   // Mitte genau der Fehler, den diese Aenderung sonst wiederholt.
   check(L.pv.y == ui().flow.hubY, "ohne Hauszaehler: mit Akku in der Zeile geblieben");
-  check(L.valPv.x == ui().flow.hubX + ui().flow.hubValDx && L.valPv.y == ui().flow.hubY + ui().flow.hubValDy,
+  check(L.valPv.x == ui().flow.hubX + ui().flow.hubValDx - ui().flow.valW / 2 &&
+        L.valPv.y == ui().flow.hubY + ui().flow.hubValDy,
         "ohne Hauszaehler: mit Akku und Netz bleibt der Wert, wo der Hauswert war");
   check(L.grossPvIco, "ohne Hauszaehler: das PV-Icon wird wie das eines "
                       "Mittelpunkts skaliert");
@@ -149,10 +278,10 @@ static void testWithoutHouseMeter() {
   // The connectors now start at the PV node, which is the hub.
   check(!L.linkPv.visible,
         "ohne Hauszaehler: die PV hat keine Verbindung - sie ist die Mitte");
-  check(L.linkGrid.x1 == 240 && L.linkGrid.y1 == 82 && L.linkGrid.x2 == 420,
+  check(L.linkGrid.x1 == 240 && L.linkGrid.y1 == 124 && L.linkGrid.x2 == 343,
         "ohne Hauszaehler: Netz haengt an der PV");
-  check(L.linkBattery.x1 == 240 && L.linkBattery.y1 == 82 &&
-            L.linkBattery.x2 == 240 && L.linkBattery.y2 == 210,
+  check(L.linkBattery.x1 == 240 && L.linkBattery.y1 == 124 &&
+            L.linkBattery.x2 == 240 && L.linkBattery.y2 == 244,
         "ohne Hauszaehler: Akku haengt an der PV");
 
   check(L.pills == 0x05, "ohne Hauszaehler: zwei Pillen (Erzeugung, Akku)");
@@ -273,6 +402,8 @@ static void testPillGeometry() {
 
 int main() {
   testFullDeviceIsUnchanged();
+  testTheRingAndItsSectors();
+  testTheRingArrow();
   testWithoutBattery();
   testWithoutHouseMeter();
   testOnlyGeneration();

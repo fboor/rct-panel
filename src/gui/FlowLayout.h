@@ -24,6 +24,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <math.h>
 
 #include "../device/DeviceCaps.h"
 #include "../ui/UiLayout.h"
@@ -47,7 +48,21 @@ struct FlowLink {
 // One of the three pills under the diagram.
 enum FlowPill { FLOW_PILL_PRODUCTION = 0, FLOW_PILL_HOUSE, FLOW_PILL_BATTERY };
 
-// A value under a node.
+// One sector of the ring: a way between two nodes that does not pass the house.
+//
+// Angles are in degrees the way LVGL counts them - from 3 o'clock, clockwise - and
+// run from vonGrad to bisGrad the short way round, which for all three sectors is
+// the way the picture turns.
+//
+struct FlowArc {
+  bool visible;
+  float vonGrad, bisGrad;
+  float mitteGrad; // where a mark on this sector stands - the direction arrow's
+  int16_t x, y;    // the ellipse's centre
+  int16_t rx, ry;  // its radii
+};
+
+// A value under a node, or on the ring.
 //
 // x and y are the label's left edge and top edge - lv_obj_set_pos() on a label
 // with a fixed width positions its corner, not its middle, which is the case all
@@ -64,12 +79,61 @@ struct FlowValue {
   bool gross;      // the 36 px font, for the value of the big PV
 };
 
+// Where the ring's three sectors begin and end, and where their figures stand.
+//
+// The cut between the top sector and the two lower ones sits 0.2 radii above the
+// centre - the design's 40 % line, expressed on an ellipse instead of a square - so
+// its ends lie at asin(0.2) = 11.54 degrees. The three sectors are then 156.9, 101.5
+// and 101.5 degrees and they tile the ring exactly: 360.0, no gap and no overlap at
+// any size. Every sector's two ends land on two of the three outer nodes, which is
+// what makes a lit sector read as a way from one node to another rather than as a
+// piece of decoration.
+//
+// The figures do not stand at the sectors' middles. At 140 degrees the lower left
+// one would be 8 px from the PV node and 17 px from the PV's own value, and at 125
+// degrees both are clear. Same on the other side, at 55 instead of 40.
+// Where the three outer nodes stand on the ring, and where the sectors begin and end,
+// in degrees counted the way the point generator counts them: from 3 o'clock, clockwise,
+// and a point at grad G stands at (hubX + rx*cos G, hubY + ry*sin G).
+//
+// So "left" is cos < 0, i.e. 90..270, and "above the middle" is sin < 0, i.e. 180..360.
+// Both together for the upper left quadrant is 180..270, which is where the PV is:
+//   PV      180 + 30 = 210
+//   Netz    360 - 30 = 330
+//   Akku    360 + 90 = 450
+// and a sector runs from one of those to the next, upwards through the top.
+//
+// THIRTY is what makes the three sectors EQUAL: one node every 120 degrees around the
+// ring, so the ring divides into three arcs of 120 and the four nodes stand at the corners
+// of a triangle. The design has them nearer the horizontal - 0.22 radii, which is 12.7
+// degrees - and it is the one thing of it this does not copy, because with the nodes that
+// far out and a 480 px page the ring is 3.3 : 1 and reads as pulled apart rather than as
+// a circle.
+//
+// ONE number decides the nodes AND the sectors, which is the point. Before this there
+// were two rules, a 40 % cut line and the node angles, and they could disagree.
+//
+// Writing 167.3 here instead of 192.7 puts the PV node's angle on the wrong side of the
+// centre line - it would be below the middle rather than above it, and every sector's
+// end would be 25 degrees away from the node it is supposed to start on.
+static const float kKnotenGrad = 30.0f;
+static const float kGradPv = 180.0f + kKnotenGrad;   // 210
+static const float kGradNetz = 360.0f - kKnotenGrad; // 330
+static const float kGradAkku = 450.0f;               // straight down, unwrapped
+
 // Everything the overview's diagram needs to know, and nothing about how it is
 // drawn. guiUpdateFlow() applies this; it is the only thing that talks to LVGL.
 struct FlowLayout {
   FlowNode pv, house, grid, battery;
   FlowLink linkPv, linkGrid, linkBattery;
+  // The three direct ways. Named for the way, not for the sector: keilOben is the panels
+  // into the grid, keilAkku the panels into the battery, keilNetz the battery and the
+  // grid across each other.
+  FlowArc keilOben, keilAkku, keilNetz;
   FlowValue valPv, valHouse, valGrid, valBattery;
+  // The ring's own line, without a sector: shown whenever the ring has one, so the
+  // diagram has its shape even when nothing is moving.
+  FlowArc ring;
   uint8_t pills;        // bitmask over FlowPill
   int16_t pillX[3];     // left edge of the pills that exist
   bool batterySoc;      // the percentage inside the battery node
@@ -147,13 +211,17 @@ static inline FlowLayout flowLayoutFor(const DeviceCaps &caps,
   // follow from it and a second, later test could read a d that is not set yet.
   const bool pvAllein = hubIstPv && !kenneAkku && !kenneNetz;
   L.pv.visible = true;
-  L.pv.x = hubIstPv ? f.hubX : f.pvX;
-  L.pv.y = hubIstPv ? (pvAllein ? flowAlleinY(ui) : f.hubY) : f.rowY;
+  // On the ring, 12.7 degrees above its horizontal, unless the PV is the hub - then it
+  // is the hub and has no place on it.
+  const float kc = kKnotenGrad * 0.0174532925f;
+  const int16_t seiteY = (int16_t)(f.hubY - f.ry * sinf(kc));
+  L.pv.x = hubIstPv ? f.hubX : (int16_t)(f.hubX - f.rx * cosf(kc));
+  L.pv.y = hubIstPv ? (pvAllein ? flowAlleinY(ui) : f.hubY) : seiteY;
   L.pv.d = hubIstPv ? (pvAllein ? f.alleinD : f.hubD) : f.sideD;
 
   L.grid.visible = kenneNetz;
-  L.grid.x = f.gridX;
-  L.grid.y = f.rowY;
+  L.grid.x = (int16_t)(f.hubX + f.rx * cosf(kc));
+  L.grid.y = seiteY;
   L.grid.d = f.sideD;
 
   L.battery.visible = kenneAkku;
@@ -187,8 +255,11 @@ static inline FlowLayout flowLayoutFor(const DeviceCaps &caps,
   // The values. The hub's value keeps the place it had as the house's: right of
   // the vertical line, so the line does not run through the digits - and free in
   // a layout without a house.
+  // Every value's x is its label's LEFT edge, and every offset is stated as the MIDDLE of
+  // the number relative to its node - so "move it" is one number everywhere and the label
+  // width does not have to be re-read to work out where the text lands.
   L.valHouse.visible = kenneHaus;
-  L.valHouse.x = (int16_t)(f.hubX + f.hubValDx);
+  L.valHouse.x = (int16_t)(f.hubX + f.hubValDx - f.valW / 2);
   L.valHouse.y = (int16_t)(f.hubY + f.hubValDy);
   L.valHouse.w = f.valW;
   L.valHouse.centreY = false;
@@ -203,7 +274,7 @@ static inline FlowLayout flowLayoutFor(const DeviceCaps &caps,
     // value keeps the place the house's value had: right of that line, so the
     // line does not run through the digits. It is not centred here: there is
     // still a node below, and the number belongs to the one above.
-    L.valPv.x = (int16_t)(f.hubX + f.hubValDx);
+      L.valPv.x = (int16_t)(f.hubX + f.hubValDx - f.valW / 2);
     L.valPv.y = (int16_t)(f.hubY + f.hubValDy);
   } else if (hubIstPv) {
     // Nothing below the node and nothing above but the circle: the value is the
@@ -214,26 +285,27 @@ static inline FlowLayout flowLayoutFor(const DeviceCaps &caps,
     L.valPv.y = flowAlleinValY(ui);
     L.valPv.centreY = true;
   } else {
-    // Centred on the PV node: the label is valW wide and the node's centre is its
-    // middle, so the left edge is half a label to the left of the node.
-    L.valPv.x = (int16_t)(L.pv.x - f.valW / 2);
-    L.valPv.y = (int16_t)(L.pv.y + f.pvValDy);
-  }
-  L.grossPvIco = hubIstPv;
-  // In the one-node layout the icon is drawn from its own font at its own size;
-  // everywhere else it is the 28 px font, scaled like the hub's or left alone.
+      // 70 px to the LEFT of the node, not to the right: the house is on the PV
+      // node's right, and the right is where the house's number goes. The grid's
+      // is mirrored, so the two read as a pair, each between its node and the edge.
+      L.valPv.x = (int16_t)(L.pv.x + f.pvValDx - f.valW / 2);
+      L.valPv.y = (int16_t)(L.pv.y + f.pvValDy);
+    }
+    L.grossPvIco = hubIstPv;
+    // In the one-node layout the icon is drawn from its own font at its own size;
+    // everywhere else it is the 28 px font, scaled like the hub's or left alone.
   // A 28 px glyph at 480 % is a blur, and that layout is the whole page.
   L.pvIcoNative = pvAllein;
 
   L.valGrid.visible = kenneNetz;
-  L.valGrid.x = (int16_t)(L.grid.x - f.valW / 2);
+  L.valGrid.x = (int16_t)(L.grid.x + f.gridValDx - f.valW / 2);
   L.valGrid.y = (int16_t)(L.grid.y + f.gridValDy);
   L.valGrid.w = f.valW;
   L.valGrid.centreY = false;
   L.valGrid.gross = false;
 
   L.valBattery.visible = kenneAkku;
-  L.valBattery.x = (int16_t)(L.battery.x - f.valW / 2);
+  L.valBattery.x = (int16_t)(L.battery.x + f.batValDx - f.valW / 2);
   L.valBattery.y = (int16_t)(L.battery.y + f.batValDy);
   L.valBattery.w = f.valW;
   L.valBattery.centreY = false;
@@ -242,6 +314,49 @@ static inline FlowLayout flowLayoutFor(const DeviceCaps &caps,
   L.batterySoc = kenneAkku;
   // The triangle marks the grid link, so it only exists where there is one.
   L.islandMark = kenneNetz;
+
+  // --- the ring and its three sectors ---
+  //
+  // All of it needs a house and a grid: the ring is drawn through the outer nodes, so
+  // without a grid there is no right-hand end for the lower right sector to start at
+  // and without a house there is no centre to be drawn around. What is left without a
+  // battery is the top sector, which is the one way that does not touch it.
+  //
+  // Not: a sector per pair of nodes. The panels have no way in, so a battery on its own
+  // is missing two of the three and shows one, and the arc for a way nobody can measure
+  // would be a picture of a guess.
+  const bool ringDa = kenneHaus && kenneNetz;
+  L.ring.visible = ringDa;
+  L.ring.vonGrad = 0.0f;
+  L.ring.bisGrad = 360.0f;
+  L.ring.x = f.hubX;
+  L.ring.y = f.hubY;
+  L.ring.rx = f.rx;
+  L.ring.ry = f.ry;
+
+  // The three sectors. Each one's two ends are on two of the outer nodes: the top one
+  // from the PV round over the head to the grid, the lower left from the battery round to
+  // the PV, the lower right from the grid round to the battery. Which is which is not a
+  // choice: the nodes are at the three ends of kKnotenGrad and of 90, so the sectors are
+  // what is left between them.
+  auto keil = [&f](float von, float bis, bool sichtbar) {
+    FlowArc a;
+    a.visible = sichtbar;
+    a.vonGrad = von;
+    a.bisGrad = bis;
+    a.mitteGrad = (von + bis) * 0.5f;
+    a.x = f.hubX;
+    a.y = f.hubY;
+    a.rx = f.rx;
+    a.ry = f.ry;
+    return a;
+  };
+  L.keilOben = keil(kGradPv, kGradNetz, ringDa);
+  L.keilAkku = keil(kGradAkku - 360.0f, kGradPv, ringDa && kenneAkku);
+  // Without a battery the lower right sector grows over the whole lower half, so the ring
+  // stays closed: left out, it would stop in mid-air under where the battery node used
+  // to be, on a page with nothing there.
+  L.keilNetz = keil(kGradNetz, kenneAkku ? kGradAkku : kGradPv + 360.0f, ringDa);
 
   // One pill per quantity that is drawn: a pill for something the diagram does
   // not show would be saying something about a measurement that is not being
@@ -284,6 +399,34 @@ static inline FlowLayout flowLayoutFor(const DeviceCaps &caps,
 static inline void flowLinkMidpoint(const FlowLink &l, int16_t *cx, int16_t *cy) {
   *cx = (int16_t)((l.x1 + l.x2) / 2);
   *cy = (int16_t)((l.y1 + l.y2) / 2);
+}
+
+// Where the one arrow on the ring stands, and how far it is turned.
+//
+// Two of the three sectors have a single possible direction - panels into the meter,
+// panels into the battery - so the two nodes they join say which way it is. The third
+// joins the battery and the meter, which can each pay the other, and gets this.
+//
+// The arrow stands ON the ring at the sector's middle, turned along it. Both the place
+// and the angle come out of the ring's own radii and the one angle, and neither is
+// written down as a number: the sector is 77 degrees long and a number here would be
+// wrong the next time the ring changes shape. laeuftAuf is the direction the power runs:
+// true means towards INCREASING angle, which on this sector means the meter paying the
+// battery.
+//
+// Returned in degrees, so nothing here has to know LVGL's tenths.
+static inline void flowKeilPfeil(const UiFlow &f, float grad, bool laeuftAuf,
+                                 int16_t *x, int16_t *y, float *drehGrad) {
+  const float t = grad * 0.0174532925f;
+  // The ellipse's tangent at that angle, which is the direction the power runs in.
+  const float s = laeuftAuf ? 1.0f : -1.0f;
+  const float tx = s * -f.rx * sinf(t);
+  const float ty = s * f.ry * cosf(t);
+  const float px = f.hubX + f.rx * cosf(t);
+  const float py = f.hubY + f.ry * sinf(t);
+  *x = (int16_t)px;
+  *y = (int16_t)py;
+  *drehGrad = atan2f(ty, tx) * 57.2957795f;
 }
 
 #endif // RCT_GUI_FLOWLAYOUT_H

@@ -68,6 +68,110 @@ inline float ruleGeneratorW(const DeviceState &s) {
 // driver produces.
 inline float ruleBatteryW(const DeviceState &s) { return s.batW; }
 
+// --- the flow diagram's direct ways -------------------------------------------
+
+// What goes directly from one node to another, in watts, past the hub.
+//
+// The device measures four numbers: generation, house consumption, battery power and
+// grid exchange. Nothing measures which of them fed which, so this decides it. Panels
+// pay for the house first, because electricity the house burns on never went near the
+// battery; what is left goes into the battery before it goes to the grid, because a
+// self-consumed kWh is worth more than a fed-in one.
+//
+// NOT MEASURED is written on all of it. Before this the diagram had one line per pair
+// of nodes and the reader had to work out the split; a picture that is one step more
+// wrong than the four numbers it was drawn from is worse than no picture, so the rules
+// are four lines long and one host test each.
+//
+// The three the diagram draws, and why only three:
+//
+//   pvToBattery   panels into the battery, straight down the left of the ring
+//   pvToGrid      panels into the grid, over the top of the ring
+//   gridToBattery / battToGrid   across the lower right, the only two-way one
+//
+// pvToHouse is on the hub spoke to the panels and gridToHouse on the hub spoke to the
+// grid, so they are not repeated here.
+//
+// DELIBERATELY ABSENT, three of them:
+//
+//   anything into the panels. Nothing in a house runs backwards, and a line that would
+//   have to be hidden almost always is a line that misleads the one time it is not.
+//   houseToBattery, which the design this follows has: with generation metered
+//   separately, energy arriving at the battery came either from the panels or across
+//   the meter, and which of the two it was is decided here rather than measured -
+//   drawing it again as house->battery would count it twice.
+//   houseToGrid. The house is defined as consumption and cannot export, so on an
+//   export the whole amount is already pvToGrid + battToGrid. An earlier version had
+//   the field and computed einspeisung - battToGrid, which on the test case below
+//   returned exactly pvToGrid: the hub spoke and the top wedge would have shown the
+//   same 4 kW twice, and read as twice the energy.
+struct FlowSplit {
+  float pvToHouse;     // hub spoke to the panels
+  float pvToBattery;   // ring, lower left
+  float pvToGrid;      // ring, top
+  float battToHouse;   // hub spoke to the battery
+  float battToGrid;    // ring, lower right, downwards
+  float gridToHouse;   // hub spoke to the grid
+  float gridToBattery; // ring, lower right, upwards
+};
+
+// The panel's thresholds, unchanged: 50 W for the grid and the battery, 20 W for
+// generation. Written here rather than in the caller because two drawings of the same
+// instant that answer "is that a flow" differently are worse than a threshold that is
+// slightly too high - one of the two is wrong and nobody can say which.
+constexpr float kFlowGridActiveW = 50.0f; // below = standby
+constexpr float kFlowPvActiveW = 20.0f;   // below = no visible generation
+constexpr float kFlowBatActiveW = 50.0f;  // below = standby
+
+inline FlowSplit ruleFlowSplit(const DeviceState &s) {
+  FlowSplit f;
+  f.pvToHouse = f.pvToBattery = f.pvToGrid = 0.0f;
+  f.battToHouse = f.battToGrid = 0.0f;
+  f.gridToHouse = f.gridToBattery = 0.0f;
+  // Until the device has answered once, nothing flows. A diagram that shows a split
+  // before anything has been measured shows a guess.
+  if (!s.haveData) {
+    return f;
+  }
+  const float pv = ruleGenerationW(s);
+  const float house = ruleHouseW(s);
+  const float grid = s.gridExchangeW; // + = draw from the grid
+  const float bat = s.batW;           // + = discharge
+
+  f.pvToHouse = pv > 0.0f ? (pv < house ? pv : house) : 0.0f;
+  float panelsRest = pv - f.pvToHouse; // still to be placed
+  if (panelsRest < 0.0f) {
+    panelsRest = 0.0f;
+  }
+
+  if (bat < 0.0f) {
+    // Charging. The panels pay first, whatever is left of their surplus; only then
+    // does the meter, and that is the lower right of the ring running upwards.
+    const float willHaben = -bat;
+    f.pvToBattery = panelsRest < willHaben ? panelsRest : willHaben;
+    panelsRest -= f.pvToBattery;
+    const float ausDemNetz = willHaben - f.pvToBattery;
+    f.gridToBattery = grid > 0.0f ? (grid < ausDemNetz ? grid : ausDemNetz) : 0.0f;
+  } else {
+    // Discharging: the house first, and what is left of it across the meter.
+    const float bedarf = house - f.pvToHouse;
+    f.battToHouse = bedarf > 0.0f ? (bat < bedarf ? bat : bedarf) : 0.0f;
+    f.battToGrid = bat - f.battToHouse;
+    if (f.battToGrid < 0.0f) {
+      f.battToGrid = 0.0f;
+    }
+  }
+  f.pvToGrid = panelsRest;
+
+  // The hub spoke to the grid: what is left of the import after the battery took its
+  // share. On an export there is nothing left for it - the panels and the battery put
+  // all of it on the ring - so the spoke's arrow follows the sign of the measured
+  // exchange and carries no figure of its own.
+  const float bezug = grid > 0.0f ? grid - f.gridToBattery : 0.0f;
+  f.gridToHouse = bezug > 0.0f ? bezug : 0.0f;
+  return f;
+}
+
 // --- energy of one period ---------------------------------------------------
 
 // One period's counters, straight from the device, before the rules are

@@ -31,16 +31,23 @@ const UiLayout kGuition4848S040 = {
     /* rowPitch */ 22,
     /* flow */
     {
-        /* rowY */ 80,       // the outer nodes' centre
-        /* hubY */ 82,       // the hub's centre, 2 px lower
+        /* hubY */ 124,      // the hub's centre, and the ring's with it
         /* sideD */ 60,      // PV, grid, battery
         /* hubD */ 92,       // the house
         /* alleinD */ 190,   // the PV as the only node on the page
-        /* alleinDY */ 18,   // that circle stands 18 px below the hub row
-        /* pvX */ 60,
+        // 24 px ABOVE the hub row, which puts this one-node circle back at the y = 100 it
+        // has always had: it is placed against the TOP of the container with a measured
+        // 5 px of air over it, and the row is at 124 because the ring wanted it there.
+        // A 190 px circle under a row at 124 would show 29 px of nothing above it.
+        /* aloneDY */ -24,
         /* hubX */ 240,
-        /* gridX */ 420,
-        /* batDY */ 210,
+        /* batDY */ 244,     // the ring's lowest point: hubY + ry
+        // 120 x 120: A CIRCLE, and that is the request. 120 is what the 280 px of
+        // container allows once the battery's value no longer hangs below its node: the
+        // ring's top sits 4 px down and the battery node's bottom at 274. It is 240 px
+        // across, so 120 px of margin on each side - the width is not a choice here at
+        // all, which is what lets the three sectors be three equal 120 degree arcs.
+        /* rx */ 120, /* ry */ 120,
         /* pillW */ 152,
         /* pillH */ 34,
         /* pillGap */ 6,
@@ -48,10 +55,12 @@ const UiLayout kGuition4848S040 = {
         /* pageW */ 480,
         /* flowY */ 35,
         /* valW */ 120,
-        /* pvValDy */ 36,     /* gridValDy */ 38,   /* batValDy */ 37,
-        // 10 px right of the hub's centre and 38 px below it: the vertical line
-        // down to the battery runs through x = hubX, and the number stands beside it.
-        /* hubValDx */ 10, /* hubValDy */ 38,
+        // The three on the ring: 70 px sideways - to the left for the PV, because the
+        // house is on its right - and 38 px down. The battery only 15 px down, it is the
+        // ring's lowest point and 38 would reach past the container. See the reason next
+        // to pvValDx.
+        /* pvValDx */ -70, /* gridValDx */ 70, /* batValDx */ 70, /* hubValDx */ 70,
+        /* pvValDy */ 38,  /* gridValDy */ 38,  /* batValDy */ 15,  /* hubValDy */ 38,
         /* alleinValW */ 200,
     },
     // The "today" cards. Three columns on top, two below, and the cell width comes
@@ -123,9 +132,18 @@ const UiLayout kBreit800x480 = [] {
   UiLayout l = kGuition4848S040;
   l.screenW = 800;
   l.screenH = 480;
-  l.flow.pvX = 150;
+  // The ring grows with the page: 300 x 92 instead of 172 x 92, and the 92 is the 480's
+  // because both boards are 480 px tall and the vertical arrangement that is known to
+  // fit fits here unchanged. PV and grid therefore stand 300 px out instead of 172,
+  // which on 800 px leaves them 70 px from the edge.
   l.flow.hubX = 400;
-  l.flow.gridX = 650;
+  // 240 x 120 instead of 300 x 92. Not a circle - a 120 px circle would leave 280 px of
+  // margin on an 800 px page and the diagram would be a stamp in the middle - but 2 : 1
+  // instead of 3.3 : 1, which is what read as pulled apart. 144 px of margin each side
+  // is the price.
+  l.flow.rx = 240;
+  l.flow.hubY = 124;
+  l.flow.batDY = 244;
   l.flow.pillW = 254;
   l.flow.pageW = 800;
   // CARDS: three columns, so a card is (800 - 32 - 16) / 3 = 250 px.

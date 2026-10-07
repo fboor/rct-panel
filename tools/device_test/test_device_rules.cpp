@@ -297,10 +297,128 @@ static void testSinglePhase() {
   checkNear(ruleGenerationW(s), 0.0f, "ein Generator zaehlt wie zwei leere");
 }
 
+// The direct ways on the flow diagram (ruleFlowSplit). The seven figures are a split
+// of four measurements, so the test that matters is not "does case 3 return 3000" but
+// "does every node balance": what arrives at it equals what leaves it, and what leaves
+// the panels is what the device says the panels produce. A split that adds up at the
+// panels and nowhere else is a picture that lies.
+static void checkFlowBalanced(DeviceState s, const char *what) {
+  const FlowSplit f = ruleFlowSplit(s);
+  // Panels: everything they produce is placed somewhere.
+  checkNear(f.pvToHouse + f.pvToBattery + f.pvToGrid, ruleGenerationW(s),
+            "Biline: die Panels geben ab, was sie erzeugen");
+  // House: what fills its consumption.
+  checkNear(f.pvToHouse + f.battToHouse + f.gridToHouse, ruleHouseW(s),
+            "Biline: das Haus bekommt so viel, wie es verbraucht");
+  // Battery: + = discharge, so what leaves it minus what arrives is batW.
+  checkNear(f.battToHouse + f.battToGrid - f.pvToBattery - f.gridToBattery, s.batW,
+            "Biline: der Akku liefert minus nimmt = seine Leistung");
+  // Grid: what goes out over it minus what comes in is the export, - gridExchangeW.
+  checkNear(f.pvToGrid + f.battToGrid - f.gridToHouse - f.gridToBattery,
+            -s.gridExchangeW, "Biline: ueber das Netz geht hinaus minus hinein");
+  // And the conservation law over all seven: everything that moves has to end up in
+  // the house, out over the meter, or in the battery. This is what says there is no
+  // way into the panels - a figure that had nowhere to go could not be added here.
+  const float einspeisung = s.gridExchangeW < 0.0f ? -s.gridExchangeW : 0.0f;
+  const float geladen = s.batW < 0.0f ? -s.batW : 0.0f;
+  checkNear(f.pvToHouse + f.pvToBattery + f.pvToGrid + f.battToHouse + f.battToGrid +
+                f.gridToHouse + f.gridToBattery,
+            ruleHouseW(s) + einspeisung + geladen,
+            "Biline: alles Bewegte landet im Haus, im Netz oder im Akku");
+  (void)what;
+}
+
+static DeviceState flowState(float pvW, float houseW, float batW, float gridW) {
+  DeviceState s = makeState(kClean); // the household meter sees the generator
+  s.haveData = true;
+  s.genW[0] = pvW;
+  s.genW[1] = 0.0f;
+  s.houseW[0] = houseW;
+  s.houseW[1] = 0.0f;
+  s.houseW[2] = 0.0f;
+  s.extW = 0.0f;
+  s.batW = batW;
+  s.gridExchangeW = gridW;
+  return s;
+}
+
+static void testFlowSplit() {
+  // 5 kW from the panels, 2 kW in the house, nothing from the battery: 3 kW over the
+  // top of the ring into the grid. The state in the reference design's screenshot.
+  {
+    DeviceState s = flowState(5000.0f, 2000.0f, 0.0f, -3000.0f);
+    const FlowSplit f = ruleFlowSplit(s);
+    checkNear(f.pvToHouse, 2000.0f, "Ueberschuss: 2 kW ins Haus");
+    checkNear(f.pvToGrid, 3000.0f, "Ueberschuss: 3 kW direkt ins Netz");
+    checkNear(f.pvToBattery, 0.0f, "Ueberschuss: nichts in den Akku");
+    checkFlowBalanced(s, "Ueberschuss");
+  }
+  // Surplus goes into the battery before it goes to the grid.
+  {
+    DeviceState s = flowState(4000.0f, 1000.0f, -3000.0f, 0.0f);
+    const FlowSplit f = ruleFlowSplit(s);
+    checkNear(f.pvToHouse, 1000.0f, "Laden: 1 kW ins Haus");
+    checkNear(f.pvToBattery, 3000.0f, "Laden: der Rest in den Akku");
+    checkNear(f.pvToGrid, 0.0f, "Laden: nichts ins Netz, es ist ein Ueberschuss");
+    checkFlowBalanced(s, "Laden aus PV");
+  }
+  // Panels and battery between them cover the house: the meter is idle.
+  {
+    DeviceState s = flowState(1000.0f, 3000.0f, 2000.0f, 0.0f);
+    const FlowSplit f = ruleFlowSplit(s);
+    checkNear(f.pvToHouse, 1000.0f, "Dach: 1 kW PV");
+    checkNear(f.battToHouse, 2000.0f, "Dach: 2 kW Akku");
+    checkNear(f.gridToHouse, 0.0f, "Dach: das Netz ruhig");
+    checkNear(f.battToGrid, 0.0f, "Dach: nichts in den Ueberschuss");
+    checkFlowBalanced(s, "PV und Akku decken das Haus");
+  }
+  // Both direct ways out of the battery and the panels at once. This is the case an
+  // earlier version counted twice: it returned houseToGrid == pvToGrid, so the grid
+  // spoke and the top wedge would each have shown 4 kW.
+  {
+    DeviceState s = flowState(5000.0f, 1000.0f, 2000.0f, -6000.0f);
+    const FlowSplit f = ruleFlowSplit(s);
+    checkNear(f.pvToGrid, 4000.0f, "beide Wege: 4 kW ueber den Ring ins Netz");
+    checkNear(f.battToGrid, 2000.0f, "beide Wege: 2 kW aus dem Akku ins Netz");
+    checkNear(f.gridToHouse, 0.0f, "beide Wege: der Netzspeer hat nichts Fuenftes");
+    checkFlowBalanced(s, "Panels und Akku speisen ein");
+  }
+  // The meter pays for the charging, which is the lower right of the ring running
+  // upwards.
+  {
+    DeviceState s = flowState(0.0f, 1000.0f, -500.0f, 1500.0f);
+    const FlowSplit f = ruleFlowSplit(s);
+    checkNear(f.gridToBattery, 500.0f, "Laden aus dem Netz: 500 W in den Akku");
+    checkNear(f.gridToHouse, 1000.0f, "Laden aus dem Netz: der Rest ins Haus");
+    checkNear(f.pvToBattery, 0.0f, "Laden aus dem Netz: die Panels haben nichts");
+    checkFlowBalanced(s, "Laden aus dem Netz");
+  }
+  // A dark evening: nothing is generated, so every direct way is empty and only the
+  // grid spoke to the house carries something.
+  {
+    DeviceState s = flowState(0.0f, 500.0f, 0.0f, 500.0f);
+    const FlowSplit f = ruleFlowSplit(s);
+    checkNear(f.pvToHouse + f.pvToBattery + f.pvToGrid, 0.0f, "Abend: kein Ring-Weg");
+    checkNear(f.gridToHouse, 500.0f, "Abend: das Haus aus dem Netz");
+    checkFlowBalanced(s, "Abend");
+  }
+  // Before the device has answered once, nothing flows - even with numbers in the
+  // state. A diagram that splits figures nobody measured shows a guess.
+  {
+    DeviceState s = flowState(5000.0f, 2000.0f, 0.0f, -3000.0f);
+    s.haveData = false;
+    const FlowSplit f = ruleFlowSplit(s);
+    checkNear(f.pvToHouse + f.pvToBattery + f.pvToGrid + f.battToHouse +
+                  f.battToGrid + f.gridToHouse + f.gridToBattery,
+              0.0f, "vor der ersten Antwort: nichts fliesst");
+  }
+}
+
 int main() {
   testMeasuredEvening();
   testHouseholdDependsOnTheDevice();
   testGenerationDependsOnTheDevice();
+  testFlowSplit();
   testChartSeries();
   testPeriods();
   testSinglePhase();
