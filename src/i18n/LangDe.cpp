@@ -152,10 +152,11 @@ const char *const kLang[T_COUNT] = {
     "OpenInverterGateway (HTTP 80)",    // T_OPT_TYPE_OIG
     "Simulation",                    // T_OPT_TYPE_SIM
     "Speichern",                        // T_BTN_SAVE
-    "Die Einstellungen werden dauerhaft gespeichert. Das Panel startet neu, "
-    "damit der gew&auml;hlte Treiber und die neue Adresse wirksam werden.",
+    "Die Einstellungen werden dauerhaft gespeichert. Beim Wechsel von Treiber "
+    "oder Adresse startet das Panel neu. Die Helligkeit wirkt sofort.",
                                                       // T_NOTE_RESTART
     "Gespeichert. Das Panel startet neu.",          // T_OK_SAVED
+    "Gespeichert.",                          // T_OK_SAVED_NO_RESTART
     "Unbekannter Ger&auml;tetyp.",                   // T_ERR_BAD_TYPE
     "Bitte eine Adresse eingeben.",                  // T_ERR_BAD_HOST
     "Bitte eine Zahl von 1 bis 65535 eingeben.",     // T_ERR_BAD_PORT

@@ -149,10 +149,11 @@ const char *const kLang[T_COUNT] = {
     "OpenInverterGateway (HTTP 80)",    // T_OPT_TYPE_OIG
     "Simulation",                    // T_OPT_TYPE_SIM
     "Save",                             // T_BTN_SAVE
-    "The settings are stored permanently. The panel restarts so that the "
-    "chosen driver and the new address take effect.",
+    "The settings are stored permanently. Changing the driver or the address "
+    "restarts the panel. The brightness takes effect at once.",
                                                       // T_NOTE_RESTART
     "Saved. The panel is restarting.",  // T_OK_SAVED
+    "Saved.",                           // T_OK_SAVED_NO_RESTART
     "Unknown device type.",             // T_ERR_BAD_TYPE
     "Please enter an address.",         // T_ERR_BAD_HOST
     "Please enter a number from 1 to 65535.",  // T_ERR_BAD_PORT

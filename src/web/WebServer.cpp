@@ -1373,8 +1373,8 @@ void handleUpdateDone() {
 //
 // Where the device is configured, now that there is more than one kind of
 // device. Two fields come from Configuration (device_type/host/port) and one
-// from the GUI (the background theme), and they are stored in the same way: in
-// NVS, before the restart that makes them take effect.
+// from the GUI (the background theme). All of them are stored in NVS, but they
+// do not all need a restart, and the difference is the point of this block.
 //
 // Why a restart rather than swapping the driver in place: the driver owns its
 // link, its buffers and the state it has already published, and giving all of
@@ -1382,6 +1382,13 @@ void handleUpdateDone() {
 // carefully. A restart does it for free and it is what the firmware update and
 // the settings page then behave alike as: answer first, restart afterwards, so
 // the browser never waits on a device that is going away.
+//
+// But only for what a restart is for. The theme is applied by guiSetTheme while
+// this handler runs - it walks the objects that exist - so it needs no restart,
+// and charging one for it meant that switching the panel from dark to light
+// dropped a running connection to the inverter for no reason. The comparison is
+// on type, host and port, decided before the globals are overwritten: afterwards
+// the old values are gone and every save looks unchanged.
 //
 // Not behind the code: this page changes which device the panel talks to, not
 // what it does with the values. The actions that touch the hardware - firmware
@@ -1656,6 +1663,13 @@ void handleSettingsSave() {
   char portText[6];
   snprintf(portText, sizeof(portText), "%ld", port);
 
+  // Whether a restart is needed is decided BEFORE the globals are overwritten, because
+  // afterwards the old values are gone and the comparison would always find equality.
+  // The theme is not part of it: it is applied here and now by guiSetTheme below, and
+  // dark-to-light must not cost a panel its connection.
+  const bool zugangAendert =
+      typ != device_type || host != device_host || portText != device_port;
+
   // Into the globals first, all of them, and only then into NVS: a save that
   // refuses one field must not have written the others, and the log line below
   // names what is about to take effect.
@@ -1672,9 +1686,20 @@ void handleSettingsSave() {
   guiSetTheme(s_server.arg("theme") == "hell");
 
   saveConfig();
-  Serial.printf("Web: Einstellungen gespeichert - Typ %s, %s:%s, %s\n",
+  Serial.printf("Web: Einstellungen gespeichert - Typ %s, %s:%s, %s%s\n",
                 device_type, device_host, device_port,
-                guiThemeHell() ? "hell" : "dunkel");
+                guiThemeHell() ? "hell" : "dunkel",
+                zugangAendert ? "" : " - ohne Neustart");
+
+  if (!zugangAendert) {
+    // Nothing a restart is needed for has changed. The theme is already applied by
+    // guiSetTheme, which walks the objects that exist rather than waiting for new ones
+    // to be built, so it is on screen now and stays on screen. The confirmation says so,
+    // because announcing a restart that does not come leaves the reader waiting for a
+    // panel that never goes away.
+    sendMsg(200, tr(T_OK_SAVED_NO_RESTART));
+    return;
+  }
 
   // Answer before restarting, as everywhere else that stops the device: the
   // browser gets the confirmation while there is still a server to send it.

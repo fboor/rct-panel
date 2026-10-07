@@ -173,6 +173,10 @@ enum LangId : int {
   T_BTN_SAVE,
   T_NOTE_RESTART,
   T_OK_SAVED,
+  // The other half of the same save: only the theme changed, so nothing restarts.
+  // A second string rather than a generic one, because a confirmation announcing a
+  // restart that does not happen is worse than no confirmation.
+  T_OK_SAVED_NO_RESTART,
   T_ERR_BAD_TYPE,
   T_ERR_BAD_HOST,
   T_ERR_BAD_PORT,
