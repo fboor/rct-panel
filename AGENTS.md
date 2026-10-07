@@ -20,7 +20,9 @@ Fundstellen übersehen.
 
 Nur `master`. Kein Push ohne Freigabe.
 
-`main`, `lcars-panel`, `simulator`: lokal, nie pushen.
+`main`, `lcars-panel`, `simulator`, `portal-design`: lokal, nie pushen.
+`portal-design` ist der Arbeitsbranch für das Portal-Design; getestet wird über den
+Emulator, nicht über das Panel.
 
 ## Historie
 
