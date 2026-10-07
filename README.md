@@ -33,6 +33,12 @@ network — in German or English, one per build.
 - **The backlight** dims after three minutes without a touch and switches off
   after five.
 
+## Installer
+
+Blank panel: flash it in the browser — no tool, no cable.
+
+**<https://fboor.github.io/rct-panel/install/>**
+
 ## Build and flash
 
 PlatformIO with `espressif32@6.8.0` (Arduino-ESP32 core 3.x), LVGL 9 and
