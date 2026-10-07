@@ -184,9 +184,25 @@ static inline int16_t flowAlleinValX(const UiLayout &u) {
 // 45 - the tightest it gets while the circle still fits, which is why the circle
 // cannot grow further without taking some of the number's air away.
 static inline int16_t flowAlleinValY(const UiLayout &u) {
-  return (int16_t)((flowAlleinY(u) + u.flow.alleinD / 2 + flowPillYInFlow(u) -
-                    u.flow.pillH / 2) / 2);
+  const int16_t kreisEnde = (int16_t)(flowAlleinY(u) + u.flow.alleinD / 2);
+  // What closes the band under the circle is whatever is BELOW THE DIAGRAM, and that is
+  // not the same thing on the two boards: the pill row on the narrow one, and the
+  // container's bottom edge on the wide one, where the pills are a column BESIDE the
+  // drawing. Their top edge says nothing about how far the drawing may reach, and with
+  // it the band came out 30 px tall - too little for a 45 px number, which is where the
+  // one-node value would have ended up.
+  const int16_t unten = (u.flow.pillDY != 0)
+                            ? u.flow.flowH
+                            : (int16_t)(flowPillYInFlow(u) - u.flow.pillH / 2);
+  return (int16_t)((kreisEnde + unten) / 2);
 }
+
+// Where a stacked pill column starts. The row on the narrow board leaves 6 px because
+// three pills of 152 px and two gaps of 6 fill 480 px exactly and the centring works out
+// to 6; the stack on the wide one has no such arithmetic to fall out of, so it is a
+// number of its own: 11 px, 5 more than the row's, which is where the column was asked
+// to stand.
+static const int16_t kPilleRand = 11;
 
 // The layout for one device family. caps.isKnown() false means "nothing has
 // answered yet": the full layout is drawn, because an RCT Power is what most of
@@ -400,12 +416,21 @@ static inline FlowLayout flowLayoutFor(const DeviceCaps &caps,
       n++;
     }
   }
-  const int16_t gesamt = (int16_t)(n * f.pillW + (n > 0 ? (n - 1) * f.pillGap : 0));
-  const int16_t start = (int16_t)((f.pageW - gesamt) / 2);
+  // A ROW on the board whose width is the pills': centred as a group, because a single
+  // pill at the left edge with 300 px of empty space beside it looks broken. A STACK on
+  // the wide one, where the column they stand in is a column and all three are at its left
+  // edge - a centred stack would be three rows of nothing in the middle of the page.
+  const bool stapel = f.pillDY != 0;
+  const int16_t gesamt =
+      stapel ? f.pillW
+             : (int16_t)(n * f.pillW + (n > 0 ? (n - 1) * f.pillGap : 0));
+  const int16_t start =
+      stapel ? kPilleRand : (int16_t)((f.pageW - gesamt) / 2);
   int k = 0;
   for (int i = 0; i < 3; i++) {
     if (p & (1u << i)) {
-      L.pillX[i] = (int16_t)(start + k * (f.pillW + f.pillGap));
+      L.pillX[i] = (int16_t)(stapel ? start
+                                    : start + k * (f.pillW + f.pillGap));
       k++;
     }
   }

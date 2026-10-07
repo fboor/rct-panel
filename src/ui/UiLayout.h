@@ -74,6 +74,10 @@ struct UiFlow {
   int16_t pillH;     // GuiApp.cpp uses this for the pills it builds
   int16_t pillGap;
   int16_t pillY;
+  // How far each pill stands from the one before it DOWNWARDS. 0 is the row on the narrow
+  // board, where the three are next to each other and pillY is their line; pillH + pillGap
+  // is the stack on the wide one, where they are three rows of a column at the left.
+  int16_t pillDY;
   int16_t pageW;
 
   // The diagram's container starts this far down the page (GuiApp.cpp's FLOW_Y).

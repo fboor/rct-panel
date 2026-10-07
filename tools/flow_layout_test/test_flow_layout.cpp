@@ -501,6 +501,88 @@ static void testPillGeometry() {
           "drei Pillen fuellen die Seite mit 6 px Rand");
 }
 
+// THE 800 x 480 PROFILE. It has never had a test of its own, which is how its ring grew
+// to 240 x 116 and nothing said so - the diagram on the wide board was a different drawing
+// from the one on the narrow one and no check could see it, because every other case in
+// this file asks the compiled-in board.
+//
+// The question here is not "where does it put things" but "is it still the 480's
+// diagram", so most of the checks are differences against the narrow profile and a
+// handful are the places the wide one is its own thing.
+static void testWideProfile() {
+  const UiLayout *breit = uiLayoutForSize(800, 480);
+  check(breit != nullptr, "800x480: es gibt ein Layout fuer diese Aufloesung");
+  if (breit == nullptr) {
+    return;
+  }
+  const UiLayout &s = *breit;
+  const UiFlow &f = s.flow;
+  const UiFlow &n = ui().flow; // das schmale Brett, der Ausgangspunkt
+  const FlowLayout L0 = flowLayoutFor(capsOf(true, true, true), s);
+
+  // THE RING IS BIGGER, and everything else in the drawing is NOT. The scale was the
+  // question and the answer was the ring alone: the nodes, the house, the one-node circle
+  // and all four value offsets stay exactly as they are on the narrow board. These are the
+  // lines that say so, and if one of them ever differs again this is where it will show.
+  checkEq(f.sideD, n.sideD, "800x480: dieselben Aussen-Knoten");
+  checkEq(f.hubD, n.hubD, "800x480: dasselbe Haus");
+  checkEq(f.alleinD, n.alleinD, "800x480: derselbe Ein-Knoten-Kreis");
+  checkEq(f.pvValDx, n.pvValDx, "800x480: gleicher PV-Wert-Versatz");
+  checkEq(f.pvValDy, n.pvValDy, "800x480: gleicher PV-Wert-Versatz unten");
+  checkEq(f.gridValDx, n.gridValDx, "800x480: gleicher Netz-Wert-Versatz");
+  checkEq(f.batValDy, n.batValDy, "800x480: gleicher Akku-Wert-Versatz");
+  checkEq(f.hubValDx, n.hubValDx, "800x480: gleicher Haus-Wert-Versatz");
+  // THE RING IS A CIRCLE AGAIN, 28 px bigger in both directions than the 480's. It was
+  // 1.19 times the old 136 x 116 once, which filled the height and left it 24 px wider
+  // than tall - and a ring that is not round is not the ring the other board draws. Both
+  // directions are checked, and the equality is the check: a ring that grows in one
+  // direction only stops being a ring.
+  checkEq(f.rx, f.ry, "800x480: der Ring ist rund");
+  checkEq(f.ry - n.ry, 28, "800x480: der Ring ist 28 px groesser als auf 480");
+  checkEq(f.rx - n.rx, 28, "800x480: in beiden Richtungen");
+  // The rest follows from the radii and the drawing's place on the page: the row 20 px
+  // lower, so the arrowhead keeps its 8 px of room, and the battery 3 px above the ring's
+  // lowest point instead of 4 - the sagitta over the node's radius, and with a 138 px
+  // radius down the page it is 3.
+  checkEq(f.hubY - n.hubY, 26, "800x480: die Hub-Zeile rueckt 26 px nach unten");
+  checkEq(f.hubY - f.ry, 8, "800x480: 8 px Luft ueber dem Ring fuer die Spitze");
+  checkEq(f.hubX - 800 / 2, 125, "800x480: 125 px rechts der Seitenmitte");
+  {
+    const float rr = (float)f.sideD / 2.0f;
+    const float sagitta = rr * rr / (2.0f * (float)f.ry);
+    check(fabsf((f.hubY + f.ry - sagitta) - (float)L0.battery.y) < 1.5f,
+          "800x480: die Keillinie setzt in der Mitte des Akku-Kreises an");
+  }
+
+  // THE PILLS AS A COLUMN: one pillH + one pillGap apart, all three at the left edge, and
+  // the last one ends where the row on the 480 ends.
+  checkEq(f.pillDY, f.pillH + f.pillGap, "800x480: die Pillen uebereinander");
+  checkEq(L0.pillX[0], L0.pillX[1], "800x480: die Pillen stehen uebereinander");
+  checkEq(L0.pillX[1], L0.pillX[2], "800x480: alle drei in einer Spalte");
+  checkEq(L0.pillX[0], 11, "800x480: die Spalte hat 11 px Rand, 5 mehr als die Reihe auf 480");
+  check(f.pillY + 2 * f.pillDY + f.pillH <= s.contentH(),
+        "800x480: die unterste Pille steht auf der Seite");
+  checkEq(s.contentH() - (f.pillY + 2 * f.pillDY + f.pillH), 12,
+          "800x480: 12 px unter der untersten Pille, wie auf 480");
+
+  // AND NOTHING IS CLIPPED. The container is the clip box, so this is the check that says
+  // the box is big enough for the drawing in it - the battery node hung 8 px out of it
+  // once, and a node with its bottom cut off is not a thing a pixel comparison finds.
+  check(f.flowH - (L0.valBattery.y + 21) > 0,
+        "800x480: der Akku-Wert endet ueber dem unteren Rand");
+  check(L0.battery.y + n.sideD / 2 <= f.flowH,
+        "800x480: der Akku-Kreis endet ueber dem unteren Rand");
+  // The top as well: the apex's arrowhead needs its 13 px of barbs inside the container.
+  check(L0.ring.y - L0.ring.ry - 7 >= 0,
+        "800x480: die Pfeilspitze oben bleibt im Container");
+  // And the two do not overlap: the pills are in the column at the left, the drawing to
+  // the right of it, and 126 px is what is left between them - measured on the ring's
+  // edge and not on the values, which stand 61 px outside it.
+  checkEq(11 + f.pillW, 255, "800x480: die Pillenspalte ist 255 px breit");
+  checkEq(f.hubX - L0.ring.rx - (11 + f.pillW), 126,
+          "800x480: 126 px zwischen der Spalte und dem Ring");
+}
+
 int main() {
   testFullDeviceIsUnchanged();
   testTheRingAndItsSectors();
@@ -510,6 +592,7 @@ int main() {
   testOnlyGeneration();
   testUnknownCaps();
   testPillGeometry();
+  testWideProfile();
 
   printf("%s: %d Prüfungen, %d fehlgeschlagen\n",
          g_failed == 0 ? "OK" : "FEHLER", g_checks, g_failed);

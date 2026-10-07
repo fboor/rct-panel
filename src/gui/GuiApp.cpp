@@ -1548,7 +1548,8 @@ static void applyFlowLayout(const FlowLayout &L, AppPage *ov) {
     }
     if (L.pills & (1u << i)) {
       lv_obj_remove_flag(s_ovBtn[i], LV_OBJ_FLAG_HIDDEN);
-      lv_obj_set_pos(s_ovBtn[i], L.pillX[i], ui().flow.pillY);
+      lv_obj_set_pos(s_ovBtn[i], L.pillX[i],
+                   (int16_t)(ui().flow.pillY + i * ui().flow.pillDY));
     } else {
       lv_obj_add_flag(s_ovBtn[i], LV_OBJ_FLAG_HIDDEN);
     }
