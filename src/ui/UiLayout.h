@@ -80,6 +80,12 @@ struct UiFlow {
   // The nodes and values live in the container, the pills on the page, so the band
   // between the circle and the pill can only be measured in the container - which is
   // what flowPillYInFlow below is for.
+  //
+  // 30 CENTRES the drawing: the heading ends 6 px lower than this and the pills start 1 px
+  // below the container, so the band it has to sit in runs from 29 to 316 and the drawing
+  // is 276 px tall - 11 px of slack in all. 30 puts 5 above and 6 below; at 35 it was 10
+  // and 1, which read as sitting on the pills. There is no more to give: the ring's
+  // diameter and the battery's value under it are what they are.
   int16_t flowY;
 
   // --- values ---

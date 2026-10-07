@@ -53,7 +53,7 @@ const UiLayout kGuition4848S040 = {
         /* pillGap */ 6,
         /* pillY */ 316,
         /* pageW */ 480,
-        /* flowY */ 35,
+        /* flowY */ 30,
         /* valW */ 120,
         // The three on the ring: 70 px sideways - to the left for the PV, because the
         // house is on its right - and 38 px down. The battery only 15 px down, it is the

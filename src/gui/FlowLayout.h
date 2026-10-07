@@ -57,9 +57,21 @@ enum FlowPill { FLOW_PILL_PRODUCTION = 0, FLOW_PILL_HOUSE, FLOW_PILL_BATTERY };
 struct FlowArc {
   bool visible;
   float vonGrad, bisGrad;
-  float mitteGrad; // where a mark on this sector stands - the direction arrow's
-  int16_t x, y;    // the ellipse's centre
-  int16_t rx, ry;  // its radii
+  // Where this sector's ARROWHEAD stands, in degrees.
+  //
+  // Chosen, not placed: an arrowhead is a glyph turned onto the arc, and the turn is the
+  // tangent's angle. On the axes - 90, 180, 270, 360 - that is a multiple of 90 and the
+  // turned glyph still looks like an arrow. At 150 it is 60 degrees and reads as a hook.
+  // So the two lower ones stand on the ring's left and right extremes, where the tangent
+  // runs straight down and the glyph points down (or up, for the one sector with two
+  // ways) without looking bent.
+  //
+  // The top one cannot: 270 is the ring's highest point, 4 px below the top of the
+  // container, and a 13 px glyph centred there has its tip cut off by the frame. 300 is
+  // 30 degrees along the arc, which is the least turn the sector allows.
+  float pfeilGrad;
+  int16_t x, y;   // the ellipse's centre
+  int16_t rx, ry; // its radii
 };
 
 // A value under a node, or on the ring.
@@ -339,24 +351,32 @@ static inline FlowLayout flowLayoutFor(const DeviceCaps &caps,
   // the PV, the lower right from the grid round to the battery. Which is which is not a
   // choice: the nodes are at the three ends of kKnotenGrad and of 90, so the sectors are
   // what is left between them.
-  auto keil = [&f](float von, float bis, bool sichtbar) {
+  auto keil = [&f](float von, float bis, float pfeil, bool sichtbar) {
     FlowArc a;
     a.visible = sichtbar;
     a.vonGrad = von;
     a.bisGrad = bis;
-    a.mitteGrad = (von + bis) * 0.5f;
+    a.pfeilGrad = pfeil;
     a.x = f.hubX;
     a.y = f.hubY;
     a.rx = f.rx;
     a.ry = f.ry;
     return a;
   };
-  L.keilOben = keil(kGradPv, kGradNetz, ringDa);
-  L.keilAkku = keil(kGradAkku - 360.0f, kGradPv, ringDa && kenneAkku);
+  // The three arrowheads, and the direction each points:
+  //   oben  300 Grad, towards INCREASING angle: the panels are at 210 and the meter at
+  //         330, so the power runs that way.
+  //   Akku  180 Grad, towards DECREASING: from the panels at 210 down to the battery at
+  //         90, which at the ring's left extreme is straight down.
+  //   Netz  360 Grad, either way - it is the one sector with two. Down for the meter
+  //         paying the battery, up for the other way round.
+  L.keilOben = keil(kGradPv, kGradNetz, 300.0f, ringDa);
+  L.keilAkku = keil(kGradAkku - 360.0f, kGradPv, 180.0f, ringDa && kenneAkku);
   // Without a battery the lower right sector grows over the whole lower half, so the ring
   // stays closed: left out, it would stop in mid-air under where the battery node used
   // to be, on a page with nothing there.
-  L.keilNetz = keil(kGradNetz, kenneAkku ? kGradAkku : kGradPv + 360.0f, ringDa);
+  L.keilNetz =
+      keil(kGradNetz, kenneAkku ? kGradAkku : kGradPv + 360.0f, 360.0f, ringDa);
 
   // One pill per quantity that is drawn: a pill for something the diagram does
   // not show would be saying something about a measurement that is not being

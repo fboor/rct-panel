@@ -205,25 +205,35 @@ static void testTheRingAndItsSectors() {
 // other way round. So this is the only test of it that there is.
 static void testTheRingArrow() {
   const FlowLayout L = flowLayoutFor(capsOf(true, true, true), ui());
-  const float grad = L.keilNetz.mitteGrad; // 390: the middle of 330..450
-  checkEq((int)(grad + 0.5f), 390, "Pfeil: in der Mitte des unteren rechten Keils");
+  const UiFlow &f = ui().flow;
+  const float grad = L.keilNetz.pfeilGrad; // 360: the ring's right extreme
+  checkEq((int)(grad + 0.5f), 360, "Pfeil: am rechten Extrem des Rings");
 
   int16_t x, y;
   float dreh;
-  // On the ring, and only the turn says which way. 390 degrees is 30, where the tangent
-  // of a circle points at 120 degrees - the angle plus ninety - and 180 from that is -60.
+  // On the ring, and only the turn says which way. At 360 the tangent of a circle runs
+  // straight down, so the two directions are 90 and -90 degrees - and the glyph is a clean
+  // arrow either way instead of a turned one.
   flowKeilPfeil(ui().flow, grad, true, &x, &y, &dreh);
-  checkEq(x, 343, "Pfeil: auf dem Ring bei x = 343");
-  checkEq(y, 184, "Pfeil: auf dem Ring bei y = 184");
-  check(dreh > 112.0f && dreh < 128.0f, "Pfeil Netz->Akku: 120 Grad, nach links unten");
+  checkEq(x, 360, "Pfeil: auf dem Ring bei x = 360");
+  checkEq(y, 124, "Pfeil: auf dem Ring bei y = 124, auf der Höhe des Hauses");
+  check(dreh > 82.0f && dreh < 98.0f, "Pfeil Netz->Akku: 90 Grad, gerade nach unten");
   flowKeilPfeil(ui().flow, grad, false, &x, &y, &dreh);
-  checkEq(x, 343, "Pfeil: dieselbe Stelle");
-  checkEq(y, 184, "Pfeil: dieselbe Stelle");
-  check(dreh < -52.0f && dreh > -68.0f, "Pfeil Akku->Netz: -60 Grad, nach rechts oben");
-  // And it must not land on a node or on a value: the battery node reaches to y = 274 and
-  // the battery's value is beside it at x = 282.
-  check(y < L.battery.y - 30, "Pfeil: ueber dem Akku-Knoten, nicht auf ihm");
-  check(y < L.valBattery.y, "Pfeil: ueber dem Akku-Wert");
+  checkEq(x, 360, "Pfeil: dieselbe Stelle");
+  checkEq(y, 124, "Pfeil: dieselbe Stelle");
+  check(dreh < -82.0f && dreh > -98.0f, "Pfeil Akku->Netz: -90 Grad, gerade nach oben");
+  // And it must not land on anything. It stands at the ring's right extreme, level with
+  // the house and 62 px below the netz node, so the distances are what say so - not an
+  // axis, because it is off both.
+  auto abstand = [&](int16_t nx, int16_t ny) {
+    const int dx = x - nx, dy = y - ny;
+    return (int16_t)sqrtf((float)(dx * dx + dy * dy));
+  };
+  check(abstand(L.grid.x, L.grid.y) > f.sideD / 2, "Pfeil: 62 px vom Netzknoten, nicht auf ihm");
+  check(abstand(L.battery.x, L.battery.y) > f.sideD / 2, "Pfeil: vom Akku-Knoten weg");
+  // Level with the house, 120 px out - the ring's radius - so it clears the house by
+  // 74 px rather than by a margin on one axis.
+  check(abstand(L.house.x, L.house.y) > f.hubD / 2, "Pfeil: 120 px vom Haus, nicht auf ihm");
 }
 
 // No battery: the house stays the hub, the battery and its connector go.
@@ -303,12 +313,15 @@ static void testOnlyGeneration() {
   // lower edge and the pill's upper edge: 151 and 299, so 225.
   check(L.valPv.x == flowAlleinValX(ui()) && L.valPv.y == flowAlleinValY(ui()),
         "nur Erzeugung: der Wert sitzt mittig darunter und weiter unten");
-  // The band between circle and pill, measured where the value lives: in the
-  // container, which sits ui().flow.flowY lower than the page the pills are on. Both
-  // ends of the band in one coordinate system - 162 and 264, so 213.
-  checkEq(flowAlleinValY(ui()), 229, "Band zwischen Kreis und Pille");
+  // The band between circle and pill, measured where the value lives: in the container,
+  // which sits ui().flow.flowY lower than the page the pills are on. Both ends of the band
+  // in one coordinate system, and flowPillYInFlow() is the function that converts - the
+  // test used to write the conversion out as (316 - 35), which is how a move of flowY goes
+  // unnoticed and the value lands 3 px low.
+  checkEq(flowAlleinValY(ui()), 232, "Band zwischen Kreis und Pille");
   checkEq(L.valPv.y,
-          (int16_t)((flowAlleinY(ui()) + ui().flow.alleinD / 2 + (316 - 35) - 34 / 2) / 2),
+          (int16_t)((flowAlleinY(ui()) + ui().flow.alleinD / 2 + flowPillYInFlow(ui()) -
+                      34 / 2) / 2),
           "nur Erzeugung: die Mitte ist gerechnet, nicht geraten");
   // Room for the glyph: 114 px of ink inside the circle. 138 px left 12 px on
   // each side and the icon looked pressed against the rim; 190 px leaves 38.

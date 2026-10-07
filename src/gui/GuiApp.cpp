@@ -234,11 +234,18 @@ static void themeSpeichern() {
   prefs.end();
 }
 
-// Energiefluss palette (reference values)
-static const lv_color_t FLOW_RED = lv_color_hex(0xCA0C0F);   // active flow / value
-static const lv_color_t FLOW_GRAY = lv_color_hex(0x555658);  // icon inside nodes
-static const lv_color_t FLOW_BORDER = lv_color_hex(0x6E6F72); // node ring
-static const lv_color_t FLOW_LINE = lv_color_hex(0xCBCBCD);  // idle connector
+  // Energiefluss palette (reference values)
+  static const lv_color_t FLOW_RED = lv_color_hex(0xCA0C0F);   // active flow / value
+  static const lv_color_t FLOW_GRAY = lv_color_hex(0x555658);  // icon inside nodes
+  // The greys are a ladder, lightest to darkest, and they are meant to be read as one:
+  // the node's own fill, then a line that carries nothing, then the node's ring, then
+  // the icon inside it. Both idle greys came down together - 0xCBCBCD was so light that
+  // an idle connector read as a scratch on the page rather than as a connection, and
+  // 0x6E6F72 beside it left a jump from 203 straight to 110 with nothing in between.
+  // It is 244 / 147 / 100 / 85 now, in even steps. FLOW_WHITE is the first rung and has
+  // the story below.
+  static const lv_color_t FLOW_BORDER = lv_color_hex(0x64666A); // node ring
+  static const lv_color_t FLOW_LINE = lv_color_hex(0x93959A);   // idle connector, idle arc
 // The node fill, and deliberately not pure white.
 //
 // It was 0xFFFFFF, which is exactly COL_BG_HELL - the light theme's page
@@ -353,9 +360,12 @@ enum OvLabel {
   OV_PV_ARROW,     // direction arrow on the PV connector
   OV_BAT_ARROW,    // direction arrow on the battery connector
   OV_ISLAND,       // warning triangle on the grid connector (island mode)
-  // The one mark on the ring that is not a sector: the direction of the lower right one,
-  // which joins two nodes that can each pay the other.
-  OV_KEIL_ARROW,
+  // One arrowhead per sector, on the arc and along it. Not decoration: a lit sector says
+  // WHICH two nodes are connected and the arrow says which way the power runs, and on the
+  // lower right one the two ways are the only difference between them.
+  OV_KEIL_PFEIL_OBEN,
+  OV_KEIL_PFEIL_AKKU,
+  OV_KEIL_PFEIL_NETZ,
   OV_T_ERZ,        // status table: Erzeugung
   OV_T_VERB,       // status table: Verbrauch
   OV_T_NETZ,       // status table: Netz
@@ -1093,13 +1103,14 @@ static void pageBuildOverview(AppPage *p) {
   p->labels[OV_PV_VAL] = makeValueLabel(flow, 0, 116);
   p->labels[OV_BAT_VAL] = makeValueLabel(flow, 180, 247);
 
-  // The one sector with two ways: the battery and the meter can each pay the other.
-  // The two other sectors have only one - panels to meter, panels to battery - so their
-  // direction is read off the two nodes they join and needs no sign. This one gets an
-  // arrow, standing on the ring where the sector is widest clear of both nodes.
-  p->labels[OV_KEIL_ARROW] =
-      makeLabel(flow, LV_SYMBOL_RIGHT, &lv_font_montserrat_16_uml, FLOW_RED);
-  lv_obj_add_flag(p->labels[OV_KEIL_ARROW], LV_OBJ_FLAG_HIDDEN);
+  // The three arrowheads, hidden until their sector carries something. LV_SYMBOL_RIGHT
+  // is the base glyph and every one of them is turned onto its arc by
+  // keilPfeilSetzen(), so the shape is one glyph rather than four directions' worth.
+  for (int k = 0; k < 3; k++) {
+    p->labels[OV_KEIL_PFEIL_OBEN + k] =
+        makeLabel(flow, LV_SYMBOL_RIGHT, &lv_font_montserrat_16_uml, FLOW_RED);
+    lv_obj_add_flag(p->labels[OV_KEIL_PFEIL_OBEN + k], LV_OBJ_FLAG_HIDDEN);
+  }
 
   // Direction arrows on the connectors (point toward the flow source),
   // centred exactly on the line: grid/PV lines run at y=81 at these x
@@ -1458,10 +1469,14 @@ static void applyFlowLayout(const FlowLayout &L, AppPage *ov) {
       }
     }
   }
-  // The arrow belongs to the one sector with two ways; where the whole ring is gone
-  // there is nothing for it to point along.
-  if (ov != nullptr && ov->labels[OV_KEIL_ARROW] != nullptr && !L.keilNetz.visible) {
-    lv_obj_add_flag(ov->labels[OV_KEIL_ARROW], LV_OBJ_FLAG_HIDDEN);
+  // No ring, no arrowheads: where the whole ring is gone there is nothing to point along.
+  if (!L.keilOben.visible) {
+    for (int k = 0; k < 3; k++) {
+      lv_obj_t *p = ov != nullptr ? ov->labels[OV_KEIL_PFEIL_OBEN + k] : nullptr;
+      if (p != nullptr) {
+        lv_obj_add_flag(p, LV_OBJ_FLAG_HIDDEN);
+      }
+    }
   }
 
   // The pills: one per quantity that is drawn, centred as a group.
@@ -2783,9 +2798,9 @@ static void refreshCb(lv_timer_t *t) {
     //
     // Every consumer below derives from these two, so the direction appears in
     // exactly one place per view.
-    const float gridActive = 50.0f; // W, below = Standby
-    const float pvActive = 20.0f;   // W, below = no visible generation
-    const float batActive = 50.0f;  // W, below = Standby
+    // The three connectors' thresholds are the three in src/device/Rules.h and nothing
+    // local: what counts as a flow on a line and what counts as a flow on a sector has
+    // to be the same number, or the picture argues with itself.
 
     const char *dash = "--";
     float pTot = s.gridExchangeW;
@@ -2793,6 +2808,9 @@ static void refreshCb(lv_timer_t *t) {
     float pBat = s.batW;
     float house = ruleHouseW(s);
     bool has = s.haveData;
+      // What goes where, once. The connectors and the ring both read it, so a
+      // connector and the sector beside it cannot disagree about the same power.
+      const FlowSplit fs = ruleFlowSplit(s);
 
     // --- Grid ---
     // Island mode (grid outage): warning triangle on the connector. The flag
@@ -2805,29 +2823,35 @@ static void refreshCb(lv_timer_t *t) {
     // flow at or below stand-by reads the same as none - "--" in white - and
     // only a real flow gets the red number. The connector lines keep their own
     // stand-by colour regardless.
-    const bool gridImport = pTot > 0.0f;
+      // ONLY THE IMPORT carries this connector. On a feed-in the whole amount is on the
+      // ring - the panels' share in the top sector, the battery's in the lower right - and
+      // a lit connector here would show the same watts a second time. So: while the
+      // panels feed the grid the line to the meter is idle, and the top sector says where
+      // the power went.
     if (s.islandMode && s.islandKnown) {
       lv_obj_remove_flag(ov.labels[OV_ISLAND], LV_OBJ_FLAG_HIDDEN);
     } else {
       lv_obj_add_flag(ov.labels[OV_ISLAND], LV_OBJ_FLAG_HIDDEN);
     }
     if (has) {
-      bool active = fabsf(pTot) >= gridActive;
-      if (active) {
+      const bool fliesst = fs.gridToHouse >= kFlowGridActiveW;
+      // The node's own number follows the METER, both directions: it is the exchange
+      // at that connection and the number belongs there whether power comes or goes.
+      if (fabsf(pTot) >= kFlowGridActiveW) {
         setPower(ov.labels[OV_GRID_VAL], pTot);
         lv_obj_set_style_text_color(ov.labels[OV_GRID_VAL], FLOW_RED, 0);
       } else {
         lv_label_set_text(ov.labels[OV_GRID_VAL], dash);
         lv_obj_set_style_text_color(ov.labels[OV_GRID_VAL], FLOW_WHITE, 0);
       }
-      lv_obj_set_style_line_color(s_lineGrid, active ? FLOW_RED : FLOW_LINE, 0);
-      lv_obj_set_style_line_width(s_lineGrid, active ? 4 : 3, 0);
-      if (active) {
-        // import: grid -> haus (arrow points left), export: haus -> grid
-        lv_label_set_text(ov.labels[OV_GRID_ARROW],
-                          gridImport ? LV_SYMBOL_LEFT : LV_SYMBOL_RIGHT);
+      lv_obj_set_style_line_color(s_lineGrid, fliesst ? FLOW_RED : FLOW_LINE, 0);
+      lv_obj_set_style_line_width(s_lineGrid, fliesst ? 4 : 3, 0);
+      if (fliesst) {
+        // Always towards the house: the connector is only lit when the power comes
+        // that way, so the arrow has one direction to be.
+        lv_label_set_text(ov.labels[OV_GRID_ARROW], LV_SYMBOL_LEFT);
       }
-      arrowShown(ov.labels[OV_GRID_ARROW], s_layout.linkGrid.visible, active);
+      arrowShown(ov.labels[OV_GRID_ARROW], s_layout.linkGrid.visible, fliesst);
     } else {
       lv_label_set_text(ov.labels[OV_GRID_VAL], dash);
       lv_obj_set_style_text_color(ov.labels[OV_GRID_VAL], FLOW_WHITE, 0);
@@ -2837,7 +2861,10 @@ static void refreshCb(lv_timer_t *t) {
     }
 
     // --- PV (panel -> haus) ---
-    const bool pvFliesst = has && pvTotal >= pvActive;
+    // The share that pays the house, not the production. If the house needs nothing -
+    // nobody home, and the meter reads 0 - the whole output goes to the battery or the
+    // meter and this connector is idle, because the lower left and top sectors say so.
+    const bool pvFliesst = has && fs.pvToHouse >= kFlowPvActiveW;
     if (pvFliesst) {
       setPower(ov.labels[OV_PV_VAL], pvTotal);
       lv_obj_set_style_text_color(ov.labels[OV_PV_VAL], FLOW_RED, 0);
@@ -2855,26 +2882,36 @@ static void refreshCb(lv_timer_t *t) {
     // connector, and an arrow on nothing is what the layout had already ruled out.
     arrowShown(ov.labels[OV_PV_ARROW], s_layout.linkPv.visible, pvFliesst);
 
-    // --- Battery (haus <-> batterie) ---
-    if (s.haveBattery) {
-      setText(ov.labels[OV_BAT_SOC], "%.0f %%", s.socPct);
-      bool active = has && fabsf(pBat) >= batActive;
-      if (active) {
-        setPower(ov.labels[OV_BAT_VAL], pBat);
-        lv_obj_set_style_text_color(ov.labels[OV_BAT_VAL], FLOW_RED, 0);
-        lv_obj_set_style_line_color(s_lineBat, FLOW_RED, 0);
-        lv_obj_set_style_line_width(s_lineBat, 4, 0);
-        // pBat > 0 = discharging (measured), so the arrow points up into the
-        // house; charging (pBat < 0) draws down into the battery.
-        lv_label_set_text(ov.labels[OV_BAT_ARROW],
-                          pBat > 0 ? LV_SYMBOL_UP : LV_SYMBOL_DOWN);
-      } else {
-        lv_label_set_text(ov.labels[OV_BAT_VAL], dash);
-        lv_obj_set_style_text_color(ov.labels[OV_BAT_VAL], FLOW_WHITE, 0);
-        lv_obj_set_style_line_color(s_lineBat, FLOW_LINE, 0);
-        lv_obj_set_style_line_width(s_lineBat, 2, 0);
-      }
-      arrowShown(ov.labels[OV_BAT_ARROW], s_layout.linkBattery.visible, active);
+      // --- Battery (haus <- batterie) ---
+      //
+      // ONLY WHEN THE BATTERY SUPPLIES THE HOUSE. While it is charging this line stays
+      // idle: what fills it is the lower left sector, and a lit line from the house would
+      // say the house feeds the battery when it is the panels doing it. The node's number
+      // still shows the charging - that is a measurement of the battery, not of the line -
+      // and it is red, because a battery taking 1.2 kW is doing something.
+      if (s.haveBattery) {
+        setText(ov.labels[OV_BAT_SOC], "%.0f %%", s.socPct);
+        if (fabsf(pBat) >= kFlowBatActiveW) {
+          setPower(ov.labels[OV_BAT_VAL], pBat);
+          lv_obj_set_style_text_color(ov.labels[OV_BAT_VAL], FLOW_RED, 0);
+        } else {
+          lv_label_set_text(ov.labels[OV_BAT_VAL], dash);
+          lv_obj_set_style_text_color(ov.labels[OV_BAT_VAL], FLOW_WHITE, 0);
+        }
+        const bool fliesst = has && fs.battToHouse >= kFlowBatActiveW;
+        if (fliesst) {
+          // Always up, into the house: the line is only lit when the power comes that
+          // way, so the arrow has one direction to be.
+          lv_label_set_text(ov.labels[OV_BAT_ARROW], LV_SYMBOL_UP);
+          lv_obj_remove_flag(ov.labels[OV_BAT_ARROW], LV_OBJ_FLAG_HIDDEN);
+          lv_obj_set_style_line_color(s_lineBat, FLOW_RED, 0);
+          lv_obj_set_style_line_width(s_lineBat, 4, 0);
+        } else {
+          lv_obj_add_flag(ov.labels[OV_BAT_ARROW], LV_OBJ_FLAG_HIDDEN);
+          lv_obj_set_style_line_color(s_lineBat, FLOW_LINE, 0);
+          lv_obj_set_style_line_width(s_lineBat, 2, 0);
+        }
+        arrowShown(ov.labels[OV_BAT_ARROW], s_layout.linkBattery.visible, fliesst);
     } else {
       lv_label_set_text(ov.labels[OV_BAT_VAL], dash);
       lv_obj_set_style_text_color(ov.labels[OV_BAT_VAL], FLOW_WHITE, 0);
@@ -2900,27 +2937,39 @@ static void refreshCb(lv_timer_t *t) {
     // are the same ones the three connectors use, so a sector and the connector beside
     // it cannot disagree about whether 30 W is a flow.
     //
-    // Three comparisons and nothing more: the figure that used to stand on each sector
-    // is gone, so a sector is now only lit or not.
-    if (s_layout.keilOben.visible) {
-      const FlowSplit fs = ruleFlowSplit(s);
-      const bool ohneDaten = !has;
-      keilSetzen(0, !ohneDaten && fs.pvToGrid >= kFlowPvActiveW);
-      keilSetzen(1, !ohneDaten && fs.pvToBattery >= kFlowPvActiveW);
-      // The lower right one has two ways, so its arrow says which. It is the only mark
-      // on the ring that is not a sector.
-      const bool akkuAnNetz = !ohneDaten && fs.battToGrid >= kFlowBatActiveW;
-      const bool netzAnAkku = !ohneDaten && fs.gridToBattery >= kFlowBatActiveW;
-      keilSetzen(2, akkuAnNetz || netzAnAkku);
-      if ((akkuAnNetz || netzAnAkku) && s_layout.keilNetz.visible &&
-          ov.labels[OV_KEIL_ARROW] != nullptr) {
-        keilPfeilSetzen(ov.labels[OV_KEIL_ARROW], s_layout.keilNetz.mitteGrad,
-                        netzAnAkku);
-        lv_obj_remove_flag(ov.labels[OV_KEIL_ARROW], LV_OBJ_FLAG_HIDDEN);
-      } else if (ov.labels[OV_KEIL_ARROW] != nullptr) {
-        lv_obj_add_flag(ov.labels[OV_KEIL_ARROW], LV_OBJ_FLAG_HIDDEN);
+      // Three comparisons and nothing more: the figure that used to stand on each sector
+      // is gone, so a sector is lit or not, and its arrowhead appears with it.
+      if (s_layout.keilOben.visible) {
+        const bool ohneDaten = !has;
+        const bool pvAnsNetz = !ohneDaten && fs.pvToGrid >= kFlowPvActiveW;
+        const bool pvAnsAkku = !ohneDaten && fs.pvToBattery >= kFlowPvActiveW;
+        const bool akkuAnNetz = !ohneDaten && fs.battToGrid >= kFlowBatActiveW;
+        const bool netzAnAkku = !ohneDaten && fs.gridToBattery >= kFlowBatActiveW;
+        keilSetzen(0, pvAnsNetz);
+        keilSetzen(1, pvAnsAkku);
+        keilSetzen(2, akkuAnNetz || netzAnAkku);
+        // Each arrowhead stands on its own sector, turned along it, pointing the way
+        // the power runs - which for the two lower ones is towards DECREASING angle and
+        // for the top one towards INCREASING, because the panels are at 210, the meter at
+        // 330 and the battery at 90.
+        const FlowArc *arcs[3] = {&s_layout.keilOben, &s_layout.keilAkku,
+                                  &s_layout.keilNetz};
+        const bool an[3] = {pvAnsNetz, pvAnsAkku, akkuAnNetz || netzAnAkku};
+        const bool auf[3] = {true, false, netzAnAkku};
+        for (int k = 0; k < 3; k++) {
+          lv_obj_t *pfeil = ov.labels[OV_KEIL_PFEIL_OBEN + k];
+          if (pfeil == nullptr) {
+            continue;
+          }
+          if (an[k] && arcs[k]->visible) {
+            keilPfeilSetzen(pfeil, arcs[k]->pfeilGrad, auf[k]);
+            lv_obj_remove_flag(pfeil, LV_OBJ_FLAG_HIDDEN);
+          } else {
+            lv_obj_add_flag(pfeil, LV_OBJ_FLAG_HIDDEN);
+          }
+        }
       }
-    }
+
 
     // --- The three buttons under the diagram ---
     // Colour per state, word per state. Grey is always "nothing to say", so it is
@@ -2934,9 +2983,8 @@ static void refreshCb(lv_timer_t *t) {
       //
       // Below 20 W the word, not the dash: the dash says "the device has not
       // reported a value yet", and at that point it has - the panels are simply
-      // not producing anything, which is a state and deserves a word like the
       // other five. The dash stays for the case where no value has arrived at all.
-      if (pvTotal < pvActive) {
+      if (pvTotal < kFlowPvActiveW) {
         ovSetState(0, ST_GRAU, tr(T_D_TEND_INACTIVE));
       } else if (house > pvTotal) {
         ovSetState(0, ST_ORANGE, tr(T_D_ROW_PRODUCTION));
