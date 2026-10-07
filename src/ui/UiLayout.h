@@ -29,8 +29,13 @@
 // FlowLayout.h, which now only works out WHERE things go from WHAT this board says.
 struct UiFlow {
   // --- nodes, in the container's own coordinates ---
-  int16_t rowY;      // the outer nodes' centre
-  int16_t hubY;      // the hub's centre, 2 px lower than the row
+  //
+  // The PV's and the grid's place is NOT here: they stand ON the ring, at an angle
+  // off its horizontal, and that angle is the same on every board while the pixels
+  // that come out of it are not. FlowLayout.h derives them from rx and ry below, and
+  // what used to be pvX, gridX and rowY is gone - a number in this list that has to be
+  // kept in step with an angle is one more thing to forget.
+  int16_t hubY;      // the hub's centre, and the ring's
   int16_t sideD;     // PV, grid, battery
   int16_t hubD;      // the house
   // The PV as the only node on the page: bigger than a node that has company,
@@ -39,11 +44,27 @@ struct UiFlow {
   // 190 px gives 38 px on each side. Bounded by the page's height: the next 10 px
   // would need the centre at y = 110 to keep its top edge off the frame.
   int16_t alleinD;
-  int16_t alleinDY;  // how far below the hub row the one-node circle stands
-  int16_t pvX;
+  int16_t alleinDY;  // where the one-node circle stands, relative to the hub row. It
+                   // follows the row only as far as the top of the container allows:
+                   // the circle is 190 px and the row is at 124, so anything below 0
+                   // here would push it off the top of the page.
   int16_t hubX;
-  int16_t gridX;
-  int16_t batDY;     // the battery's centre, below the hub
+  int16_t batDY;     // the battery's centre: the ring's lowest point
+
+  // --- the ring the three outer nodes stand on ---
+  //
+  // PV at the left end, grid at the right end, battery at the bottom, house in the
+  // middle: the design this follows, where the ring IS the connection and the three
+  // sectors cut out of it are the three ways between two nodes that do not pass the
+  // house.
+  //
+  // It is an ellipse and not a circle, because the page is wider than it is tall: a
+  // circle that fits 280 px of height is 280 px wide and would leave 100 px of empty
+  // board on either side of a 480 px page. 172 x 92 fills the width without the
+  // battery needing a second row. lv_arc cannot draw it - it takes its radius from
+  // min(width, height), so it can only ever be round - and the sectors are polylines
+  // instead.
+  int16_t rx, ry;
 
   // --- the three pills ---
   // 152 px wide with 6 px between them and 6 px of margin fills the 480 px page
@@ -53,13 +74,30 @@ struct UiFlow {
   int16_t pillH;     // GuiApp.cpp uses this for the pills it builds
   int16_t pillGap;
   int16_t pillY;
+  // How far each pill stands from the one before it DOWNWARDS. 0 is the row on the narrow
+  // board, where the three are next to each other and pillY is their line; pillH + pillGap
+  // is the stack on the wide one, where they are three rows of a column at the left.
+  int16_t pillDY;
   int16_t pageW;
 
   // The diagram's container starts this far down the page (GuiApp.cpp's FLOW_Y).
   // The nodes and values live in the container, the pills on the page, so the band
   // between the circle and the pill can only be measured in the container - which is
   // what flowPillYInFlow below is for.
+  //
+  // 20 puts the drawing 10 px higher than the 30 that once centred it, and the
+  // heading's line moved to the top of the page to pay for it: the ring's highest
+  // point is 10 px below this, and at 30 that left the arc 5 px under "Ueberschrift"
+  // while the battery's value was 6 px above the pills. There is no way to move the
+  // drawing up without also making room for the ring at the top, and "Ueberschrift"
+  // is short enough that a line it does not fill loses nothing.
   int16_t flowY;
+  // The container's height, and it is a number of its own because the drawing is not
+  // 280 px any more: the battery's value hangs 19 px below the battery node and its
+  // line is 21 px tall, so the lowest ink is at 284. 288 leaves 4 px under it, which
+  // is what it had against 280, and costs the gap to the pills 8 of its 18 px - the
+  // pills hang off the page and not off this, so there is nothing above to hit.
+  int16_t flowH;
 
   // --- values ---
   // The hub's value is right of the vertical battery line, so the line does not run
@@ -73,18 +111,21 @@ struct UiFlow {
   // leaves its number behind, and the 800 x 480 profile put the grid's value in the
   // middle of the battery's line.
   //
-  // Three of the four values are centred on their node and stand this far below its
-  // centre. The three distances are 36, 38 and 37 px and are stated separately
-  // because they were measured separately - one shared value would move two of the
-  // three by a pixel, and a refactor that moves a pixel is not a refactor.
-  int16_t pvValDy, gridValDy, batValDy;
-  // The hub's value is the exception: it stands RIGHT of the vertical battery line,
-  // so the line does not run through the digits. Its width is valW like the rest.
-  int16_t hubValDx, hubValDy;
+  // A value's place is stated RELATIVE TO ITS NODE - both as a middle, not as a corner,
+  // and below or above. One rule for all four, so that "move it" is one number.
+  //
+  // The three around the ring do NOT stand under their node, and the reason is the ring:
+  // a node stands ON it, so the two sectors that meet there come up to it from below and
+  // sweep the band a value would sit in. They stand in the free corner at their node's
+  // lower side instead - PV to the left, grid to the right, battery to the right - which
+  // is what the house has always done, only that the house's corner is inward.
+  //
+  // The battery's is only 15 px down, not 38: its node is the ring's lowest point, so
+  // there is nothing under it to be in the way of and nothing left below either - 38 px
+  // would put the number past the bottom of the container.
+  int16_t pvValDx, gridValDx, batValDx, hubValDx;
+  int16_t pvValDy, gridValDy, batValDy, hubValDy;
   // The value under the PV when it is the only node: centred, and in the middle of
-  // the empty band between the circle above and the pill below. A 200 px label with
-  // its text centred puts its left edge at hubX - 100, and 200 px is what the 36 px
-  // font needs for "1,23 kW".
   int16_t alleinValW;
 };
 

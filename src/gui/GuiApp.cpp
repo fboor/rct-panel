@@ -234,11 +234,18 @@ static void themeSpeichern() {
   prefs.end();
 }
 
-// Energiefluss palette (reference values)
-static const lv_color_t FLOW_RED = lv_color_hex(0xCA0C0F);   // active flow / value
-static const lv_color_t FLOW_GRAY = lv_color_hex(0x555658);  // icon inside nodes
-static const lv_color_t FLOW_BORDER = lv_color_hex(0x6E6F72); // node ring
-static const lv_color_t FLOW_LINE = lv_color_hex(0xCBCBCD);  // idle connector
+  // Energiefluss palette (reference values)
+  static const lv_color_t FLOW_RED = lv_color_hex(0xCA0C0F);   // active flow / value
+  static const lv_color_t FLOW_GRAY = lv_color_hex(0x555658);  // icon inside nodes
+  // The greys are a ladder, lightest to darkest, and they are meant to be read as one:
+  // the node's own fill, then a line that carries nothing, then the node's ring, then
+  // the icon inside it. Both idle greys came down together - 0xCBCBCD was so light that
+  // an idle connector read as a scratch on the page rather than as a connection, and
+  // 0x6E6F72 beside it left a jump from 203 straight to 110 with nothing in between.
+  // It is 244 / 147 / 100 / 85 now, in even steps. FLOW_WHITE is the first rung and has
+  // the story below.
+  static const lv_color_t FLOW_BORDER = lv_color_hex(0x64666A); // node ring
+  static const lv_color_t FLOW_LINE = lv_color_hex(0x93959A);   // idle connector, idle arc
 // The node fill, and deliberately not pure white.
 //
 // It was 0xFFFFFF, which is exactly COL_BG_HELL - the light theme's page
@@ -349,10 +356,13 @@ enum OvLabel {
   OV_PV_VAL,       // pv kW value
   OV_BAT_VAL,      // batterie kW value
   OV_BAT_SOC,      // SOC % inside the battery node
-  OV_GRID_ARROW,   // direction arrow on the grid connector
-  OV_PV_ARROW,     // direction arrow on the PV connector
-  OV_BAT_ARROW,    // direction arrow on the battery connector
+  // No label for the three connectors' arrowheads either: they are three-point
+  // polylines on their line, like the ring's - the same mark, the same 2 px of stroke.
   OV_ISLAND,       // warning triangle on the grid connector (island mode)
+  // No label for the ring's three arrowheads: they are three-point polylines next to
+  // their sectors (s_keil), not text. A glyph there could not be made thinner than its
+  // own 4 px stroke, and LVGL turned it about its top left corner, so it sat up to 10 px
+  // from the arc it belonged to.
   OV_T_ERZ,        // status table: Erzeugung
   OV_T_VERB,       // status table: Verbrauch
   OV_T_NETZ,       // status table: Netz
@@ -716,6 +726,142 @@ static void placeArrow(lv_obj_t *label, lv_coord_t cx, lv_coord_t cy) {
                   cy - lv_obj_get_height(label) / 2);
 }
 
+// One sector of the ring: a single polyline from one node's angle to the next.
+//
+// Not an lv_arc, which would be the obvious tool: it takes its radius from
+// min(width, height), so it can only ever draw a circle, and the ring here is 172 x 92.
+//
+// The points go into a static array and stay there: lv_line_set_points() keeps the
+// pointer it is handed, and a local array would be gone before the first draw. Four
+// degrees a step, so 45 points for the long sector - 1.5 px of deviation on a 172 px
+// ellipse - and 544 bytes for all three.
+struct KeilLinie {
+  lv_obj_t *ln;
+  lv_point_precise_t p[46];
+  // Where this sector's arrowhead stands. Kept here because the arrowhead's three
+  // points are written again on every refresh - the direction is a run-time thing -
+  // and this is the only place that knows the angle.
+  float pfeilGrad;
+  // The sector's arrowhead: one three-point polyline, tip in the middle. Its own
+  // object and its own points for the same reason the sector has them - lv_line keeps
+  // the array it is handed.
+  lv_obj_t *pfeil;
+  lv_point_precise_t sp[3];
+};
+static KeilLinie s_keil[3]; // 0 = PV -> Netz, 1 = PV -> Akku, 2 = Akku <-> Netz
+
+// The three connectors' arrowheads: the same three-point polyline on a straight line.
+// 0 = PV, 1 = Netz, 2 = Akku - the order the refresh uses.
+struct SpeerLinie {
+  lv_obj_t *ln;
+  lv_point_precise_t p[3];
+};
+static SpeerLinie s_speer[3];
+
+// ONE width for every line and every mark in the diagram: the ring's three sectors, the
+// three connectors and all six arrowheads. 3 px, tried at the user's request - the two
+// steps before, and what each of them showed:
+//
+//   5 px red / 3 px grey for the ring, 4 px red / 2 px grey for the connectors, and a
+//   4 px font glyph for the arrowheads. Four weights for lines that are all the same kind
+//   of thing, and the weight said "flow" twice over - once as a width and once as a
+//   colour. It is the colour alone now.
+//
+//   2 px everywhere after that: no ladder left, but the ring became a hairline and the
+//   eye had nothing to hang the structure on, because nothing in the drawing was heavier
+//   than anything else.
+//
+//   3 px everywhere is the middle of the two. If the connectors turn out to be too heavy
+//   next to the ring, this is the one number to change - and it is then worth splitting
+//   in two again, because the ring is the drawing and the marks are annotations on it.
+static const int kLinieBreite = 3;
+
+// Show one connector's arrowhead when there is a connector to put it on and something
+// runs along it - both, and never one alone. The layout owns the first, the refresh the
+// second, and this is where the two meet.
+static void speerPfeilSetzen(int k, bool sichtbar, bool fliesst) {
+  lv_obj_t *pfeil = s_speer[k].ln;
+  if (pfeil == nullptr) {
+    return;
+  }
+  if (sichtbar && fliesst) {
+    lv_obj_remove_flag(pfeil, LV_OBJ_FLAG_HIDDEN);
+  } else {
+    lv_obj_add_flag(pfeil, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
+static int16_t keilPunkte(lv_point_precise_t *p, int16_t max, const UiFlow &f,
+                          float vonGrad, float bisGrad) {
+  int16_t n = (int16_t)((bisGrad - vonGrad) / 4.0f);
+  if (n > max - 2) {
+    n = max - 2;
+  }
+  if (n < 1) {
+    n = 1; // a sector narrower than a step still has two ends to draw
+  }
+  for (int16_t i = 0; i <= n; i++) {
+    const float g =
+        (vonGrad + (bisGrad - vonGrad) * (float)i / (float)n) * 0.0174532925f;
+    p[i].x = (int16_t)(f.hubX + f.rx * cosf(g));
+    p[i].y = (int16_t)(f.hubY + f.ry * sinf(g));
+  }
+  return n + 1;
+}
+
+// Colour one sector's two polylines and write the figure in its gap.
+//
+// BOTH FROM ONE NUMBER, which is the point: a sector that is red while its figure says
+// "--" would be a diagram arguing with itself, and this way it cannot - the colour and
+// the text are decided by the same comparison against the same threshold.
+// Colour one sector: red and thick while something goes that way, thin and grey while
+// nothing does.
+//
+// The FIGURE that used to stand on each sector is gone, and the gap it stood in with it
+// - a hole in the ring with nothing in it is not a design, it is a gap. Seven numbers on
+// a 480 px screen is one too many: four of them are the values under the nodes, and
+// three more on the ring were more than the picture could carry at a glance. What the
+// ring still has to say is which ways are open, and that is what a lit arc says.
+//
+// The WIDTH is not touched here any more: it was a ladder, 5 px red while something ran
+// and 3 px grey while nothing did, and that is two signals for one fact. It is written
+// once, at kLinieBreite, and the colour alone says which ways are open.
+static void keilSetzen(int k, bool fliesst) {
+  // fliesst, not aktiv: the i18n check reads the sources with the comments stripped
+  // and refuses a German UI text appearing in an identifier, and "aktiv" is the text
+  // of T_D_BADGE_LIVE. The panel already calls this fliesst everywhere else.
+  lv_obj_set_style_line_color(s_keil[k].ln, fliesst ? FLOW_RED : FLOW_LINE, 0);
+}
+
+// The arrowhead on the sector. Where it stands, which way it points and how far its two
+// barbs reach is flowKeilPfeil()'s work and is host-tested there; this hands the three
+// points to LVGL and shows or hides the object.
+//
+// The points are written again on every call, because they depend on the direction and
+// the direction is a run-time thing: the lower right sector can be lit either way round.
+// There is no rotation and no font involved: the mark is three points of a 2 px line, so
+// nothing here can be off by a label box.
+static void keilPfeilSetzen(int k, bool fliesst, bool laeuftAuf) {
+  lv_obj_t *pfeil = s_keil[k].pfeil;
+  if (pfeil == nullptr) {
+    return;
+  }
+  if (!fliesst) {
+    lv_obj_add_flag(pfeil, LV_OBJ_FLAG_HIDDEN);
+    return;
+  }
+  const FlowPfeil fp = flowKeilPfeil(ui().flow, s_keil[k].pfeilGrad, laeuftAuf);
+  s_keil[k].sp[0].x = fp.armX[0];
+  s_keil[k].sp[0].y = fp.armY[0];
+  s_keil[k].sp[1].x = fp.spitzeX;
+  s_keil[k].sp[1].y = fp.spitzeY;
+  s_keil[k].sp[2].x = fp.armX[1];
+  s_keil[k].sp[2].y = fp.armY[1];
+  lv_line_set_points(pfeil, s_keil[k].sp, 3);
+  lv_obj_set_style_line_color(pfeil, FLOW_RED, 0);
+  lv_obj_remove_flag(pfeil, LV_OBJ_FLAG_HIDDEN);
+}
+
 // Summary card (portal "info-box"): one red value line with the unit appended
 // inline ("12,3 kWh", "87 %") and a muted caption at the bottom. The value is
 // refreshed from data; the caption stays static.
@@ -874,8 +1020,23 @@ static void energyPeriodCb(lv_event_t *e) {
 
 // Energiefluss diagram (reference layout: PV left, haus center, batterie
 // bottom-centre below haus, netz right).
+// Defined further down with flowCapsKey(), and used up here: the ring's six polylines
+// need the layout's sector angles, and the layout needs the stored capabilities. The
+// declaration is here rather than the definition because the page that draws the
+// diagram comes first.
+static DeviceCaps capsFromKey(uint8_t key);
+
 static void pageBuildOverview(AppPage *p) {
   lv_obj_t *root = p->root;
+
+  // The layout of the last device that answered, not of this one: the caps are in the
+  // answer and the answer has not come yet. With nothing stored the key is 0xFF, which
+  // yields the full layout - the one this page was drawn for. Built first because the
+  // ring's three polylines need the sector angles and the netz node needs its place;
+  // every position below that looks hardcoded is overwritten by applyFlowLayout() with
+  // these same values.
+  const FlowLayout fl = flowLayoutFor(capsFromKey(s_flowKey), ui());
+  const UiFlow &fu = ui().flow;
 
   // The diagram gets a container of its own, so the room the four buttons free up
   // below can be given to the whole thing by moving one object. Its background is
@@ -883,7 +1044,7 @@ static void pageBuildOverview(AppPage *p) {
   // "still on the page background", so the values and the legend inside it follow
   // the theme like everything else on the background.
   lv_obj_t *flow = lv_obj_create(root);
-  lv_obj_set_size(flow, ui().screenW, 280);
+  lv_obj_set_size(flow, ui().screenW, ui().flow.flowH);
   lv_obj_set_pos(flow, 0, FLOW_Y);
   lv_obj_set_style_bg_opa(flow, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(flow, 0, 0);
@@ -940,9 +1101,8 @@ static void pageBuildOverview(AppPage *p) {
   s_nodeBat = bat;
 
   // NETZ node: the transmission tower.
-  s_icoGrid =
-      makeNode(flow, ui().flow.gridX, ui().flow.rowY, ui().flow.sideD,
-               kFlowGridIcon, &lv_font_mdi_icons_28);
+  s_icoGrid = makeNode(flow, fl.grid.x, fl.grid.y, ui().flow.sideD, kFlowGridIcon,
+                       &lv_font_mdi_icons_28);
   s_nodeGrid = lv_obj_get_parent(s_icoGrid);
 
   // Connector lines (haus <-> node), animated later via color/style.
@@ -955,9 +1115,15 @@ static void pageBuildOverview(AppPage *p) {
   lv_line_set_points(s_lineGrid, ptsGrid, 2);
   lv_line_set_points(s_linePv, ptsPv, 2);
   lv_line_set_points(s_lineBat, ptsBat, 2);
-  lv_obj_set_style_line_width(s_lineGrid, 3, 0);
-  lv_obj_set_style_line_width(s_linePv, 2, 0);
-  lv_obj_set_style_line_width(s_lineBat, 2, 0);
+  // ONE width for all three connectors, lit or not, and the same 2 px the arrowheads
+  // are drawn in. It was a ladder: 4 px red while something ran, 2 or 3 px grey while
+  // nothing did, and the two were never the same grey - the netz line rested at 3 px and
+  // the other two at 2. A 4 px line under a 2 px arrowhead is a line and a mark that do
+  // not belong to each other, so the weight now says nothing at all and the colour says
+  // everything: red where the power runs, grey where it does not.
+  lv_obj_set_style_line_width(s_lineGrid, kLinieBreite, 0);
+  lv_obj_set_style_line_width(s_linePv, kLinieBreite, 0);
+  lv_obj_set_style_line_width(s_lineBat, kLinieBreite, 0);
   lv_obj_set_style_line_rounded(s_lineGrid, true, 0);
   lv_obj_set_style_line_rounded(s_linePv, true, 0);
   lv_obj_set_style_line_rounded(s_lineBat, true, 0);
@@ -967,6 +1133,55 @@ static void pageBuildOverview(AppPage *p) {
   lv_obj_move_background(s_lineGrid);
   lv_obj_move_background(s_linePv);
   lv_obj_move_background(s_lineBat);
+
+  // The ring, and its three sectors. This is the part of the diagram that changed for
+  // the design: the three outer nodes now stand ON an ellipse, and the three direct
+  // ways between them - panels into the meter over the top, panels into the battery
+  // down the left, battery and meter across the lower right - are three sectors cut out
+  // of that ellipse. The connection is not drawn as a line of its own; the sector IS the
+  // connection, and a lit one reads as a way from one node to the next because both its
+  // ends land on nodes.
+  //
+  // Grey while nothing goes that way, red while something does, which is why all six
+  // polylines exist from the start and are only recoloured: the ring has to be there
+  // when nothing moves, or the diagram loses its shape.
+  //
+  // Drawn before the nodes, like the connectors: a node circle is opaque and covers the
+  // end of the sector it stands on.
+  {
+    const FlowArc *keile[3] = {&fl.keilOben, &fl.keilAkku, &fl.keilNetz};
+    for (int k = 0; k < 3; k++) {
+      const int16_t n = keilPunkte(s_keil[k].p, 46, fu, keile[k]->vonGrad,
+                                    keile[k]->bisGrad);
+      s_keil[k].ln = lv_line_create(flow);
+      lv_line_set_points(s_keil[k].ln, s_keil[k].p, n);
+      lv_obj_set_style_line_rounded(s_keil[k].ln, true, 0);
+      lv_obj_set_style_line_width(s_keil[k].ln, kLinieBreite, 0);
+      lv_obj_set_style_line_color(s_keil[k].ln, FLOW_LINE, 0);
+      lv_obj_move_background(s_keil[k].ln);
+      // The arrowhead on the same sector. Its three points are written in
+      // keilPfeilSetzen() and not here, because they depend on the direction and the
+      // direction is a run-time thing - so this only creates the object, styles it and
+      // gives it a first set of points to own. Created after the arc and NOT moved to
+      // the background, because it has to be in front of it: a 2 px mark across a 5 px
+      // arc is only readable if it is on top. 2 px and not 3: the arc it lies across is
+      // 5 px thick, and a mark as thick as the line it interrupts says nothing.
+      s_keil[k].pfeilGrad = keile[k]->pfeilGrad;
+      const FlowPfeil fp = flowKeilPfeil(fu, keile[k]->pfeilGrad, true);
+      s_keil[k].sp[0].x = fp.armX[0];
+      s_keil[k].sp[0].y = fp.armY[0];
+      s_keil[k].sp[1].x = fp.spitzeX;
+      s_keil[k].sp[1].y = fp.spitzeY;
+      s_keil[k].sp[2].x = fp.armX[1];
+      s_keil[k].sp[2].y = fp.armY[1];
+      s_keil[k].pfeil = lv_line_create(flow);
+      lv_line_set_points(s_keil[k].pfeil, s_keil[k].sp, 3);
+      lv_obj_set_style_line_rounded(s_keil[k].pfeil, true, 0);
+      lv_obj_set_style_line_width(s_keil[k].pfeil, kLinieBreite, 0);
+      lv_obj_set_style_line_color(s_keil[k].pfeil, FLOW_RED, 0);
+      lv_obj_add_flag(s_keil[k].pfeil, LV_OBJ_FLAG_HIDDEN);
+    }
+  }
 
   // Values under each node. The netz direction ("Bezug" / "Einspeisung") is not
   // spelled out: the sign is already visible in the value, the arrow on the
@@ -981,21 +1196,20 @@ static void pageBuildOverview(AppPage *p) {
   p->labels[OV_PV_VAL] = makeValueLabel(flow, 0, 116);
   p->labels[OV_BAT_VAL] = makeValueLabel(flow, 180, 247);
 
-  // Direction arrows on the connectors (point toward the flow source),
-  // centred exactly on the line: grid/PV lines run at y=81 at these x
-  // positions, the battery line is vertical at x=240.
-  p->labels[OV_GRID_ARROW] =
-      makeLabel(flow, LV_SYMBOL_RIGHT, &lv_font_montserrat_16_uml, FLOW_RED);
-  placeArrow(p->labels[OV_GRID_ARROW], 322, 81);
-  lv_obj_add_flag(p->labels[OV_GRID_ARROW], LV_OBJ_FLAG_HIDDEN);
-  p->labels[OV_PV_ARROW] =
-      makeLabel(flow, LV_SYMBOL_RIGHT, &lv_font_montserrat_16_uml, FLOW_RED);
-  placeArrow(p->labels[OV_PV_ARROW], 150, 81);
-  lv_obj_add_flag(p->labels[OV_PV_ARROW], LV_OBJ_FLAG_HIDDEN);
-  p->labels[OV_BAT_ARROW] =
-      makeLabel(flow, LV_SYMBOL_DOWN, &lv_font_montserrat_16_uml, FLOW_RED);
-  placeArrow(p->labels[OV_BAT_ARROW], 240, 146);
-  lv_obj_add_flag(p->labels[OV_BAT_ARROW], LV_OBJ_FLAG_HIDDEN);
+  // The three connectors' arrowheads: three-point polylines on the line, like the
+  // ring's own. Their points are written in applyFlowLayout(), which is where the
+  // lines' midpoints are worked out anyway; here they only come into being.
+  for (int k = 0; k < 3; k++) {
+    s_speer[k].ln = lv_line_create(flow);
+    s_speer[k].p[1] = {240, 126};
+    s_speer[k].p[0] = {233, 126};
+    s_speer[k].p[2] = {247, 126};
+    lv_line_set_points(s_speer[k].ln, s_speer[k].p, 3);
+    lv_obj_set_style_line_rounded(s_speer[k].ln, true, 0);
+    lv_obj_set_style_line_width(s_speer[k].ln, kLinieBreite, 0);
+    lv_obj_set_style_line_color(s_speer[k].ln, FLOW_RED, 0);
+    lv_obj_add_flag(s_speer[k].ln, LV_OBJ_FLAG_HIDDEN);
+  }
 
   // Island mode (grid outage): a red warning triangle between haus and netz,
   // just above the grid connector. Centred on the connector's midpoint (x=330)
@@ -1073,10 +1287,7 @@ static void pageBuildOverview(AppPage *p) {
   }
   p->labelCount = OV_LABEL_COUNT;
 
-  // The layout of the last device that answered, not of this one: the caps are
-  // in the answer and the answer has not come yet. With nothing stored the key
-  // is 0xFF, which yields the full layout - the one this page was drawn for.
-  applyFlowLayout(flowLayoutFor(capsFromKey(s_flowKey), ui()), p);
+  applyFlowLayout(fl, p);
 }
 
 // ---------------------------------------------------------------------------
@@ -1158,22 +1369,6 @@ static void setLinkShown(lv_obj_t *line, const FlowLink &l) {
   pts[which][1].x = l.x2;
   pts[which][1].y = l.y2;
   lv_line_set_points(line, pts[which], 2);
-}
-
-// An arrow is shown when its own connection is drawn and something is flowing
-// along it - both, and never one alone. The layout owns the first, the refresh
-// the second, and this is where the two meet. The refresh alone decided this by
-// itself, and on a device with one node it put the PV arrow back every second,
-// on a page that has no connector to put it on.
-static void arrowShown(lv_obj_t *arrow, bool linkSichtbar, bool fluss) {
-  if (arrow == nullptr) {
-    return;
-  }
-  if (linkSichtbar && fluss) {
-    lv_obj_remove_flag(arrow, LV_OBJ_FLAG_HIDDEN);
-  } else {
-    lv_obj_add_flag(arrow, LV_OBJ_FLAG_HIDDEN);
-  }
 }
 
 static void setValueShown(lv_obj_t *label, const FlowValue &v) {
@@ -1286,35 +1481,36 @@ static void applyFlowLayout(const FlowLayout &L, AppPage *ov) {
   setLinkShown(s_lineGrid, L.linkGrid);
   setLinkShown(s_lineBat, L.linkBattery);
 
-  // The arrows sit on their connector's midpoint, and the island triangle 25 px
-  // above the grid link - computed from the layout so they follow it.
   int16_t cx = 0, cy = 0;
-  // An arrow belongs to a connection: where there is none, there is none to
-  // point along. All three follow the same rule - the first version guarded only
-  // the PV one and left a red arrowhead on the page with no line under it.
-  auto setArrow = [&cx, &cy, ov](lv_obj_t *lbl, const FlowLink &link) {
-    if (lbl == nullptr) {
-      return;
+  // The three connectors' arrowheads sit on their line's midpoint, and the island
+  // triangle 25 px above the grid link - computed from the layout so they follow it.
+  //
+  // An arrowhead belongs to a connection: where there is none, there is none to put it
+  // on. All three follow the same rule - the first version guarded only the PV one and
+  // left a red arrowhead on the page with no line under it - and whether one is shown is
+  // speerPfeilSetzen()'s business in the refresh.
+  const FlowLink *speer[3] = {&L.linkPv, &L.linkGrid, &L.linkBattery};
+  for (int k = 0; k < 3; k++) {
+    if (!speer[k]->visible || s_speer[k].ln == nullptr) {
+      continue;
     }
-    if (!link.visible) {
-      lv_obj_add_flag(lbl, LV_OBJ_FLAG_HIDDEN);
-      return;
+    const FlowPfeil fp = flowLinkPfeil(*speer[k]);
+    s_speer[k].p[0].x = fp.armX[0];
+    s_speer[k].p[0].y = fp.armY[0];
+    s_speer[k].p[1].x = fp.spitzeX;
+    s_speer[k].p[1].y = fp.spitzeY;
+    s_speer[k].p[2].x = fp.armX[1];
+    s_speer[k].p[2].y = fp.armY[1];
+    lv_line_set_points(s_speer[k].ln, s_speer[k].p, 3);
+  }
+  // A link that just went away takes its arrowhead with it here and not a second later:
+  // setLinkShown() above has already hidden the line, and an arrowhead over an empty
+  // page is the one thing the old glyph version could not do - it kept its place because
+  // nothing moved it off the link it belonged to.
+  for (int k = 0; k < 3; k++) {
+    if (!speer[k]->visible) {
+      speerPfeilSetzen(k, false, false);
     }
-    flowLinkMidpoint(link, &cx, &cy);
-    lv_obj_remove_flag(lbl, LV_OBJ_FLAG_HIDDEN);
-    placeArrow(lbl, cx, cy);
-  };
-  flowLinkMidpoint(L.linkPv, &cx, &cy);
-  if (ov != nullptr) {
-    setArrow(ov->labels[OV_PV_ARROW], L.linkPv);
-  }
-  flowLinkMidpoint(L.linkGrid, &cx, &cy);
-  if (ov != nullptr) {
-    setArrow(ov->labels[OV_GRID_ARROW], L.linkGrid);
-  }
-  flowLinkMidpoint(L.linkBattery, &cx, &cy);
-  if (ov != nullptr) {
-    setArrow(ov->labels[OV_BAT_ARROW], L.linkBattery);
   }
   flowLinkMidpoint(L.linkGrid, &cx, &cy);
   if (ov != nullptr && ov->labels[OV_ISLAND] != nullptr) {
@@ -1328,6 +1524,22 @@ static void applyFlowLayout(const FlowLayout &L, AppPage *ov) {
   setValueShown(ov != nullptr ? ov->labels[OV_HOUSE_VAL] : nullptr, L.valHouse);
   setValueShown(ov != nullptr ? ov->labels[OV_GRID_VAL] : nullptr, L.valGrid);
   setValueShown(ov != nullptr ? ov->labels[OV_BAT_VAL] : nullptr, L.valBattery);
+  // The ring's three sectors and their three arrowheads. The two go together: no ring,
+  // no arrowheads - where the whole ring is gone there is nothing to point at - and an
+  // arrowhead without its sector would be three points of line standing in the open.
+  {
+    const FlowArc *keile[3] = {&L.keilOben, &L.keilAkku, &L.keilNetz};
+    for (int k = 0; k < 3; k++) {
+      if (keile[k]->visible) {
+        lv_obj_remove_flag(s_keil[k].ln, LV_OBJ_FLAG_HIDDEN);
+      } else {
+        lv_obj_add_flag(s_keil[k].ln, LV_OBJ_FLAG_HIDDEN);
+      }
+      // The arrowhead stays hidden until its sector carries something. It is the
+      // sector's own mark, and a lit sector is a thing that appears at run time.
+      keilPfeilSetzen(k, false, true);
+    }
+  }
 
   // The pills: one per quantity that is drawn, centred as a group.
   for (int i = 0; i < 3; i++) {
@@ -1336,7 +1548,8 @@ static void applyFlowLayout(const FlowLayout &L, AppPage *ov) {
     }
     if (L.pills & (1u << i)) {
       lv_obj_remove_flag(s_ovBtn[i], LV_OBJ_FLAG_HIDDEN);
-      lv_obj_set_pos(s_ovBtn[i], L.pillX[i], ui().flow.pillY);
+      lv_obj_set_pos(s_ovBtn[i], L.pillX[i],
+                   (int16_t)(ui().flow.pillY + i * ui().flow.pillDY));
     } else {
       lv_obj_add_flag(s_ovBtn[i], LV_OBJ_FLAG_HIDDEN);
     }
@@ -2648,16 +2861,34 @@ static void refreshCb(lv_timer_t *t) {
     //
     // Every consumer below derives from these two, so the direction appears in
     // exactly one place per view.
-    const float gridActive = 50.0f; // W, below = Standby
-    const float pvActive = 20.0f;   // W, below = no visible generation
-    const float batActive = 50.0f;  // W, below = Standby
+    // The three connectors' thresholds are the three in src/device/Rules.h and nothing
+    // local: what counts as a flow on a line and what counts as a flow on a sector has
+    // to be the same number, or the picture argues with itself.
 
+    // TWO states of "nothing to show", and they are not the same thing.
+    //
+    //   dash   nothing has been measured at all - the device has not reported yet. It
+    //          is a statement about the device, so it stays where it is.
+    //   blank  it HAS been measured and the answer is "not happening": 12 W where the
+    //          threshold is 20. A dash there claims the device has not reported, which
+    //          is false, and it stands under a node whose ring is drawn and whose number
+    //          has simply nothing to say.
+    //
+    // The three pills below have kept these apart for a while (see the comment on the
+    // inactive production pill) and the four values did not; now they do.
+    //
+    // A space and not an empty string: a label with no text has no line, and the line
+    // is what the value is placed by.
     const char *dash = "--";
+    const char *blank = " ";
     float pTot = s.gridExchangeW;
     float pvTotal = ruleGenerationW(s);
     float pBat = s.batW;
     float house = ruleHouseW(s);
     bool has = s.haveData;
+      // What goes where, once. The connectors and the ring both read it, so a
+      // connector and the sector beside it cannot disagree about the same power.
+      const FlowSplit fs = ruleFlowSplit(s);
 
     // --- Grid ---
     // Island mode (grid outage): warning triangle on the connector. The flag
@@ -2670,92 +2901,126 @@ static void refreshCb(lv_timer_t *t) {
     // flow at or below stand-by reads the same as none - "--" in white - and
     // only a real flow gets the red number. The connector lines keep their own
     // stand-by colour regardless.
-    const bool gridImport = pTot > 0.0f;
+      // ONLY THE IMPORT carries this connector. On a feed-in the whole amount is on the
+      // ring - the panels' share in the top sector, the battery's in the lower right - and
+      // a lit connector here would show the same watts a second time. So: while the
+      // panels feed the grid the line to the meter is idle, and the top sector says where
+      // the power went.
     if (s.islandMode && s.islandKnown) {
       lv_obj_remove_flag(ov.labels[OV_ISLAND], LV_OBJ_FLAG_HIDDEN);
     } else {
       lv_obj_add_flag(ov.labels[OV_ISLAND], LV_OBJ_FLAG_HIDDEN);
     }
     if (has) {
-      bool active = fabsf(pTot) >= gridActive;
-      if (active) {
+      const bool fliesst = fs.gridToHouse >= kFlowGridActiveW;
+      // The node's own number follows the METER, both directions: it is the exchange
+      // at that connection and the number belongs there whether power comes or goes.
+      if (fabsf(pTot) >= kFlowGridActiveW) {
         setPower(ov.labels[OV_GRID_VAL], pTot);
         lv_obj_set_style_text_color(ov.labels[OV_GRID_VAL], FLOW_RED, 0);
       } else {
-        lv_label_set_text(ov.labels[OV_GRID_VAL], dash);
+        lv_label_set_text(ov.labels[OV_GRID_VAL], blank);
         lv_obj_set_style_text_color(ov.labels[OV_GRID_VAL], FLOW_WHITE, 0);
       }
-      lv_obj_set_style_line_color(s_lineGrid, active ? FLOW_RED : FLOW_LINE, 0);
-      lv_obj_set_style_line_width(s_lineGrid, active ? 4 : 3, 0);
-      if (active) {
-        // import: grid -> haus (arrow points left), export: haus -> grid
-        lv_label_set_text(ov.labels[OV_GRID_ARROW],
-                          gridImport ? LV_SYMBOL_LEFT : LV_SYMBOL_RIGHT);
-      }
-      arrowShown(ov.labels[OV_GRID_ARROW], s_layout.linkGrid.visible, active);
+      lv_obj_set_style_line_color(s_lineGrid, fliesst ? FLOW_RED : FLOW_LINE, 0);
+      speerPfeilSetzen(1, s_layout.linkGrid.visible, fliesst);
     } else {
       lv_label_set_text(ov.labels[OV_GRID_VAL], dash);
       lv_obj_set_style_text_color(ov.labels[OV_GRID_VAL], FLOW_WHITE, 0);
       lv_obj_set_style_line_color(s_lineGrid, FLOW_LINE, 0);
-      lv_obj_set_style_line_width(s_lineGrid, 3, 0);
-      lv_obj_add_flag(ov.labels[OV_GRID_ARROW], LV_OBJ_FLAG_HIDDEN);
+      speerPfeilSetzen(1, s_layout.linkGrid.visible, false);
     }
 
     // --- PV (panel -> haus) ---
-    const bool pvFliesst = has && pvTotal >= pvActive;
+    // The share that pays the house, not the production. If the house needs nothing -
+    // nobody home, and the meter reads 0 - the whole output goes to the battery or the
+    // meter and this connector is idle, because the lower left and top sectors say so.
+    const bool pvFliesst = has && fs.pvToHouse >= kFlowPvActiveW;
     if (pvFliesst) {
       setPower(ov.labels[OV_PV_VAL], pvTotal);
       lv_obj_set_style_text_color(ov.labels[OV_PV_VAL], FLOW_RED, 0);
       lv_obj_set_style_line_color(s_linePv, FLOW_RED, 0);
-      lv_obj_set_style_line_width(s_linePv, 4, 0);
-      lv_label_set_text(ov.labels[OV_PV_ARROW], LV_SYMBOL_RIGHT);
     } else {
-      lv_label_set_text(ov.labels[OV_PV_VAL], dash);
+      lv_label_set_text(ov.labels[OV_PV_VAL], has ? blank : dash);
       lv_obj_set_style_text_color(ov.labels[OV_PV_VAL], FLOW_WHITE, 0);
       lv_obj_set_style_line_color(s_linePv, FLOW_LINE, 0);
-      lv_obj_set_style_line_width(s_linePv, 2, 0);
     }
     // Outside the if, because "there is flow" is not the same question as "the
     // arrow is wanted": on a device whose diagram has one node there is no
     // connector, and an arrow on nothing is what the layout had already ruled out.
-    arrowShown(ov.labels[OV_PV_ARROW], s_layout.linkPv.visible, pvFliesst);
+    speerPfeilSetzen(0, s_layout.linkPv.visible, pvFliesst);
 
-    // --- Battery (haus <-> batterie) ---
-    if (s.haveBattery) {
-      setText(ov.labels[OV_BAT_SOC], "%.0f %%", s.socPct);
-      bool active = has && fabsf(pBat) >= batActive;
-      if (active) {
-        setPower(ov.labels[OV_BAT_VAL], pBat);
-        lv_obj_set_style_text_color(ov.labels[OV_BAT_VAL], FLOW_RED, 0);
-        lv_obj_set_style_line_color(s_lineBat, FLOW_RED, 0);
-        lv_obj_set_style_line_width(s_lineBat, 4, 0);
-        // pBat > 0 = discharging (measured), so the arrow points up into the
-        // house; charging (pBat < 0) draws down into the battery.
-        lv_label_set_text(ov.labels[OV_BAT_ARROW],
-                          pBat > 0 ? LV_SYMBOL_UP : LV_SYMBOL_DOWN);
-      } else {
-        lv_label_set_text(ov.labels[OV_BAT_VAL], dash);
-        lv_obj_set_style_text_color(ov.labels[OV_BAT_VAL], FLOW_WHITE, 0);
-        lv_obj_set_style_line_color(s_lineBat, FLOW_LINE, 0);
-        lv_obj_set_style_line_width(s_lineBat, 2, 0);
-      }
-      arrowShown(ov.labels[OV_BAT_ARROW], s_layout.linkBattery.visible, active);
+      // --- Battery (haus <- batterie) ---
+      //
+      // ONLY WHEN THE BATTERY SUPPLIES THE HOUSE. While it is charging this line stays
+      // idle: what fills it is the lower left sector, and a lit line from the house would
+      // say the house feeds the battery when it is the panels doing it. The node's number
+      // still shows the charging - that is a measurement of the battery, not of the line -
+      // and it is red, because a battery taking 1.2 kW is doing something.
+      if (s.haveBattery) {
+        setText(ov.labels[OV_BAT_SOC], "%.0f %%", s.socPct);
+        if (fabsf(pBat) >= kFlowBatActiveW) {
+          setPower(ov.labels[OV_BAT_VAL], pBat);
+          lv_obj_set_style_text_color(ov.labels[OV_BAT_VAL], FLOW_RED, 0);
+        } else {
+          lv_label_set_text(ov.labels[OV_BAT_VAL], has ? blank : dash);
+          lv_obj_set_style_text_color(ov.labels[OV_BAT_VAL], FLOW_WHITE, 0);
+        }
+        const bool fliesst = has && fs.battToHouse >= kFlowBatActiveW;
+        lv_obj_set_style_line_color(s_lineBat, fliesst ? FLOW_RED : FLOW_LINE, 0);
+        speerPfeilSetzen(2, s_layout.linkBattery.visible, fliesst);
     } else {
       lv_label_set_text(ov.labels[OV_BAT_VAL], dash);
       lv_obj_set_style_text_color(ov.labels[OV_BAT_VAL], FLOW_WHITE, 0);
       lv_obj_set_style_line_color(s_lineBat, FLOW_LINE, 0);
-      lv_obj_set_style_line_width(s_lineBat, 2, 0);
-      lv_obj_add_flag(ov.labels[OV_BAT_ARROW], LV_OBJ_FLAG_HIDDEN);
+      speerPfeilSetzen(2, s_layout.linkBattery.visible, false);
     }
 
     // --- Haus (total household demand: Power Sensor + S0 generator) ---
+    //
+    // A measured zero used to be written out as "0.00 kW", which says the meter works.
+    // It is the same case as the three above it - measured, nothing happening - and now
+    // says the same thing they do, which is nothing. What is left to say "the meter works"
+    // is that its node and its three lines are drawn at all.
     if (has && house >= 5.0f) {
       setPower(ov.labels[OV_HOUSE_VAL], house);
       lv_obj_set_style_text_color(ov.labels[OV_HOUSE_VAL], FLOW_RED, 0);
     } else {
-      lv_label_set_text(ov.labels[OV_HOUSE_VAL], has ? "0.00 kW" : dash);
+      lv_label_set_text(ov.labels[OV_HOUSE_VAL], has ? blank : dash);
       lv_obj_set_style_text_color(ov.labels[OV_HOUSE_VAL], FLOW_LINE, 0);
     }
+
+    // --- The ring: the three ways that do not pass the house ---
+    //
+    // Panels into the meter over the top, panels into the battery down the left, and
+    // the battery and the meter across the lower right. What goes there is not measured
+    // - four numbers are measured and ruleFlowSplit() divides them - and the thresholds
+    // are the same ones the three connectors use, so a sector and the connector beside
+    // it cannot disagree about whether 30 W is a flow.
+    //
+      // Three comparisons and nothing more: the figure that used to stand on each sector
+      // is gone, so a sector is lit or not, and its arrowhead appears with it.
+      if (s_layout.keilOben.visible) {
+        const bool ohneDaten = !has;
+        const bool pvAnsNetz = !ohneDaten && fs.pvToGrid >= kFlowPvActiveW;
+        const bool pvAnsAkku = !ohneDaten && fs.pvToBattery >= kFlowPvActiveW;
+        const bool akkuAnNetz = !ohneDaten && fs.battToGrid >= kFlowBatActiveW;
+        const bool netzAnAkku = !ohneDaten && fs.gridToBattery >= kFlowBatActiveW;
+        keilSetzen(0, pvAnsNetz);
+        keilSetzen(1, pvAnsAkku);
+        keilSetzen(2, akkuAnNetz || netzAnAkku);
+        // Each arrowhead appears with its sector and points the way the power runs
+        // along it, which is towards INCREASING angle for the top one - the panels are
+        // at 210 and the meter at 330 - and towards DECREASING for the two lower ones,
+        // whose ends are at 90. The lower right one is the odd one: the battery and the
+        // meter can each pay the other, so its direction is measured, not assumed.
+        const bool an[3] = {pvAnsNetz, pvAnsAkku, akkuAnNetz || netzAnAkku};
+        const bool auf[3] = {true, false, netzAnAkku};
+        for (int k = 0; k < 3; k++) {
+          keilPfeilSetzen(k, an[k], auf[k]);
+        }
+      }
+
 
     // --- The three buttons under the diagram ---
     // Colour per state, word per state. Grey is always "nothing to say", so it is
@@ -2769,9 +3034,8 @@ static void refreshCb(lv_timer_t *t) {
       //
       // Below 20 W the word, not the dash: the dash says "the device has not
       // reported a value yet", and at that point it has - the panels are simply
-      // not producing anything, which is a state and deserves a word like the
       // other five. The dash stays for the case where no value has arrived at all.
-      if (pvTotal < pvActive) {
+      if (pvTotal < kFlowPvActiveW) {
         ovSetState(0, ST_GRAU, tr(T_D_TEND_INACTIVE));
       } else if (house > pvTotal) {
         ovSetState(0, ST_ORANGE, tr(T_D_ROW_PRODUCTION));

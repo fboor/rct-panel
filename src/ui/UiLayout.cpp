@@ -23,7 +23,11 @@ const UiLayout kGuition4848S040 = {
     /* rotation */ 0,
     /* statusH */ 44,
     /* navH */ 72,
-    /* headY */ 8,
+    // 2 px, not 0: the heading moved to the top of the page to make room for the ring's
+    // arrowhead at its apex (see flowY), and at 0 the text's ink started 4 px below the
+    // status bar with nothing between it and the diagram. 2 px is a small margin back -
+    // the ring's highest point is still 10 px below this.
+    /* headY */ 2,
     // The first row on the info and device pages, below the heading, and the pitch
     // there. 14 rows have to fit in contentH: 40 + 13*22 + 20 = 346 < 364, with
     // the 16 px font's 20 px line box leaving 2 px of air per row.
@@ -31,27 +35,59 @@ const UiLayout kGuition4848S040 = {
     /* rowPitch */ 22,
     /* flow */
     {
-        /* rowY */ 80,       // the outer nodes' centre
-        /* hubY */ 82,       // the hub's centre, 2 px lower
+        /* hubY */ 126,      // the hub's centre, and the ring's with it
         /* sideD */ 60,      // PV, grid, battery
-        /* hubD */ 92,       // the house
+        // 70, and 5 px less than the 80 it was: the circle in the middle is the one
+        // thing the eye lands on first, and next to a 116 px ring an 80 px house looked
+        // heavy. The icon inside it does not shrink with it - the house glyph is 26 px of
+        // ink either way, drawn at 100 % out of lv_font_montserrat_36 - so 70 px leaves
+        // 22 px of white on each side where 80 left 27. A side effect worth having: the
+        // house's value, which stands 53 px to the right and 29 px down, used to clip
+        // the circle's rim by 2 px and now clears it by 6.
+        /* hubD */ 70,
         /* alleinD */ 190,   // the PV as the only node on the page
-        /* alleinDY */ 18,   // that circle stands 18 px below the hub row
-        /* pvX */ 60,
+        // 26 px ABOVE the hub row, which puts this one-node circle back at the y = 100 it
+        // has always had: it is placed against the TOP of the container with a measured
+        // 5 px of air over it, and the row is at 126 because the ring wanted it there.
+        // A 190 px circle under a row at 126 would show 31 px of nothing above it.
+        /* aloneDY */ -26,
         /* hubX */ 240,
-        /* gridX */ 420,
-        /* batDY */ 210,
+        // The battery's centre, and it is NOT the ring's lowest point - it is where the
+        // sector lines come out of the node's circle.
+        //
+        // The ring's lowest point is hubY + ry, 242, and the two sector lines run along
+        // the node's sides and vanish behind it a few pixels before they get there: the
+        // ring curves away faster than a 60 px circle does, and over the node's own
+        // radius that difference is the sagitta (30^2) / (2 * 116) = 3.9 px. Put the
+        // node's centre there and the lines leave it in the middle; put it at the ring's
+        // lowest point, as it was, and they left it 4 px above the middle - which is
+        // what "the spokes' lines no longer start in the middle" is.
+        /* batDY */ 238,
+        // 116 x 116: A CIRCLE, and that is the request - it was 120 and is 4 px less for
+        // one reason. The top sector's arrowhead stands on the ring's HIGHEST point, and
+        // its 21 px label has to fit inside the container, so the ring's top needs 10 px
+        // of air and not 4. That is what the page gave up: the heading's line moved to
+        // the top of the page and the drawing 10 px up with it. The battery's value ends
+        // 4 px above the container's bottom, so there is nothing else to give.
+        // The width stopped being a choice long ago, which is what lets the three sectors
+        // be three equal 120 degree arcs.
+        /* rx */ 116, /* ry */ 116,
         /* pillW */ 152,
         /* pillH */ 34,
         /* pillGap */ 6,
-        /* pillY */ 316,
+        /* pillY */ 318,
+        /* pillDY */ 0,      // eine Reihe: alle drei auf pillY
         /* pageW */ 480,
-        /* flowY */ 35,
+        /* flowY */ 20,
+        /* flowH */ 288,
         /* valW */ 120,
-        /* pvValDy */ 36,     /* gridValDy */ 38,   /* batValDy */ 37,
-        // 10 px right of the hub's centre and 38 px below it: the vertical line
-        // down to the battery runs through x = hubX, and the number stands beside it.
-        /* hubValDx */ 10, /* hubValDy */ 38,
+        // The three on the ring: a quarter less sideways - to the left for the PV, because
+        // the house is on its right - and down by the same factor, so every value is 25 %
+        // closer to its node's centre along the SAME ray it was on. The battery's sideways
+        // is 60 and not 53: its node is 60 px across, and at 53 the number would start
+        // inside the circle.
+        /* pvValDx */ -53, /* gridValDx */ 53, /* batValDx */ 60, /* hubValDx */ 53,
+        /* pvValDy */ 29,  /* gridValDy */ 29,  /* batValDy */ 19,  /* hubValDy */ 29,
         /* alleinValW */ 200,
     },
     // The "today" cards. Three columns on top, two below, and the cell width comes
@@ -111,8 +147,8 @@ const UiLayout kGuition4848S040 = {
 //
 // Each choice below is a board's, not a formula's, and says why:
 //   bars    the same 44 and 72: they are text heights, not fractions of anything
-//   flow    the row stretched to the wider page, the hub's size kept, three pills of
-//           254 px so they still fill the width exactly
+//   flow    THE 480's DIAGRAM, 20 px wider and 20 px higher than centred, in the 540 px
+//           to the right of a column of three stacked pills at the left - see below
 //   cards   three columns instead of the 480's mixed three-and-two, and the same
 //           three rows at the same heights - the board is 480 px TALL as well, so
 //           there is no more height to spend, only width
@@ -123,10 +159,56 @@ const UiLayout kBreit800x480 = [] {
   UiLayout l = kGuition4848S040;
   l.screenW = 800;
   l.screenH = 480;
-  l.flow.pvX = 150;
-  l.flow.hubX = 400;
-  l.flow.gridX = 650;
-  l.flow.pillW = 254;
+  // THE DIAGRAM IS THE 480's DIAGRAM, only bigger. It used to stretch the ring to
+  // 240 x 116 to fill the width, which is not a wider version of the drawing on the
+  // narrow board but a different drawing: the same nodes, the same sectors, the same two
+  // measurements, and none of it where a reader has already learned it.
+  //
+  // So the drawing is the 480's and the ring is a CIRCLE again, 28 px bigger in both
+  // directions - 144 where the 480 has 116. Two steps got here and the second undid the
+  // first: 1.19 times the old 136 x 116 filled the height but left the ring 24 px wider
+  // than tall, and a ring that is not round is not the ring the other board draws.
+  //
+  // Everything else in the drawing is UNCHANGED and is not in this list: the 60 px nodes,
+  // the 70 px house, the 190 px one-node circle and all four value offsets. A scale of the
+  // ring does not scale them, and that is the answer the question had to settle.
+  //
+  // The ring is not the whole of what a bigger drawing needs, which is why hubY, batDY,
+  // flowH and aloneDY are in this profile at all: they follow from the radius and not from
+  // the page.
+  l.flow.rx = 144;
+  l.flow.ry = 144;
+
+  // THE HUB ROW DOWN BY 26, so the top arrowhead keeps its 8 px of room inside the
+  // container. The drawing grows 56 px, all of it below the apex.
+  l.flow.hubY = 152;
+
+  // The battery where the sector lines come out of its circle, and that is 3 px above
+  // the ring's lowest point: the sagitta over the node's radius, (30^2) / (2 * 144) = 3.1.
+  l.flow.batDY = 293;
+
+  // The box 20 px above its centred place, as before, and long enough for what is in it:
+  // the 324 px of drawing end at y 351 on the page, and the box at 358.
+  l.flow.flowY = 18;
+  l.flow.flowH = 340;
+
+  // 125 PX RIGHT OF THE MIDDLE, and that is the arithmetic again: the pills stand in the
+  // 255 px at the left, the drawing is 410 px wide - the ring's 144 plus a value's offset
+  // and half its text on either side - and (800 - 255 - 410) / 2 = 67 px of margin is
+  // what is left to divide, so the drawing is centred in the space beside the column.
+  // It stood 10 px further right for one round and is back where the two numbers put it.
+  l.flow.hubX = 525;
+
+  // The one-node circle keeps the 480's 5 px of air over it, which the hub row's move
+  // takes away from it.
+  l.flow.alleinDY = -52;
+
+  // THE PILLS AS A COLUMN at the left, 5 px narrower on each side than the row they
+  // replace, and one pillH + one pillGap below the last: 238, 278 and 318, ending 12 px
+  // above the bottom, which is the margin the row has on the 480.
+  l.flow.pillW = 244;
+  l.flow.pillY = 238;
+  l.flow.pillDY = 34 + 6;
   l.flow.pageW = 800;
   // CARDS: three columns, so a card is (800 - 32 - 16) / 3 = 250 px.
   //
