@@ -23,13 +23,14 @@ const UiLayout kGuition4848S040 = {
     /* rotation */ 0,
     /* statusH */ 44,
     /* navH */ 72,
-    // 5 px, not 0: the heading moved to the top of the page to make room for the ring's
+    // 7 px, not 0: the heading moved to the top of the page to make room for the ring's
     // arrowhead at its apex (see flowY), and at 0 the text's ink started 4 px below the
-    // status bar with nothing between it and the diagram. The last 3 px are measured off
-    // the screenshot, not chosen: the bold 16 px label's ink runs y 50..64 on the 480,
-    // the ring's begins at 73, and 8 px of air is what is left over. Nothing below it
-    // moves for them - the label's box is 21 px tall and already reached past flowY.
-    /* headY */ 5,
+    // status bar with nothing between it and the diagram. The 7 px are measured off the
+    // screenshots, not chosen: the bold 16 px label's ink runs y 52..66 on both boards,
+    // the ring's ink begins at 73 on the 480 and at 69 on the 800 - 6 px and 2 px of
+    // air. Nothing below the heading moves for them; the label's box is 21 px tall and
+    // reaches past flowY whatever its y is.
+    /* headY */ 7,
     // The first row on the info and device pages, below the heading, and the pitch
     // there. 14 rows have to fit in contentH: 40 + 13*22 + 20 = 346 < 364, with
     // the 16 px font's 20 px line box leaving 2 px of air per row.
