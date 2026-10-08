@@ -7,6 +7,10 @@
 //                           made and the switch would appear to do nothing
 //   after a plain restart    they are KEPT, because the person typing them meant it
 //
+// One exception to the second line: arguments that no longer say what the simulator is
+// running are dropped as well, because then the saved file is the newer of the two and
+// keeping them would undo a switch made in the browser. The log says when that happens.
+//
 // SPDX-License-Identifier: MIT
 #ifndef RCT_PANEL_SIM_RESTART_H
 #define RCT_PANEL_SIM_RESTART_H

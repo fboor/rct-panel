@@ -3,8 +3,13 @@
 
 #include "sim_config.h"
 
+#include <sys/stat.h>
+#include <unistd.h>
+
 #include <cstdio>
 #include <cstring>
+#include <string>
+#include <vector>
 
 #include "../../src/device/Json.h"
 
@@ -15,12 +20,105 @@ namespace {
 // no second one is needed.
 const char *kDatei = "data/simulator.json";
 
+// Set for a run that only takes a picture, so the save below writes nothing. The
+// device of such a run is on its command line and belongs to that one frame.
+bool g_gesperrt = false;
+
+// Where the file really is, worked out once and then remembered.
+//
+// It belongs to the SIMULATOR's directory, not to the directory the simulator was
+// started from. That difference was invisible as long as every start came from
+// tools/panel_sim, and then it cost an afternoon: the settings path was relative, the
+// file was looked for at <repo>/data/simulator.json when the program was started from
+// the repo root, that directory does not exist - so the load found nothing and answered
+// with the default (SIM), and every save said "Simulator-Einstellungen nicht
+// schreibbar". A device chosen in the settings page was therefore never written down,
+// the save answered "gespeichert", and the restart that the save itself triggers came
+// back on the emulated inverter.
+//
+// The three places the file may be, in the order they are tried:
+//   1. data/simulator.json next to the caller - an installation that keeps its data
+//      somewhere else keeps it there, and nothing else may second-guess it
+//   2. the same next to the program
+//   3. the same next to the program's PARENT, which is the case for a direct start of
+//      build/panel_sim: the binary sits in build/, the data one level above
+// /proc/self/exe is Linux. Where it does not exist the list is just the relative path,
+// which is where it always was.
+std::vector<std::string> kandidaten() {
+  std::vector<std::string> k;
+  k.emplace_back(kDatei);
+  char puffer[4096];
+  const ssize_t n = readlink("/proc/self/exe", puffer, sizeof(puffer) - 1);
+  if (n > 0) {
+    puffer[n] = '\0';
+    const std::string progmpfad(puffer);
+    const size_t slash = progmpfad.rfind('/');
+    if (slash != std::string::npos) {
+      const std::string dir = progmpfad.substr(0, slash);
+      k.push_back(dir + "/" + kDatei);
+      const size_t eltern = dir.rfind('/');
+      if (eltern != std::string::npos) {
+        k.push_back(dir.substr(0, eltern) + "/" + kDatei);
+      }
+    }
+  }
+  return k;
+}
+
+bool istVerzeichnis(const std::string &p) {
+  struct stat st;
+  return stat(p.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+}
+
+std::string uebergeordneter(const std::string &pfad) {
+  const size_t slash = pfad.rfind('/');
+  return (slash == std::string::npos) ? std::string(".") : pfad.substr(0, slash);
+}
+
+std::string ermittlePfad() {
+  static std::string pfad;
+  if (!pfad.empty()) {
+    return pfad;
+  }
+  for (const std::string &k : kandidaten()) {
+    FILE *f = fopen(k.c_str(), "rb");
+    if (f != nullptr) {
+      fclose(f);
+      pfad = k;
+      return pfad;
+    }
+  }
+  // No file anywhere yet. A directory that already holds a data folder is where this
+  // program keeps its data: tools/panel_sim has one, build/ has none - which is why a
+  // direct start of the binary finds its way one level up instead of writing a second
+  // copy next to itself. Failing that, the first directory that exists at all.
+  for (const std::string &k : kandidaten()) {
+    if (istVerzeichnis(uebergeordneter(k) + "/data")) {
+      pfad = k;
+      return pfad;
+    }
+  }
+  for (const std::string &k : kandidaten()) {
+    if (istVerzeichnis(uebergeordneter(k))) {
+      pfad = k;
+      return pfad;
+    }
+  }
+  pfad = kDatei;
+  return pfad;
+}
+
 }  // namespace
 
-std::string simConfigPfad() { return kDatei; }
+void simSpeichernSperren(bool gesperrt) { g_gesperrt = gesperrt; }
+
+bool simSpeichernGesperrt() { return g_gesperrt; }
+
+std::string simConfigPfad() { return ermittlePfad(); }
 
 bool simConfigLoad(SimConfig *cfg) {
-  FILE *f = fopen(kDatei, "rb");
+  const std::string pfad = ermittlePfad();
+  FILE *f = fopen(pfad.c_str(), "rb");
   if (f == nullptr) {
     return false;
   }
@@ -72,9 +170,14 @@ bool simConfigLoad(SimConfig *cfg) {
 }
 
 bool simConfigSave(const SimConfig &cfg) {
-  FILE *f = fopen(kDatei, "wb");
+  if (g_gesperrt) {
+    printf("Simulator-Einstellungen bleiben unveraendert (Aufnahme-Lauf)\n");
+    return false;
+  }
+  const std::string pfad = ermittlePfad();
+  FILE *f = fopen(pfad.c_str(), "wb");
   if (f == nullptr) {
-    fprintf(stderr, "Simulator-Einstellungen nicht schreibbar: %s\n", kDatei);
+    fprintf(stderr, "Simulator-Einstellungen nicht schreibbar: %s\n", pfad.c_str());
     return false;
   }
   // Written by hand rather than through a serialiser: five keys, and the firmware
@@ -89,6 +192,6 @@ bool simConfigSave(const SimConfig &cfg) {
   fprintf(f, "  \"size\": \"%s\"\n", cfg.size.c_str());
   fprintf(f, "}\n");
   fclose(f);
-  printf("Simulator-Einstellungen gespeichert: %s\n", kDatei);
+  printf("Simulator-Einstellungen gespeichert: %s\n", pfad.c_str());
   return true;
 }

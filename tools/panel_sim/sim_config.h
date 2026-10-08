@@ -38,6 +38,14 @@ bool simConfigLoad(SimConfig *cfg);
 // on a panel the same save goes to NVS and this is not compiled.
 bool simConfigSave(const SimConfig &cfg);
 
+// Keep the file as it is. For a run that takes a picture and exits: it needs a device
+// of its own to produce a picture from, and without this it left that device behind in
+// the file - so `./run.sh --shot x.png --device SIM --host - --port 0` silently turned
+// the developer's own OIG into the mock, and the next start came up on the wrong plant.
+// One frame is not a session.
+void simSpeichernSperren(bool gesperrt);
+bool simSpeichernGesperrt();
+
 // Where the file is, so the README and the log can name it.
 std::string simConfigPfad();
 

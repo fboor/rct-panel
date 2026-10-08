@@ -58,6 +58,53 @@ bool istGeraeteArgumentMitWert(const std::string &a) {
          a.rfind("--port=", 0) == 0;
 }
 
+// What the device arguments in the remembered command line say, empty where the
+// command line says nothing. The "--x value" and "--x=value" forms both occur, so
+// both are read here; run.sh passes the first one along unchanged.
+struct GeraeteArgumente {
+  std::string typ;
+  std::string host;
+  std::string port;
+};
+
+GeraeteArgumente geleseneGeraeteArgumente() {
+  GeraeteArgumente g;
+  for (int i = 1; i < g_argc; i++) {
+    const std::string a = g_argv[i];
+    const bool hatWert = i + 1 < g_argc;
+    if (a == "--device" && hatWert) {
+      g.typ = g_argv[++i];
+    } else if (a == "--host" && hatWert) {
+      g.host = g_argv[++i];
+    } else if (a == "--port" && hatWert) {
+      g.port = g_argv[++i];
+    } else if (a.rfind("--device=", 0) == 0) {
+      g.typ = a.substr(9);
+    } else if (a.rfind("--host=", 0) == 0) {
+      g.host = a.substr(7);
+    } else if (a.rfind("--port=", 0) == 0) {
+      g.port = a.substr(7);
+    }
+  }
+  return g;
+}
+
+// Do the device arguments still say what the simulator is running? After a switch in
+// the browser the saved file is the newer of the two, and a command line that was
+// typed before it is stale: keeping it would undo that switch at the next restart,
+// from the restart button as well as from a device change - which is the case that
+// was reported, because simRestart(true) only ever fixed its own caller.
+//
+// Where the command line says nothing at all there is nothing to disagree with, and
+// where it agrees the person meant it and it stays.
+bool geraeteArgumenteSindVeraltet(const SimConfig &cfg) {
+  const GeraeteArgumente g = geleseneGeraeteArgumente();
+  if (!g.typ.empty() && g.typ != cfg.deviceType) return true;
+  if (!g.host.empty() && g.host != cfg.deviceHost) return true;
+  if (!g.port.empty() && g.port != cfg.devicePort) return true;
+  return false;
+}
+
 }  // namespace
 
 void simMerkeArgumente(int argc, char **argv) {
@@ -78,8 +125,23 @@ void simMerkeArgumente(int argc, char **argv) {
 
 // Restart the process. `filterGeraet` says whether the device arguments go with it:
 // true after a device change, false for a plain restart where the command line is
-// still what the user typed and means.
+// still what the user typed and means - unless it no longer says what is running, in
+// which case the two mean different things and the file, which was written later,
+// decides. The log line below says when that happened.
 bool simRestart(bool filterGeraet) {
+  bool filtern = filterGeraet;
+  if (!filtern) {
+    SimConfig cfg;
+    if (simConfigLoad(&cfg) && geraeteArgumenteSindVeraltet(cfg)) {
+      filtern = true;
+      printf("Simulator: Geraeteargumente fallen weg - sie sagen nicht mehr, was "
+             "laeuft (gespeichert: %s %s:%s)\n",
+             cfg.deviceType.c_str(),
+             cfg.deviceHost.empty() ? "-" : cfg.deviceHost.c_str(),
+             cfg.devicePort.c_str());
+    }
+  }
+
   if (g_neustarts >= kMaxNeustarts) {
     // Careful with the wording, because the first version of this line said "it runs
     // with what is there" - and it does not: the device has already been switched by
@@ -96,7 +158,7 @@ bool simRestart(bool filterGeraet) {
     return false;
   }
   printf("Simulator: Neustart%s (%d von %d)\n",
-         filterGeraet ? ", Geraeteargumente fallen weg" : "",
+         filtern ? ", Geraeteargumente fallen weg" : "",
          g_neustarts + 1, kMaxNeustarts);
 
   // The window has to go before the port is handed over, or the new process finds
@@ -107,7 +169,7 @@ bool simRestart(bool filterGeraet) {
   neu.push_back(g_argv[0]);
   for (int i = 1; i < g_argc; i++) {
     const std::string a = g_argv[i];
-    if (filterGeraet) {
+    if (filtern) {
       if (istGeraeteArgument(a)) {
         i++;   // and its value
         continue;
@@ -120,7 +182,7 @@ bool simRestart(bool filterGeraet) {
   }
   neu.push_back(nullptr);
 
-  if (filterGeraet) {
+  if (filtern) {
     printf("Simulator: neu mit %d Argumenten\n", (int)neu.size() - 2);
   }
   char zaehler[8];

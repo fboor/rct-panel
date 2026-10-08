@@ -60,6 +60,20 @@ float stundeAmTag() {
   return h;
 }
 
+// A 0/1 key of the mock file: what the plant HAS, not what it shows at this moment.
+// Absent means the default, so the file that has always been in the tree keeps
+// describing the installation it described.
+bool merkmalAusDerDatei(const char *key, bool standard) {
+  if (g_json.empty()) {
+    return standard;
+  }
+  double d = 1.0;
+  if (!json::getNumber(g_json.data(), g_json.size(), key, &d)) {
+    return standard;
+  }
+  return d != 0.0;
+}
+
 // A bell that is zero at the edges and one in the middle, so nothing jumps when the
 // hour wraps. Used for the PV curve and, shifted, for the household's.
 static float Glocke(float h, float morgen, float abend) {
@@ -93,9 +107,16 @@ class SimDriver : public DeviceDriver {
     // "own": null, "draw": null, "load": null - three of the five day figures, gone
     // without a word, because an emulated device that says it can measure nothing
     // measures nothing. So: everything an RCT with a household meter can.
-    m_state.caps.houseMeter = true;
-    m_state.caps.gridMeter = true;
-    m_state.caps.battery = true;
+    //
+    // And now the file may take one of the three away, which it could not before. The
+    // OpenInverterGateway decides the three from what it can measure, and a gateway
+    // without meters and without a battery is a real thing - its page is a single PV
+    // node, and the shape of that page is exactly what a mock that always answered with
+    // all three kept from being looked at. Keys: hasHouseMeter, hasGridMeter,
+    // hasBattery. Absent is "yes", which is what the file in the tree means.
+    m_state.caps.houseMeter = merkmalAusDerDatei("hasHouseMeter", true);
+    m_state.caps.gridMeter = merkmalAusDerDatei("hasGridMeter", true);
+    m_state.caps.battery = merkmalAusDerDatei("hasBattery", true);
     m_state.caps.islandFlag = true;
     m_state.caps.faultBits = true;
     m_state.caps.sleepsWithoutGeneration = false;
@@ -133,11 +154,22 @@ class SimDriver : public DeviceDriver {
     s.extW = 0.0f;
 
     // Household: a base load plus an evening peak - the reason a battery earns its
-    // place in the picture at all.
+    // place in the picture at all. Only where there is a meter for it: a device that
+    // cannot measure the household reports no household, and inventing one here would
+    // put numbers on the page that the device it emulates would never send. That is
+    // also what made the one-node case untestable - the caps said "no meter", the
+    // values said "meter", and the rules split the flow into a house that was not on
+    // the page.
     const float last = m_lastBasisW + m_lastSpitzeW * Glocke(h, 16.0f, 23.0f);
-    s.houseW[0] = last * 0.34f;
-    s.houseW[1] = last * 0.31f;
-    s.houseW[2] = last * 0.35f;
+    if (s.caps.houseMeter) {
+      s.houseW[0] = last * 0.34f;
+      s.houseW[1] = last * 0.31f;
+      s.houseW[2] = last * 0.35f;
+    } else {
+      s.houseW[0] = 0.0f;
+      s.houseW[1] = 0.0f;
+      s.houseW[2] = 0.0f;
+    }
 
     // The balance, the battery and what is left for the grid - in the panel's sign
     // conventions, which are the ones GuiApp.cpp states: batW > 0 discharges and
@@ -150,6 +182,10 @@ class SimDriver : public DeviceDriver {
     // and the state of charge fell while it charged. The state of charge formula was
     // written for the right convention all along and therefore never worked either.
     // The tell was in the two branch comments: the surplus one said "discharges".
+    // The balance runs over what the plant HAS: no battery means nothing is stored and
+    // nothing is given, no grid meter means nothing is exchanged. Both are the honest
+    // zero of a device that cannot measure it, and both keep the production out of a
+    // branch that does not exist - which is what the one-node page shows.
     const float bilanz = erzeugung - last;   // + = surplus
     float akku = 0.0f;                       // negative = charging
     float rest = bilanz;                     // what the battery did not take
@@ -162,8 +198,11 @@ class SimDriver : public DeviceDriver {
       akku = -gib;         // discharging: current flows out of the battery
       rest = bilanz - gib; // and whatever is missing is drawn from the grid
     }
+    if (!s.caps.battery) {
+      akku = 0.0f;   // no battery to charge and none to discharge from
+    }
     s.batW = akku;
-    s.gridExchangeW = -rest;
+    s.gridExchangeW = s.caps.gridMeter ? -rest : 0.0f;
     s.batA = (s.batV > 1.0f) ? (s.batW / s.batV) : 0.0f;
     s.batV = m_simBatV - 0.01f * akku / 100.0f;  // rises while charging, sags under load
 

@@ -322,6 +322,28 @@ int main(int argc, char **argv) {
     }
   }
 
+  // The command line wins over the saved file (the three levels at the top of this
+  // function), and that is right for a start somebody typed on purpose. It is worth
+  // saying out loud when the two disagree, because the disagreement is invisible in the
+  // window and expensive to guess at: the same command line that brings the emulator
+  // back on the emulated inverter also overrides a device that was chosen in the
+  // browser an hour ago, and the log line above then names a type nobody is running.
+  if (!gespeichert.deviceType.empty() && opt.deviceType != nullptr &&
+      gespeichert.deviceType != opt.deviceType) {
+    printf("Achtung: Befehlszeile sagt Typ %s, gespeichert ist %s - fuer diesen "
+           "Start gewinnt die Befehlszeile. Ohne die Geraeteargumente kommt der "
+           "Simulator mit dem gespeicherten Geraet hoch.\n",
+           opt.deviceType, gespeichert.deviceType.c_str());
+  }
+
+  // A run that takes one picture and exits must not write the file. Its device comes
+  // from its own command line, and that belongs to the picture: saved, it silently
+  // replaced whatever the developer works against, which is how the emulated inverter
+  // above got into this file in the first place.
+  if (opt.shotPath != nullptr) {
+    simSpeichernSperren(true);
+  }
+
   // The window's size is the board's size. The simulator asks the tree which board
   // it wants for these dimensions and says so plainly if there is none - drawing at
   // 480 x 480 inside an 800 x 480 window would look like a working second

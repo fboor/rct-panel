@@ -1,0 +1,20 @@
+{
+  "_zweck": "Dieselbe Anlage wie rct_mock.json, aber ohne Hauszaehler, ohne Netzzaehler und ohne Akku - also das Geraet, das ein OpenInverterGateway ohne Zaehler und ohne Akku ist. Die Uebersicht ist dann ein einziger PV-Knoten in der Mitte, und das ist die Form, die vorher nur auf einem echten Gateway zu sehen war. Genau dort fehlte der Erzeugungswert, weil er an der Bedingung des Verbindungsstuecks hing (siehe der Commit, der den Wert vom Stueck loest).",
+
+  "hasHouseMeter": 0,
+  "hasGridMeter": 0,
+  "hasBattery": 0,
+
+  "gridV0": 231.4, "gridV1": 230.8, "gridV2": 231.1,
+  "gridHz0": 50.01, "gridHz1": 49.99, "gridHz2": 50.00,
+
+  "socPct": 33,
+  "batV": 396.2,
+
+  "dayGenWh": 13600,
+  "monthGenWh": 136500, "yearGenWh": 9064800, "totalGenWh": 19608700,
+
+  "simPvSpitzeW": 3400,
+  "simLastBasisW": 210, "simLastSpitzeW": 380,
+  "simAkkuW": 2500, "simKapazitahtAh": 100
+}

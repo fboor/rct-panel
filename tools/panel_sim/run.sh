@@ -113,4 +113,12 @@ c++ $cflags $lang \
     -o "$out" $ldflags
 
 echo "gebaut: $out"
+# In its own directory before the exec. The program finds its settings, its mock and
+# the data path of a capture relative to the working directory, and without this line
+# "./tools/panel_sim/run.sh" from the repo root pointed all three at <repo>/data/ - a
+# directory that does not exist. The load then found nothing (so the default: SIM) and
+# every save said "Simulator-Einstellungen nicht schreibbar", which means a device
+# chosen in the settings page was never written down and the restart that the save
+# itself triggers came back on the emulated inverter.
+cd "$here"
 exec "$out" "$@"
