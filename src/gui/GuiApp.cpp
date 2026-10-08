@@ -2933,17 +2933,27 @@ static void refreshCb(lv_timer_t *t) {
     }
 
     // --- PV (panel -> haus) ---
-    // The share that pays the house, not the production. If the house needs nothing -
-    // nobody home, and the meter reads 0 - the whole output goes to the battery or the
-    // meter and this connector is idle, because the lower left and top sectors say so.
+    // The share that pays the house, not the production - and that is the question the
+    // CONNECTOR asks. The value is a measurement of its own and must not follow it: on
+    // a device whose diagram is the single PV node there is no house for the share to
+    // reach, fs.pvToHouse stays at zero, and following the connector's rule left the
+    // one number this page exists for empty. Red while something is being produced, the
+    // same reading the battery's number gets.
     const bool pvFliesst = has && fs.pvToHouse >= kFlowPvActiveW;
-    if (pvFliesst) {
+    const bool pvIstDieGanzeseite = !s_layout.linkPv.visible;
+    const bool pvArbeitet =
+        pvFliesst || (pvIstDieGanzeseite && pvTotal >= kFlowPvActiveW);
+    if (has && (pvFliesst || pvIstDieGanzeseite)) {
       setPower(ov.labels[OV_PV_VAL], pvTotal);
-      lv_obj_set_style_text_color(ov.labels[OV_PV_VAL], FLOW_RED, 0);
-      lv_obj_set_style_line_color(s_linePv, FLOW_RED, 0);
+      lv_obj_set_style_text_color(ov.labels[OV_PV_VAL],
+                                  pvArbeitet ? FLOW_RED : FLOW_WHITE, 0);
     } else {
       lv_label_set_text(ov.labels[OV_PV_VAL], has ? blank : dash);
       lv_obj_set_style_text_color(ov.labels[OV_PV_VAL], FLOW_WHITE, 0);
+    }
+    if (pvFliesst) {
+      lv_obj_set_style_line_color(s_linePv, FLOW_RED, 0);
+    } else {
       lv_obj_set_style_line_color(s_linePv, FLOW_LINE, 0);
     }
     // Outside the if, because "there is flow" is not the same question as "the
