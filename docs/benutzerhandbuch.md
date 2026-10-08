@@ -285,7 +285,7 @@ nicht als orange.
 
 <figure class="display-shot">
   <img src="../screenshots/screenshot-s1-d.png" alt="Übersicht im dunklen Theme: ein Ring aus drei Pfeilen mit je einem Knoten — Sonne links oben, Mast rechts oben, Akku unten — und in der Mitte das größere Haus; die Werte stehen an ihren Knoten, darunter drei grüne Felder mit Erzeugung, Unabhängig und Laden">
-  <img src="../screenshots/screenshot-s1-l.png" alt="Dieselbe Übersicht im hellen Theme: weißer Seitenhintergrund, schwarze Beschriftungen, die Felder unten bleiben grün, grün und grau">
+  <img src="../screenshots/screenshot-s1-l.png" alt="Dieselbe Übersicht im hellen Theme: weißer Seitenhintergrund, schwarze Überschrift; die roten Werte, die Knoten und die drei grünen Felder unten behalten ihre Farben">
   <figcaption>Bild 4: Die Übersicht, links im dunklen und rechts im hellen Theme. Der Wechsel betrifft nur den Seitenhintergrund und die Beschriftung darauf — die Felder unten und die Knoten behalten ihre Farben.</figcaption>
 </figure>
 
