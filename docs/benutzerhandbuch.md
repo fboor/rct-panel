@@ -1,7 +1,7 @@
 # RCT Power Panel <span class="h-sub">Benutzerhandbuch</span>
 
-> **Kein Zusammenhang mit der RCT Power GmbH.** Unabhängiges Projekt, ohne
-> Verbindung, Empfehlung oder Unterstützung durch die RCT Power GmbH.
+> **Kein Zusammenhang mit der RCT Power GmbH.** Unabhängiges Projekt, von ihr weder
+> empfohlen noch unterstützt.
 
 Das RCT Power Panel ist ein Wandpanel, das die Live-Daten Ihres Wechselrichters
 anzeigt. Es liest die Werte direkt aus dem Wechselrichter (RCT oder
@@ -18,6 +18,10 @@ Messwerte auch dann erhalten, wenn das Panel ausgeschaltet war.
 
 ## Kurzanleitung <span class="h-sub">Inbetriebnahme in 5 Schritten</span>
 
+> **Erstinstallation:** Auf einem neuen Board ist noch keine Firmware drauf. Einmalig im
+> Browser flashen: <https://fboor.github.io/rct-panel/install/> — USB-Kabel anstecken,
+> Chrome, Edge oder Firefox, Gerät wählen, fertig.
+
 Sie brauchen nur zwei Angaben, sonst nichts weiter zu wissen:
 
 1. den Namen und das Passwort Ihres WLAN,
@@ -33,8 +37,8 @@ So geht's:
    sofort die Übersicht.
 2. WLAN „RCT-Panel“ wählen — den Zugangspunkt erzeugt das Panel beim
    ersten Start (oder wenn kein gespeichertes Netzwerk erreichbar ist).
-3. Portal öffnen — im Browser `http://192.168.4.1` aufrufen (die
-   Konfigurationsseite öffnet sich meist von selbst).
+3. Portal öffnen — im Browser `http://192.168.4.1` aufrufen. Die meisten Browser
+   erkennen das Gerät über die Portalerkennung.
 4. Zwei Felder ausfüllen und speichern — WLAN-Name/-Passwort sowie die
    IP-Adresse des Wechselrichters (der Port ist bereits voreingestellt).
 5. Fertig. Das Panel verbindet sich mit Ihrem WLAN und zeigt die
@@ -91,8 +95,8 @@ angeschlossen werden.
    WLAN-Zugangspunkt (AP) mit dem Namen `RCT-Panel` — auch dann, wenn
    kein Netzwerk erreichbar ist.
 3. Mit einem Smartphone/Laptop verbinden Sie sich mit diesem WLAN und öffnen
-   die Konfigurationsseite unter `http://192.168.4.1` (ein Captive-Portal
-   öffnet sich meist automatisch).
+   die Konfigurationsseite unter `http://192.168.4.1`. Die meisten Browser erkennen das
+   Gerät über die Portalerkennung.
 
 ### 1.3 Konfiguration im Setup-Portal
 
@@ -103,10 +107,6 @@ Tragen Sie im Portal ein:
 | WLAN-Name / Passwort | Ihr Heimnetzwerk | — |
 | `device_host` | IP-Adresse oder Hostname des Wechselrichters | `192.168.0.1` |
 | `device_port` | TCP-Port für das Protokoll des Wechselrichters | `8899` |
-
-Die Felder hießen früher `rct_host` und `rct_port`. Ihr Wert wird beim Start
-einmalig übernommen, wenn die neuen Felder leer sind — ein Update löscht die
-Adresse Ihres Wechselrichters also nicht.
 
 Bestätigen Sie das Formular. Das Panel speichert die Angaben dauerhaft
 (NVS) und wechselt dann ins konfigurierte Netzwerk — der Zugangspunkt
@@ -134,9 +134,8 @@ Bestätigen Sie das Formular. Das Panel speichert die Angaben dauerhaft
 | Theme | dunkel oder hell |
 
 Darunter stehen der **Schaltausgang** (Schwelle in Watt, Test) und die
-**Wartung** (Neustart, WLAN zurücksetzen) — beides stand vorher auf der Übersicht
-und steht jetzt hier, weil beides das Panel verändert und man auf der Übersicht
-Werte abliest. Details im Kapitel zum Schaltausgang.
+**Wartung** (Neustart, WLAN zurücksetzen). Details im Kapitel zum
+Schaltausgang.
 
 *Speichern* schreibt die Angaben in den NVS-Speicher und startet das Panel neu —
 ohne Zugangspunkt, ohne WLAN-Passwort. Nach dem Wechsel passt sich die Übersicht
@@ -174,100 +173,59 @@ Verbindungsstatus:
 | `verbinde neu` (gelb) | Daten kamen, der Datenstrom ist abgerissen — Neustart der Verbindung |
 | `wartet` (gelb) | Verbindung steht, aber seit über einer Minute kam kein neuer Wert — die angezeigten Zahlen sind die zuletzt eingetroffenen |
 
-Die Wartezeit ist kein Fehler: Manche Wechselrichter liefern über mehrere Minuten
-keine Werte, ohne dass etwas kaputt ist. Das Panel hält dann die letzten Zahlen
-und sagt dazu, dass sie alt sind — der Ausgang schaltet dabei dennoch weiter.
+`wartet` ist kein Fehler: Manche Wechselrichter liefern über Minuten nichts, und der Ausgang
+schaltet dabei weiter. „–“ statt eines Wertes heißt: noch nicht eingetroffen — das Panel
+zeigt keinen erfundenen Nullwert an.
 
-Zeigt eine Seite „–“ statt eines Wertes, ist dieser Wert noch nicht
-eingetroffen (z. B. weil der Wechselrichter keine Batterie meldet oder die
-Verbindung fehlt). Es sind keine Werte ausgefallen — das Panel zeigt keinen
-erfundenen Nullwert an.
+### Helles oder dunkles Theme
 
-### Hintergrund hell oder dunkel
-
-Das Display ist dunkel (schwarzer Hintergrund, helle Schrift). Wer es heller
-mag, stellt auf der **Service-Seite** ganz unten rechts auf **„Helles
-Theme“**: Der Seitenhintergrund wird weiß, die Texte darauf werden schwarz.
-Ein erneutes Tippen („Dunkles Theme“) bringst die dunkle Darstellung zurück.
-Das Panel merkt sich die Wahl und startet danach sofort in ihr — kein
-Neustart nötig, und beim Einschalten gibt es keinen kurzen Moment in der
-anderen Darstellung.
-
-Unverändert bleiben in beiden Darstellungen:
-
-- alle Felder mit eigenem Hintergrund — die Karten der Seiten *Heute* und
-  *Info*, das Diagramm der Seite *24 h Verlauf*, die Zeilen *Code* und
-  *Ausgang*, die Knöpfe sowie die Status- und die Navigationsleiste. Sie
-  behalten ihren dunklen Grund und ihre helle Schrift; der helle Modus ist
-  also eine helle Seite mit dunkeln Feldern darauf, keine umgefärbte
-  Oberfläche.
-- die farbigen Texte (grün, gelb, rot, grau) in beiden Modi.
-
-Ein Hinweis zum Grün: `#3EC97A` auf Weiß hat nur etwa 1,9:1 Kontrast und
-fällt im hellen Modus an Stellen auf, an denen das Grün auf Schwarz gut
-lesbar war (etwa das „AN“ des Ausgangs). Ein eigener, dunklerer Grünton für
-den hellen Modus ist vorbereitet, aber noch nicht gesetzt — die Entscheidung
-gehört nebeneinander auf den Bildschirm, nicht in eine Datei.
-
-Die Bilder in diesem Handbuch sind je nach Aufnahme im hellen oder im
-dunklen Theme entstanden; welche, steht bei jedem Bild. Die Felder mit
-eigenem Hintergrund sehen in beiden gleich aus, deshalb fällt der Unterschied
-an ihnen nicht auf.
+Standard ist das dunkle Theme. Auf der **Service-Seite** unten rechts steht **„Helles
+Theme“**, ein erneutes Tippen **„Dunkles Theme“**. Die Wahl bleibt erhalten, ein Neustart
+ist nicht nötig. Karten, Diagramm, Zeilen, Knöpfe und die farbigen Texte sehen in beiden
+Themes gleich aus.
 
 ### Energiesparmodus
 
-Lässt man das Panel in Ruhe, geht das Licht von selbst aus:
+Ohne Bedienung geht das Licht von selbst aus:
 
 | Zeit ohne Bedienung | Anzeige |
 |---|---|
 | bis 3 Minuten | volle Helligkeit |
-| ab 3 Minuten | auf 30 % gedimmt, Werte sind weiterhin lesbar |
-| ab 5 Minuten | Licht aus, das Display ist schwarz |
+| ab 3 Minuten | auf 30 % gedimmt |
+| ab 5 Minuten | Licht aus |
 | erste Berührung | sofort wieder hell, die Zeiten beginnen von vorn |
 
-Es ist ausschließlich eine Berührung nötig — das Panel hellt nicht von selbst
-wieder auf. Ein Druck auf einen Knopf oder einfach eine Berührung des Bildes
-genügt; längeres Auflegen des Fingers hält es dauerhaft hell.
-
-Die Zeiten sind fest eingestellt und lassen sich nicht ändern. Läuft das Panel
-ohne erkannten Touch-Regler (dann ist auch keine Bedienung möglich), bleibt das
-Licht aus Sicherheitsgründen immer an.
+Das Panel hellt nicht von selbst wieder auf. Die Zeiten sind fest eingestellt. Ohne
+erkannten Touchscreen bleibt das Licht immer an.
 
 ---
 
-## 3. Die sieben Seiten im Einzelnen
+## 3. Die Funktionen im Einzelnen
 
 ### 3.1 Übersicht (Energiefluss)
 
-Das Flussdiagramm bildet die „Energiefluss“-Ansicht des RCT-Portals ab — aber es
-zeigt **nur, was das Gerät wirklich misst**. Ein Wechselrichter mit Hauszähler
-bekommt das gewohnte Bild mit vier Knoten und drei Feldern; ein Gerät hinter einem
-*OpenInverterGateway* ohne Hauszähler und ohne Akku bekommt **einen** Knoten: die
-PV, groß in der Mitte, mit ihrem Wert darunter und einem einzigen Feld. Was nicht
-gemessen wird, wird nicht gezeichnet — lieber gar nichts als eine Null, die so
-aussieht, als wäre sie gemessen.
+Das Flussdiagramm zeigt die aktuellen Messdaten.
 
-- PV: steht links, wenn es einen Hauszähler gibt, sonst in der Mitte. Ohne Haus ist
-  die PV der Mittelpunkt des Diagramms, und wenn es sonst nichts zu zeigen gibt,
-  füllt ihr Knoten die Seite: Erzeugung aus Solar-Generator A und B plus optionalem
-  externem S0-Zähler.
-- Haus: aktueller Verbrauch, in der Mitte, wenn es ihn gibt. Hinweis für den
-  RCT Power: Der Wechselrichter zieht die externe Einspeisung bereits von seiner
-  Lastmessung ab; das Panel addiert den S0-Wert wieder hinzu, sodass hier der
-  tatsächliche Hausverbrauch steht.
-- Netz (rechts): Bezug oder Einspeisung (negativer Wert = Einspeisung). Gibt es
-  den Zähler nicht, gibt es den Knoten nicht.
-- Batterie (unten): Ladezustand in Prozent (im Knoten) und aktuelle Leistung unter
-  dem Knoten. Gibt es keinen Akku, steht keiner im Diagramm.
+| Knoten | Position | Wert |
+|---|---|---|
+| PV Erzeugung | links, wenn es einen Hauszähler gibt, sonst in der Mitte | Erzeugung aus Solar-Generator A und B, dazu ein externer S0-Zähler, falls vorhanden |
+| Haus | Mitte | aktueller Verbrauch, nur mit Hauszähler |
+| Netz | rechts | Bezug oder Einspeisung (negativ = Einspeisung), nur mit Zähler |
+| Batterie | unten | Ladezustand in Prozent im Knoten, Leistung darunter, nur mit Akku |
 
-Die Werte unter den Knoten stehen in ganzen Watt unter 1 kW („380 W“) und in kW
-mit zwei Nachkommastellen darüber („1,23 kW“). Im deutschen Text steht zwischen
-Ziffer und Nachkommastelle ein Komma.
+Fehlen Zähler und Akku, bleibt ein Knoten: die PV in der Mitte, groß, mit ihrem Wert
+darunter und einem einzigen Feld.
 
-Die Pfeile zwischen den Knoten leuchten rot in Richtung des aktuellen
-Energieflusses — aber nur dort, wo es eine Verbindung gibt. Darunter stehen **so
-viele Felder, wie das Gerät etwas meldet** (Symbol, Text und Farbe), die je einen
-von drei Zuständen zeigen:
+Beim RCT Power zieht der Wechselrichter die externe Einspeisung bereits von seiner
+Lastmessung ab; das Panel addiert den S0-Wert wieder hinzu, damit hier der tatsächliche
+Hausverbrauch steht.
+
+Die Werte unter den Knoten stehen in ganzen Watt unter 1 kW („380 W“) und in kW mit
+zwei Nachkommastellen darüber („1,23 kW“).
+
+Die Pfeile leuchten rot in Richtung des aktuellen Energieflusses, aber nur dort, wo es
+eine Verbindung gibt. Darunter stehen so viele Felder, wie das Gerät etwas meldet
+(Symbol, Text und Farbe), die je einen von drei Zuständen zeigen:
 
 | Feld | grün | orange | grau |
 |---|---|---|---|
@@ -275,18 +233,16 @@ von drei Zuständen zeigen:
 | Verbrauch (Stecker) | Unabhängig (kein Netzbezug) | Netzbezug | unter 10 W: „Verbrauch“ in grau |
 | Akku (halbvoller Akku) | Laden | Entladen | kein Strom (kein Feld, wenn das Gerät gar keinen Akku hat) |
 
-Der Netzbezug zählt erst ab 20 W als solcher — unterhalb davon regelt das
-Gerät um null, und das Vorzeichen ist dann Rauschen. Dieselbe Grenze gilt für
-die Erzeugung: unter 20 W steht im Feld „Inaktiv“, nicht der Strich — der
-Strich bleibt den Werten vorbehalten, die der Wechselrichter noch gar nicht
-gemeldet hat. Für „Erzeugung“ gilt derselbe Hausverbrauch wie im Diagramm,
-also mit dem S0-Zähler; ein Haus, das aus S0 versorgt wird, erscheint deshalb
-nicht als orange.
+Netzbezug und Erzeugung zählen erst ab 20 W; unterhalb davon ist das Vorzeichen
+Rauschen, und im Feld steht „Inaktiv“. Der Strich bleibt den Werten vorbehalten, die der
+Wechselrichter noch gar nicht gemeldet hat. Für „Erzeugung“ gilt derselbe
+Hausverbrauch wie im Diagramm, also mit dem S0-Zähler: ein Haus, das aus S0 versorgt
+wird, erscheint deshalb nicht als orange.
 
 <figure class="display-shot">
   <img src="../screenshots/screenshot-s1-d.png" alt="Übersicht im dunklen Theme: ein Ring aus drei Pfeilen mit je einem Knoten — Sonne links oben, Mast rechts oben, Akku unten — und in der Mitte das größere Haus; die Werte stehen an ihren Knoten, darunter drei grüne Felder mit Erzeugung, Unabhängig und Laden">
   <img src="../screenshots/screenshot-s1-l.png" alt="Dieselbe Übersicht im hellen Theme: weißer Seitenhintergrund, schwarze Überschrift; die roten Werte, die Knoten und die drei grünen Felder unten behalten ihre Farben">
-  <figcaption>Bild 4: Die Übersicht, links im dunklen und rechts im hellen Theme. Der Wechsel betrifft nur den Seitenhintergrund und die Beschriftung darauf — die Felder unten und die Knoten behalten ihre Farben.</figcaption>
+  <figcaption>Bild 4: Die Übersicht, links im dunklen und rechts im hellen Theme. Der Wechsel betrifft den Seitenhintergrund und die Beschriftung darauf; die Felder unten und die Knoten behalten ihre Farben.</figcaption>
 </figure>
 
 ### 3.2 Energie (Balken pro Zeitraum)
@@ -302,20 +258,12 @@ Tag | Monat | Jahr | Gesamt:
 | Netzbezug | rot | aus dem Netz bezogene Energie |
 | Verbrauch | türkis | gesamter Verbrauch |
 
-Die Balken sind zum größten Wert des gewählten Zeitraums normiert; die
-Werte stehen rechtsbündig über dem jeweiligen Balken (kWh bzw. MWh mit
-Dezimalkomma).
-
-**Der Eigenverbrauch wird beim Entladen gezählt, nicht beim Laden.** Was der
-Akku heute lädt, ist morgen Verbrauch — und die Kennzahl soll für den Tag
-gelten, an dem die Energie im Haus ankommt. Der Preis dafür: Die fünf Balken
-gehen nicht mehr auf, und das ist so gewollt: Die Balken müssen nichts
-gemeinsam abbilden, sie sollen die Situation sinnvoll wiedergeben — und dafür
-werden manche Größen **vor** der Umwandlung gezählt (die Erzeugung an den
-Strings) und andere **danach** (der Verbrauch im Haus). Zwischen *PV
-Erzeugung* und der Summe aus *Eigenverbrauch* und *Netzeinspeisung* liegt
-deshalb, was im Akku liegt und was die Umwandlung gekostet hat; kein Zähler
-führt beides, also steht es auch nirgends.
+Die Balken sind zum größten Wert des gewählten Zeitraums normiert; die Werte
+stehen rechtsbündig über dem jeweiligen Balken (kWh bzw. MWh mit
+Dezimalkomma). Sie gehen nicht gegeneinander auf: Die Differenz zwischen *PV
+Erzeugung* und der Summe aus *Eigenverbrauch* und *Netzeinspeisung* ist, was
+im Akku liegt und was die Umwandlung kostet. Der Eigenverbrauch zählt beim
+Entladen, nicht beim Laden.
 
 <figure class="display-shot">
   <img src="../screenshots/screenshot-s2.png" alt="Seite Energie: vier Knöpfe Tag, Monat, Jahr und Gesamt, darunter fünf Zeilen mit Name, Wert und Balken für PV Erzeugung, Eigenverbrauch, Netzeinspeisung, Netzbezug und Verbrauch">
@@ -331,13 +279,7 @@ Die Tageswerte des aktuellen Kalendertags:
 - Autarkie (%): = Eigenverbrauch ÷ Verbrauch des Tages, also 1 − Netzbezug ÷ Verbrauch
 - Eigenverbrauchsquote (%): = Eigenverbrauch ÷ (Eigenverbrauch + Netzeinspeisung)
 
-Die beiden Prozentwerte sind **zwei verschiedene Fragen** und haben deshalb
-zwei verschiedene Nenner: Die **Autarkie** fragt, wie viel des eigenen
-Verbrauchs das Haus selbst gedeckt hat — der Nenner ist der Verbrauch. Die
-**Eigenverbrauchsquote** fragt, wie viel von dem, was die Anlage ausgeliefert
-hat, im eigenen Haus blieb — der Nenner ist die Summe aus Eigenverbrauch und
-Einspeisung. Die Akkuladung steht in keinem der beiden, und soll die Quote auch
-nicht verschlechtern; wer um die Mittagszeit lädt, bekommt sie nicht geschenkt.
+Die Akkuladung steht in keinem der beiden Werte.
 
 Am 4. Oktober 2026 waren das 9 988 Wh Eigenverbrauch bei 12 670 Wh
 Einspeisung, also eine Quote von 44,1 % bei 100 % Autarkie.
@@ -371,7 +313,7 @@ Liniendiagramm der letzten 24 Stunden (ein Punkt alle 5 Minuten, 288 Punkte):
 
 <figure class="display-shot">
   <img src="../screenshots/screenshot-s4.png" alt="Seite 24 h Verlauf: sechs Linien in der Legung Netz, Verbrauch, PV, EXT, Batterie und SOC über 24 Stunden, darunter die Angabe der Datenlücken">
-  <figcaption>Bild 6: Der 24-Stunden-Verlauf. Die Legende oben nennt die sechs Reihen in der Reihenfolge ihrer Farben; das Diagramm selbst behält in beiden Themes seinen dunklen Grund.</figcaption>
+  <figcaption>Bild 6: Der 24-Stunden-Verlauf mit den sechs Reihen in der Legende oben.</figcaption>
 </figure>
 
 ### 3.5 Info
@@ -397,7 +339,7 @@ Alles zur Batterie:
 
 <figure class="display-shot">
   <img src="../screenshots/screenshot-s6-b.png" alt="Akku-Seite im hellen Theme: Karten mit Ladezustand, Leistung, Strom und Spannung sowie Temperatur, Kalibrierung, Zyklen und Zustand">
-  <figcaption>Bild 7: Die Akku-Seite im hellen Theme. „Batterie“ meint hier den Akku, und die Werte sind batteriezentrisch — das Vorzeichen gilt gegenüber der Batterie, nicht gegenüber dem Haus.</figcaption>
+  <figcaption>Bild 7: Die Akku-Seite im hellen Theme. „Batterie“ meint hier den Akku.</figcaption>
 </figure>
 
 ### 3.7 Service
@@ -427,8 +369,8 @@ Die einzige Seite mit Aktionen:
   den diese Seiten für Änderungen verlangen. Er ist nur belegt, solange das
   Panel im Netz ist. Tippen Sie auf den Code, zieht das Panel sofort einen
   neuen — nützlich, wenn jemand über Ihre Schulter mitgelesen hat.
-- Hintergrund (rechts unten, unter dem Testknopf): stellt die Darstellung
-  der Display-Seiten um zwischen „Helles Theme“ (weißer Hintergrund, schwarze
+- Theme (rechts unten, unter dem Testknopf): stellt die Darstellung der
+  Display-Seiten um zwischen „Helles Theme“ (weißer Seitenhintergrund, schwarze
   Texte) und „Dunkles Theme“. Die Zeile nennt die Darstellung, die das
   Antippen einstellt. Die Einstellung bleibt nach einem Neustart erhalten
   (siehe Abschnitt 2).
@@ -439,8 +381,8 @@ Die einzige Seite mit Aktionen:
   etwas schaltet. Siehe Kapitel 6.
 
 <figure class="display-shot">
-  <img src="../screenshots/screenshot-s7.png" alt="Service-Seite im hellen Theme: links Setup starten und Screenshot, Batterie-Status, Störungen und SD-Log, rechts der vierstellige Code und der Schalter für den Hintergrund, unten der Schaltausgang mit Testknopf">
-  <figcaption>Bild 8: Die Service-Seite im hellen Theme. Sie ist die einzige Seite mit Knöpfen, und der Schalter für den Hintergrund steht rechts unten unter dem Testknopf.</figcaption>
+  <img src="../screenshots/screenshot-s7.png" alt="Service-Seite im hellen Theme: links Setup starten und Screenshot, Batterie-Status, Störungen und SD-Log, rechts der vierstellige Code und der Schalter für das Theme, unten der Schaltausgang mit Testknopf">
+  <figcaption>Bild 8: Die Service-Seite im hellen Theme. Sie ist die einzige Seite mit Knöpfen, und der Schalter für das Theme steht rechts unten unter dem Testknopf.</figcaption>
 </figure>
 
 ---
@@ -455,8 +397,11 @@ CSV-Datei (nur bei verbundenem Wechselrichter, keine Nullzeilen):
   eine Datei pro Kalendermonat. Läuft die Uhr (SNTP) beim Start noch nicht,
   schreibt das Panel zunächst in eine Uptime-Datei und wechselt nach der
   Zeitsynchronisation automatisch auf die Monatsdatei.
-- Umfang: ca. 48 KB pro Tag ≈ 1,4 MB pro Monat — eine übliche Karte
-  reicht jahrzehntelang.
+- Umfang: alle fünf Minuten eine Zeile, 288 am Tag, im Betrieb rund 115 Byte je
+  Zeile (23 Spalten, ganze Watt, eine Nachkommastelle bei den Temperaturen). Im
+  ungünstigsten Fall sind es 165 Byte — das ist die längste Zeile, die der
+  Formatter erzeugen kann. Daraus rund 35 kB pro Tag und etwa 1 MB pro Monat; eine
+  übliche Karte reicht jahrzehntelang.
 - Karte gezogen: Solange keine Karte steckt, werden die Zeilen im Speicher
   des Panels zwischengelagert und nach dem Einstecken in der richtigen
   Reihenfolge nachgeschrieben. Der Puffer fasst 24 Stunden (288 Zeilen,
@@ -472,35 +417,32 @@ CSV-Datei (nur bei verbundenem Wechselrichter, keine Nullzeilen):
 > automatisch auf die langsamere, bewährte Stufe zurück. Sie müssen nichts
 > einstellen.
 
-### Welche Karte das Panel braucht
+### Spezifikationen µSD
 
 | Merkmal | Anforderung |
 |---|---|
 | Format | microSD/microSDHC/microSDXC im Steckplatz auf der Platine (TF) |
 | Dateisystem | **FAT32** — empfohlen und erprobt. FAT12/FAT16 funktionieren ebenfalls (eine 2-GB-Karte ist ab Werk FAT16) |
 | Nicht unterstützt | **exFAT** — besonders wichtig: Karten ab 64 GB werden ab Werk exFAT geliefert |
-| Kapazität | 4 GB bis 32 GB ist der unkomplizierte Bereich; jede FAT32-partitionierte Karte ist lesbar und beschreibbar |
+| Kapazität | keine Untergrenze — 512 MB reichen bei rund 13 MB Datenvolumen pro Jahr |
 | Formatierung | eine einzige Partition, vor dem ersten Einsatz mit einem FAT32-Dateisystem versehen |
-| Geschwindigkeit | belanglos: 48 kB pro Tag, auch die langsamste Klasse reicht |
+| Geschwindigkeit | belanglos: rund 35 kB pro Tag, auch die langsamste Klasse reicht |
 | Schreibschutz | im Steckplatz nicht vorhanden — die Karte muss also nicht auf Schreibschutz stehen |
 
-Praktisch ist jede gebräuchliche 8-GB- oder 16-GB-Karte die richtige Wahl.
-Wenn Sie eine sehr große Karte einsetzen wollen, achten Sie darauf, dass sie
-als **FAT32** formatiert ist: Windows formatiert Karten ab 32 GB nur noch als
-exFAT, dort hilft dann ein FAT32-Werkzeug (z. B. `mkfs.fat -F32` unter Linux/macOS,
-oder ein Formatierer wie „guiformat“ mit der Option „FAT32“). exFAT kann das
-Panel weder lesen noch beschreiben — es findet dort kein Dateisystem und meldet
-`SD: --`, wiederholt den Versuch alle 10 Sekunden und puffert die Messwerte
-weiter im RAM.
+Praktisch ist jede gebräuchliche 8- oder 16-GB-Karte die richtige Wahl.
+Windows formatiert Karten ab 32 GB nur noch als exFAT; dort hilft ein
+FAT32-Werkzeug (`mkfs.fat -F32`, „guiformat“). exFAT kann das Panel weder
+lesen noch beschreiben: Es meldet `SD: --`, versucht alle 10 Sekunden erneut
+und puffert die Messwerte weiter im RAM.
 
 Das Panel formatiert die Karte nicht selbst: Es legt nur die beiden
 Ordner `/hist` (Messwerte) und `/shot` (Screenshots) an, wenn sie fehlen. Alles
 andere auf der Karte bleibt unangetastet, Sie können also eigene Ordner
 daneben anlegen.
 
-Der Platzbedarf ist vernachlässigbar: rund 18 MB pro Jahr, eine 1-GB-Karte
-wäre damit rund 55 Jahre lang ausreichend. Auch die Verschleißreserve spielt
-keine Rolle, es wird nur alle fünf Minuten ein Block angehängt.
+Der Platzbedarf ist vernachlässigbar: rund 13 MB pro Jahr, eine 1-GB-Karte
+reicht damit über 75 Jahre. Es wird nur alle fünf Minuten ein Block
+angehängt.
 
 ### CSV-Format (23 Spalten)
 
@@ -529,36 +471,17 @@ feed_total_wh,grid_total_wh
 | `feed_total_wh` | Einspeisung, seit Inbetriebnahme | Wh |
 | `grid_total_wh` | Bezug aus dem Netz, seit Inbetriebnahme | Wh |
 
-Die Summen sind dieselben Zähler, die auch die Seite „Energie“ anzeigt — das
-Panel fragt dafür nichts zusätzlich ab. In der Datei stehen sie, damit der
-Verlauf sie behält, wenn eine Monatsdatei einmal abgeschnitten wird, und damit
-ein Zähler auffällt, der zurückspringt (Gerät getauscht oder Zähler
-geleert). Für Tag/Monat/Jahr fragen Sie weiterhin das Gerät — das ist schneller
-und genauer als jede Rechnung aus dem Panel.
+Die Summen sind dieselben Zähler wie auf der Seite *Energie*. Für Tag, Monat
+und Jahr fragt das Panel das Gerät, nicht die Datei.
 
-Bei `island` ist `1` der Zustand im Moment der Messung, keine Dauer: ein
-Inselereignis, das zwischen zwei Zeilen beginnt und endet, steht in keiner
-Zeile. Eine `0` heißt deshalb „nicht im Inselbetrieb“ **oder** „die Meldung
-kam noch nicht an“.
+Bei `island` ist `1` der Zustand im Moment der Messung: ein Inselereignis
+zwischen zwei Zeilen steht in keiner. `0` heißt „nicht im Inselbetrieb“
+**oder** „die Meldung kam noch nicht an“.
 
 Die Datei ist direkt mit Tabellenkalkulationen, pandas oder Grafana
 auswertbar. Leistungen und Temperaturen stehen in Watt bzw. Grad Celsius,
 der Zeitstempel in Unix-Sekunden (UTC); das Panel selbst rechnet für die
 Monatsdatei über die SNTP-Zeit.
-
-> **Hinweis:** Eine Monatsdatei behält die Kopfzeile, mit der sie angelegt
-> wurde. Wurde sie vor dem Ersatz durch 23 Spalten angelegt, stehen über den
-> Zeilen 16 Namen — die Zeilen ab dem Update haben trotzdem alle 23 Werte. Das
-> Panel selbst liest beides (fehlende Summen als 0) und schreibt dazu einmal
-> ins Protokoll: `SD: /hist/RCT-202609.csv hat 16 Spalten, neue Zeilen haben
-> 23`. Tabellenkalkulationen kommen mit der gemischten Datei nicht klar:
-> Kopfzeile überspringen und die 23 Namen aus der Tabelle oben setzen, dann
-> fehlen die Summen der älteren Zeilen als leerer Feld — nicht als 0.
->
-> In der Verlaufsansicht des Browsers (Kapitel 5) ist es genau andersherum:
-> Dort werden die fehlenden Summen als 0 angezeigt, mit einem Hinweis über dem
-> Diagramm. Beides stimmt für sich: In der **Datei** steht kein Wert, in der
-> **Ansicht** steht eine Null.
 
 ---
 
@@ -587,17 +510,15 @@ nehmen Sie die IP-Adresse).
 | `/bilder` | Liste der gespeicherten Screenshots |
 | `/update` | Firmware aktualisieren |
 
-Die Diagramme zeichnet Ihr Browser, nicht das Panel. Das Panel liefert die
-Zahlen; wie es auf Ihrem Bildschirm aussehen, entscheidet damit der Browser
-und nicht die 480 × 480 Pixel große Anzeige des Panels. Ein Diagramm ist so
-scharf und so groß wie das Fenster, in dem Sie es ansehen.
+Die Diagramme zeichnet Ihr Browser, nicht das Panel: das Panel liefert nur
+die Zahlen. Ein Diagramm ist so scharf und so groß wie das Fenster, in dem
+Sie es ansehen.
 
 ### Energie auf der Übersicht
 
 Die Karten oben folgen dem Gerät: ein Gerät ohne Hauszähler, Akku oder Netzzähler
 zeigt nur die Karten, für die es Werte gibt. Die fünf Balken darunter stehen
-unabhängig davon immer da — sie sind Zählerstände, keine Messungen, und die Frage
-„misst das Gerät das?“ stellt sich bei einem Zähler nicht.
+unabhängig davon immer da: sie sind Zählerstände, keine Messungen.
 
 Unter den Karten stehen fünf Balken — PV-Erzeugung, Eigenverbrauch,
 Netzeinspeisung, Netzbezug, Verbrauch — mit dem Zahlenwert darüber. Darüber
@@ -606,11 +527,8 @@ Reihenfolge sind dieselben wie auf der Panel-Seite *Energie*; rechts oben
 stehen Autarkie und Eigenverbrauchsquote.
 
 Diese Balken werden einmal geladen, wenn Sie die Seite öffnen, und laufen
-**nicht** von selbst weiter. Der Grund war ein Formular zum Eintippen auf
-derselben Seite; es steht inzwischen auf `/einstellungen`, aber das Nachladen ist
-dem trotzdem nicht wert: die Werte sind Zähler, und eine vor zehn Minuten geladene
-Seite ist höchstens zehn Minuten alt. Zum Aktualisieren genügt ein Neuladen des
-Browsers.
+**nicht** von selbst weiter — die Werte sind Zähler, keine laufende Messung.
+Zum Aktualisieren genügt ein Neuladen des Browsers.
 
 > **Wichtig:** Balken und Verlauf rechnen beide aus Zählern, nur aus
 > verschiedenen: die Übersicht aus den Zählern, die das **Gerät** selbst meldet
@@ -635,71 +553,49 @@ Fensters. Oben wählen Sie den Bereich:
 | **Monat** | derselbe Monat, ebenfalls als Bänder |
 
 Die Pfeile ‹ › blättern in die Vergangenheit und zurück; in der Mitte steht der
-Zeitraum. Bei **Woche** beginnt die Woche am Montag.
+Zeitraum. Bei Woche beginnt die Woche am Montag.
 
 Woche und Monat kommen aus den aufgezeichneten CSV-Dateien. Beim ersten Öffnen
-lädt der Browser die Datei des betreffenden Monats (etwa 1,2 MB, das dauert ein
+lädt der Browser die Datei des betreffenden Monats (etwa 1 MB, das dauert ein
 paar Sekunden) und behält sie im Speicher: weiterblättern kostet danach keinen
 weiteren Zugriff aufs Panel. Das Panel selbst rechnet bei diesen Bereichen
 nichts — es hat die Zahlen bereits auf die Karte geschrieben.
 
-> **Hinweis:** Die Balken enthalten den S0-Zähler, und zwar **einmal**:
+> **Hinweis:** Die Balken enthalten den S0-Zähler, und zwar einmal:
 > Nachkommen lässt sich das an den Lebensdauerzahlen — die Summe des Geräts
 > liegt dort um genau den Betrag des S0-Zählers über der Summe der beiden
 > PV-Stränge in der Datei.
 >
-> **Hinweis zur Linie EXT und zu den Summen:** Die Linie **EXT** zeigt die
+> **Hinweis zur Linie EXT und zu den Summen:** Die Linie EXT zeigt die
 > Momentanleistung am S0-Eingang. In die Balken darunter zählt dagegen nur, was
-> dort **erzeugt** wird (`ext_total_wh` seit Inbetriebnahme), nicht was
+> dort erzeugt wird (`ext_total_wh` seit Inbetriebnahme), nicht was
 > verbraucht wird. Solange an diesem Eingang nichts erzeugt wird, bleiben die
 > Summen unverändert, während die Linie den Verbrauch am selben Eingang zeigt.
 > Beides ist richtig: erzeugt wird über den Zähler gezählt, der Verbrauch über die
 > Momentanwerte, die der Wechselrichter nicht mitzählt.
 
-Fehlt eine Probe, bricht die Linie dort, wo nichts gemessen wurde, statt über
-die Lücke hinwegzugehen. Unter dem Diagramm steht derselbe Hinweis wie am
-Panel, etwa „9 Lücken, 110 min ohne Messwerte" — damit eine Aufzeichnungspause
-nicht wie ein Einbruch aussieht.
+Fehlt eine Probe, bricht die Linie dort. Unter dem Diagramm steht die
+Lückenlänge, etwa „9 Lücken, 110 min ohne Messwerte".
 
-Die Achsen tragen ihre Einheit so, wie man sie auch im Text schreiben würde:
-links neben jeder Marke die Leistung mit **kW** dahinter, rechts auf **gleicher
-Höhe** der Ladezustand. Weil die Ladezustandslinie über die volle Höhe von 0 %
-bis 100 % läuft, steht rechts neben der Null-Linie der Stand, den der Akku in
-diesem Moment hatte — auf der Linie also rund 50 %, oben 100 %, unten 0 %.
+Links steht jede Marke mit kW, rechts auf gleicher Höhe der Ladezustand
+über die volle Höhe von 0 % bis 100 %.
 
-Fahren Sie mit dem Zeiger über das Diagramm, beantwortet es die Frage, die
-Liniendiagramme immer aufwerfen: **Was ist der Wert *hier*?** Eine senkrechte
-Linie steht über der Probe, auf die der Zeiger zeigt, auf jeder der sechs Linien
-ein Punkt, und in der weißen Box oben daneben stehen der Zeitpunkt und alle
-sechs Werte.
+Mit dem Zeiger oder dem Finger steht eine senkrechte Linie über der Probe;
+in der weißen Box daneben stehen der Zeitpunkt und alle sechs Werte.
 
-Dabei gilt dasselbe wie überall: der Zeiger wählt die Probe **am nächsten**, nicht
-das Pixel am nächsten — die Proben liegen fünf Minuten auseinander, der Zeiger
-nicht. Steht er über einer Lücke, antwortet die nächste Probe, die es gibt. Eine
-Linie, für die in dieser Probe kein Wert gemessen wurde, bekommt keinen Punkt und
-in der Box einen Strich. Leistungen unter 1000 W stehen in Watt, darüber in kW,
-mit dem Dezimalzeichen Ihrer Sprache; bei **Woche** und **Monat**, wo der Punkt
-ein ganzer Tag ist, steht der Tag als Spanne vom tiefsten bis zum höchsten Wert.
+Der Zeiger wählt die Probe am nächsten; steht er über einer Lücke,
+antwortet die nächste vorhandene Probe, und eine Linie ohne Wert bekommt
+einen Strich in der Box. Leistungen unter 1000 W stehen in Watt, darüber in
+kW; bei Woche und Monat steht der Tag als Spanne vom tiefsten bis
+zum höchsten Wert.
 
-Mit dem Finger funktioniert es genauso: Sie tippen auf das Diagramm, und die Box
-bleibt stehen, bis Sie woanders hinfassen — beim Finger gibt es danach keinen
-Zeiger, der sie wegnehmen könnte. Mit der Maus verschwindet sie, sobald der
-Zeiger das Diagramm verlässt.
+Mit dem Finger bleibt die Box stehen, bis Sie woanders hinfassen; mit der
+Maus verschwindet sie, sobald der Zeiger das Diagramm verlässt.
 
 <figure class="web-shot">
   <img src="img/web-verlauf.png" alt="Verlaufsseite des Panels: oben der Bereichswähler 24 Stunden, Tag, Woche, Monat, darunter das Datum mit den Pfeilen zum Blättern, dann ein Liniendiagramm eines ganzen Tages mit sechs Linien und die Achsenbeschriftungen kW links und Prozent rechts, darunter die Farblegende und die Angabe des Zeitpunkts der jüngsten Messung">
   <figcaption>Bild 9: Der Verlauf für einen einzelnen Tag (hier der 2. Oktober 2026) — die sechs Linien wie auf dem Panel, mit den Einheiten an den Achsen und der Legende darunter</figcaption>
 </figure>
-
-> **Hinweis zu Aufzeichnungen von vor dem Firmware-Update:** Enthält eine
-> Monatsdatei nur 16 statt 23 Spalten, fehlen einzelnen Zeilen die Summenzähler —
-> hinter der Kopfzeile stehen aber durchaus Zeilen mit allen 23 Werten, das ist
-> der Normalfall. Der Browser füllt die fehlenden Summen dann mit 0, so wie es
-> das Panel selbst tut, und schreibt einen Satz über das Diagramm. Tage ganz vor
-> dem Update zeigen in den Balken deshalb 0 kWh, und die beiden Quoten bleiben
-> leer. Ein Zeitraum, der über den Wechsel reicht, fängt bei der ersten Zeile
-> an, die Summen hat — was am Anfang fehlt, steht in dem Satz. Betrifft nur
-> Geräte, deren Karte schon vor dem Update beschrieben wurde.
 
 <figure class="web-shot">
   <img src="img/web-uebersicht.png" alt="Weboberfläche des Panels: oben vier Wertekarten für Netz, PV, Akku und Verbrauch, darunter der Zeitraumwechsel Tag, Monat, Jahr, Gesamt mit fünf Energiebalken und den beiden Quoten Autarkie und Eigenverbrauchsquote">
@@ -714,7 +610,7 @@ Auf `/daten` und `/bilder` steht je Eintrag ein Knopf:
   bei der Fünf-Minuten-Taktung etwa zwei Tage. Der Browser zeigt den
   Fortschritt als Balken; die Übertragung ist inzwischen schnell, die letzten
   64 kB dauern Bruchteilsecunden. Für mehr hängen Sie `?tail=0` an den Link
-  an, dann kommt die gesamte Monatsdatei (etwa 1,2 MB, gut zwei Sekunden).
+  an, dann kommt die gesamte Monatsdatei (etwa 1 MB, gut zwei Sekunden).
 - Bei den Bildern öffnet **„anzeigen“** den Screenshot im Browser. Auch hier
   läuft der Download mit Fortschrittsanzeige.
 
@@ -722,13 +618,8 @@ Unter der Bildliste steht der Knopf „Screenshot auslösen“: er nimmt ein Bil
 der aktuellen Seite auf und legt es wie die Panel-Taste als BMP auf die Karte. Der
 Knopf verlangt den Code (unten). Das Schreiben dauert etwa 3 bis 5 Sekunden;
 danach lädt sich die Seite einmal neu und die neue Datei steht in der Liste.
-Ohne die Wartezeit des Panels, denn im Browser sind Sie bereits auf der Seite,
-die aufgenommen werden soll.
 
-Während ein Download läuft, bedient das Panel keine weiteren Anfragen — der
-Vorgang ist abgeschlossen, bevor der nächste startet. Das ist Absicht: so
-bleibt die Übertragung in sich abgeschlossen und ein zweiter Zugriff kann die
-Datei nicht dazwischen auf der Karte verändern.
+Während ein Download läuft, bedient das Panel keine weiteren Anfragen.
 
 ### Der Code
 
@@ -783,9 +674,8 @@ Voraussetzung ist ein Build, wie in Kapitel 10 beschrieben
 
 Am Schaltkontakt des Panels (Aufdruck „1Way“) wird ein externes Relais
 angesteuert: Der Port gibt 3,3 V aus und schaltet damit die Relaisspule.
-Erst der Kontakt dieses Relais ist potentialfrei und schaltet Ihren Verbraucher
-— das Panel selbst schaltet den Kreis nicht. Damit das Panel mehr kann als
-anzeigen, folgt der Ausgang einer Regel, die Sie wählen.
+Erst der Kontakt dieses Relais ist potentialfrei und schaltet Ihren
+Verbraucher — das Panel selbst schaltet den Kreis nicht.
 
 ### Anschluss
 
@@ -868,10 +758,8 @@ Drei Wege, alle drei gleichwertig:
    springt zur nächsten Funktion (`Aus` → `Netzbezug` → `Überschuss` →
    `Störung` → `Inselbetrieb` → `Aus`). Die gewählte Funktion bleibt auch nach
    einem Neustart erhalten.
-2. In der Weboberfläche (Kapitel 5): Auswahlfeld für die Funktion und ein
-   Zahlenfeld für die Schwelle in Watt. Das ist der einzige Weg, eine Schwelle
-   in Watt bequem einzugeben — für das Tippen auf Zahlen braucht es eine
-   Tastatur.
+2. In der Weboberfläche (Kapitel 5): Auswahlfeld für die Funktion, Zahlenfeld für die Schwelle
+   in Watt — die bequeme Stelle, weil es dort eine Tastatur gibt.
 3. Im Setup-Portal: die Felder `relay_mode` (0 bis 4, siehe Tabelle) und
    `relay_w` (Watt). Für den Fall, dass das Panel gar nicht im Heimnetz ist.
 
@@ -884,22 +772,15 @@ Hysterese:
   der Ausgang ein.
 - Mindestens 60 Sekunden bleibt er nach dem Einschalten an — auch wenn die
   Bedingung in der Zwischenzeit unterschritten wird.
-- Die **Hysterese** beträgt 20 % der Schwelle: bei 500 W schaltet der Ausgang
-  bei 500 W ein und bei 400 W wieder aus. Ohne das würde ein Wert, der genau auf
-  der Schwelle steht, alle zehn Sekunden umschalten.
+- Die Hysterese beträgt 20 % der Schwelle: bei 500 W schaltet der Ausgang bei 500 W ein
+  und bei 400 W wieder aus.
 - Keine Daten vom Wechselrichter (länger als zehn Minuten) heißt: aus. Ein
   Ausgang, der wegen eines verschwundenen Wechselrichters eingeschaltet
   bliebe, wäre die schlechtere Variante.
 
-Die Zehn-Minuten-Frist ist eine bewusste Kompromissentscheidung: Manche
-Wechselrichter liefern über mehrere Minuten keine Werte, ohne dass etwas
-kaputt ist — mit einer kürzeren Frist hätte der Ausgang in jeder solchen Pause
-einmal ab- und wieder zugeschaltet. Der Preis dafür: bis zu zehn Minuten lang
-handelt der Ausgang nach dem zuletzt empfangenen Wert, im Extremfall also auch
-einmal nach einer neun Minuten alten Begründung. Damit das nicht heimlich
-passiert, schreibt die Zeile unter dem Ausgang in dieser Zeit
-`AN · 512 W (letzte Messung)` statt `AN · 512 W jetzt`, und die Statusleiste
-zeigt `wartet` (Kapitel 2).
+Bis zu zehn Minuten lang arbeitet der Ausgang nach dem zuletzt empfangenen Wert. In dieser
+Zeit schreibt die Zeile unter dem Ausgang `AN · 512 W (letzte Messung)` statt
+`AN · 512 W jetzt`, und die Statusleiste zeigt `wartet` (Kapitel 2).
 
 ### Anzeige und Test
 
@@ -934,7 +815,7 @@ sich prüfen, ob am Port überhaupt etwas passiert.
 | Batterie in der CSV (`bat`) | `+` = Laden |
 | Hausverbrauch | = gemessene Last + S0 (der Wechselrichter misst die Last abzüglich der externen Einspeisung) |
 | PV gesamt | = A + B + S0 |
-| SD-Karte | FAT32, 4–32 GB empfohlen, exFAT wird nicht unterstützt (Abschnitt 4) |
+| SD-Karte | FAT32, jede Kapazität, exFAT wird nicht unterstützt (Abschnitt 4) |
 
 ---
 
@@ -961,7 +842,7 @@ sich prüfen, ob am Port überhaupt etwas passiert.
 | Ausgang war länger aus | Zehn Minuten lang keine Werte vom Wechselrichter — das kann auch bei offener TCP-Verbindung passieren. Ohne Daten schaltet der Ausgang aus, siehe Kapitel 6. |
 | Badge `wartet` (gelb) | Die Verbindung steht, aber seit über einer Minute kam kein neuer Wert. Die Seiten zeigen die zuletzt eingetroffenen Zahlen; die Zeile unter dem Ausgang sagt dann „letzte Messung“. |
 | Ausgang schaltet nach dem Neustart nicht | Er schaltet 20 Sekunden nach dem Start frühestens ein. Das Display zeigt aber sofort, welche Funktion eingestellt ist. |
-| Display ist schwarz | Nach 5 Minuten ohne Bedienung ist das Licht aus (Abschnitt 2) — einmal das Display berühren. Bleibt es dunkel, ist der Touch-Regler nicht erkannt; dann hilft nur ein Neustart, und das Licht bleibt anschließend dauerhaft an. |
+| Display ist schwarz | Nach 5 Minuten ohne Bedienung ist das Licht aus (Abschnitt 2) — einmal das Display berühren. Bleibt es dunkel, ist der Touchscreen nicht erkannt; dann hilft nur ein Neustart, und das Licht bleibt anschließend dauerhaft an. |
 
 ---
 
@@ -1018,20 +899,14 @@ im Setup-Modus sein: Es bringt die Update-Seite im Normalbetrieb selbst mit.
    Gespeichertes WLAN und die RCT-Konfiguration bleiben erhalten; das Display
    bleibt an, die Seiten im Browser sind während des Schreibens nicht bedienbar.
 
-Warum der Code, und warum er vorher geprüft wird: Ein Update verändert das
-Gerät, alles andere auf diesen Seiten liest nur. Weil der WebServer die
-Formularfelder der Reihe nach auswertet, steht das Code-Feld im HTML vor dem
-Dateifeld — bei falschem Code wird kein einziges Byte in den Flash
-geschrieben. Der Updater löscht seinen Zielbereich ohnehin erst schreibend
-Block für Block, deshalb bleibt das Display währenddessen in Betrieb; ein
-fehlgeschlagenes Update bootet anschließend die alte Firmware (Prüfsumme/Image-
-Kennung, zweiter Slot unangetastet).
+Der Code wird vor dem Schreiben geprüft: Das Code-Feld steht im HTML vor dem
+Dateifeld, also landet bei falschem Code kein Byte im Flash. Der zweite Slot
+bleibt unangetastet — ein fehlgeschlagenes Update bootet anschließend die
+alte Firmware, und das Display bleibt während des Schreibens in Betrieb.
 
-Als Rückfallweg, wenn das Panel nicht im Heimnetz ist (WLAN umgestellt,
-falsche Adresse, Gerät gerade in einem anderen Netz): Service-Seite antippen →
-„Setup starten“ → mit dem WLAN `RCT-Panel` verbinden → `http://192.168.4.1/update`.
-In diesem Zustand wird kein Code verlangt, weil das Gerät dort ohnehin nichts
-anderes erreichbar ist; es gibt nur das Konfigurationsportal.
+Als Rückfallweg, wenn das Panel nicht im Heimnetz ist: Service-Seite
+antippen → „Setup starten“ → mit dem WLAN `RCT-Panel` verbinden →
+`http://192.168.4.1/update`. Dort wird kein Code verlangt.
 
 Beide Wege bleiben im lokalen Netz. Ein Update über das Internet ist bewusst
 nicht möglich — die Binärdatei kommt aus dem Netz direkt auf das Gerät.
@@ -1054,10 +929,10 @@ nicht möglich — die Binärdatei kommt aus dem Netz direkt auf das Gerät.
 | Speicher | 16 MB Flash, 8 MB PSRAM |
 | Anschlüsse | USB-C (Versorgung und Firmware per Kabel), microSD/TF, Schaltkontakt (GND und 3,3-V-Schaltausgang am Header H1); Bild 1 |
 | Beleuchtung | LED-Hintergrundbeleuchtung hinter dem Display, stufenlos dimmbar |
-| Datenspeicher | microSD/TF-Karte im Steckplatz auf der Platine; Dateisystem FAT32 (FAT12/16 auch lesbar, exFAT wird nicht unterstützt), empfohlen 4–32 GB, ca. 18 MB Datenvolumen pro Jahr; SPI 4 MHz mit Selbsttest, Rückfall auf 400 kHz; Pufferspeicher im Panel für 24 h |
+| Datenspeicher | microSD/TF-Karte im Steckplatz auf der Platine; Dateisystem FAT32 (FAT12/16 auch lesbar, exFAT wird nicht unterstützt), jede Kapazität, rund 13 MB Datenvolumen pro Jahr; SPI 4 MHz mit Selbsttest, Rückfall auf 400 kHz; Pufferspeicher im Panel für 24 h |
 | Stromversorgung | USB-C, 5 V DC |
-| Logikpegel | 3,3 V am GPIO 40; der Schaltausgang gibt 0 V aus und 3,3 V ein, er schaltet damit die Spule eines externen Relais. Laut ESP32-S3-Datenblatt bis zu 40 mA pro GPIO, als Obergrenze — für eine Relaisspule deutlich weniger. Keine Anschlussstelle für Fremdspannung |
-| Spannung am Schaltkontakt | ausschließlich Kleinspannung: 0 V an GND, 0 V oder 3,3 V am Schaltausgang. Der Port ist **kein** potentialfreier Kontakt; potentialfrei wird der Schaltweg erst durch den Kontakt des externen Relais. Nennstrom und Kontaktart des Relais stehen auf dem Bauteil und in dessen Datenblatt — dieses Handbuch nennt dafür bewusst keine Zahl. Zu prüfen vor dem Anschluss einer Last: Kontaktstrom bei ohmscher Last, Anlaufstrom bei Motoren und Leuchtstoffmitteln, Schalthäufigkeit |
+| Logikpegel | 3,3 V am GPIO 40; der Schaltausgang gibt 0 V aus und 3,3 V ein, er schaltet damit die Spule eines externen Relais. Laut Datenblatt bis zu 40 mA pro GPIO, als Obergrenze — für eine Relaisspule deutlich weniger. Keine Anschlussstelle für Fremdspannung |
+| Spannung am Schaltkontakt | ausschließlich Kleinspannung: 0 V an GND, 0 V oder 3,3 V am Schaltausgang. Der Port ist **kein** potentialfreier Kontakt; potentialfrei wird der Schaltweg erst durch den Kontakt des externen Relais. Nennstrom und Kontaktart des Relais stehen auf dem Bauteil und in dessen Datenblatt. Zu prüfen vor dem Anschluss einer Last: Kontaktstrom bei ohmscher Last, Anlaufstrom bei Motoren, Schalthäufigkeit |
 
 ### Funk
 
@@ -1068,25 +943,19 @@ nicht möglich — die Binärdatei kommt aus dem Netz direkt auf das Gerät.
 | Fünf-Gigahertz | nein — der Funk des Panels arbeitet ausschließlich auf 2,4 GHz |
 | Empfehlung | 2,4 GHz im Router aktiviert, Kanal 1, 6 oder 11, nicht völlig überlastetes WLAN |
 
-Ein Router, der nur auf 5 GHz sendet, ist für das Panel unsichtbar. Bleibt die
-Verbindung aus, obwohl der Name und das Passwort stimmen, ist das der erste
-Grund zum Nachsehen — und nicht das Passwort.
+Ein Router, der nur auf 5 GHz sendet, ist für das Panel unsichtbar.
 
 ### Unterstützte Wechselrichter
 
 Jedes Gerät, das das RCT-Protokoll auf TCP-Port 8899 spricht — typischerweise
-RCT-Power-Hybrid-Wechselrichter (6/8/10 kVA) und daraus abgeleitete Modelle.
-Das Panel liest nur; es konfiguriert nichts.
+RCT-Power-Hybrid-Wechselrichter (6/8/10 kVA) und daraus abgeleitete Modelle. Das Panel
+greift nicht schreibend auf das Gerät zu.
 
-Nicht geeignet sind Geräte ohne diese Schnittstelle, etwa Modelle, die nur über
-RS485/Modbus an einem Akku hängen. Bietet ein Gerät zwar den Port an, meldet
-aber einzelne Werte nicht (kein Akku, kein S0-Zähler), bleibt der betreffende
-Wert auf „–“ — das ist kein Fehler (Abschnitt 8).
+Nicht geeignet sind Geräte ohne diese Schnittstelle.
 
 ### Leistungsaufnahme
 
-Am Gerät gemessen am 1.10.2026 mit einem USB-Leistungsmessgerät zwischen
-Netzteil und Kabel, bei angeschlossener SD-Karte und laufender WLAN-Verbindung:
+Am Gerät gemessen bei angeschlossener SD-Karte und laufender WLAN-Verbindung:
 
 | Zustand | gemessen |
 |---|---|
@@ -1094,26 +963,18 @@ Netzteil und Kabel, bei angeschlossener SD-Karte und laufender WLAN-Verbindung:
 | Betrieb, SD-Karte, Licht 30 % (nach 3 min ohne Bedienung) | 0,5 W |
 | Betrieb, SD-Karte, Licht aus (nach 5 min ohne Bedienung) | 0,41 W |
 
-Daraus folgt für das Licht: volle Helligkeit kostet rund 0,9 W
-(1,3 W − 0,41 W), bei 30 % sind es rund 0,1 W. Alles andere — ESP32-S3 mit WLAN
-und PSRAM, die Panelansteuerung, die Karte — teilt sich die verbleibenden
-0,41 W. Diese Aufteilung wurde nicht einzeln gemessen; der Wert sagt nur, dass
-sie zusammen nicht der größte Posten sind. Das Relais wurde nicht gemessen —
-seine Spule liegt nur bei eingeschaltetem Kontakt unter Spannung.
+Daraus folgen für das Licht rund 0,9 W bei voller Helligkeit (1,3 W − 0,41
+W) und rund 0,1 W bei 30 %. Das Relais wurde nicht gemessen.
 
 Mit ausgeschaltetem Licht bleibt ein Dauerbedarf von 0,41 W, das sind rund
 3,6 kWh im Jahr.
-
-Das Panel dimmt und schaltet das Licht selbst aus (Abschnitt 2) — im Ruhezustand
-bleibt damit nur der Verbrauch von Elektronik, Funk und Karte. Die Angabe auf
-dem Netzteil gilt ohne Last ohnehin nichts.
 
 ### Funktionen
 
 | Bezeichnung | Technische Daten |
 |---|---|
 | Datenabfrage | RCT-Wechselrichter über TCP (Port 8899), alle 10 s |
-| Datenaufzeichnung | alle 5 Minuten als CSV (ca. 48 KB pro Tag), 24-h-Puffer im RAM bei fehlender Karte |
+| Datenaufzeichnung | alle 5 Minuten als CSV (rund 35 kB pro Tag), 24-h-Puffer im RAM bei fehlender Karte |
 | Weboberfläche | HTTP-Server im lokalen Netz (Port 80): Status, Energiebalken, Verlauf mit Diagrammen (24 h, Tag, Woche, Monat), CSV-/Bild-Download, Firmware-Update; änderende Funktionen mit 4-stelligem Code |
 | Schaltausgang | 3,3 V am Header H1 zum Ansteuern der Spule eines externen Relais (Kathode der Freilaufdiode an 3,3 V), 5 wählbare Funktionen, 20 s Einschaltverzögerung, 60 s Mindesthaltezeit, 20 % Hysterese; aus bei jedem Start |
 | Ausgang bei Datenausfall | schaltet aus, wenn der Wechselrichter länger als 10 min keine Daten liefert; bis dahin arbeitet er mit dem letzten empfangenen Wert, sichtbar als „letzte Messung“ |
@@ -1141,16 +1002,19 @@ Netzwerk- und Verbindungsdaten des Panels fest).
 
 ## Herkunft und Abgrenzung
 
-Unabhängiges Projekt: keine Verbindung zur RCT Power GmbH, weder dahinter noch
-davon empfohlen oder unterstützt. „RCT Power“ ist deren Produktbezeichnung und
-erscheint hier nur, um das Gerät zu bezeichnen, mit dem die Software über das
-dokumentierte TCP-Protokoll (Port 8899) spricht. Die Software wurde aus der
-öffentlichen Protokoldokumentation entwickelt und ändert nichts am
-Wechselrichter. Portal und App der RCT Power GmbH bleiben deren eigenes Produkt;
-das Panel ist eine zusätzliche Anzeige, keine Erweiterung davon.
+Es besteht keine Verbindung zur RCT Power GmbH: Das Projekt steht nicht hinter der Firma
+und wird von ihr weder empfohlen noch unterstützt. „RCT Power“ ist deren Produktbezeichnung
+und wird hier nur verwendet, um das Gerät zu bezeichnen, mit dem die Firmware über das
+dokumentierte TCP-Protokoll (Port 8899) spricht.
 
----
+Die Firmware liest Werte aus dem Wechselrichter und nimmt keine
+Einstellungen daran vor. Die Objekt-IDs und die Bedeutung der 128 Fehlerbits
+sind Fakten über das Gerät, übernommen aus der öffentlichen Dokumentation
+des *RCT Power Serial Communication Protocol*.
 
-*Stand: Oktober 2026. Beschrieben ist die Firmware dieses Repositorys:
-Weboberfläche im Normalbetrieb, SD-Karte mit 4 MHz, Schaltausgang, dimmende
-Hintergrundbeleuchtung.*
+Der Projektcode steht unter der MIT-Lizenz (`LICENSE`). Das Firmware-Image
+enthält zusätzlich LGPL-2.1-or-later und Apache-2.0; `NOTICE` führt jede
+Komponente mit ihrer Lizenz und den Pflichten aus den Ports auf. Die
+Firmware wird ohne Gewährleistung bereitgestellt.
+
+*Stand: Oktober 2026.*

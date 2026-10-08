@@ -36,7 +36,11 @@
        rechts) ueber die Nummern erreichbar, ohne dass eine Fuehrungslinie um
        die ganze Grafik herumlaufen muss. Grau = von der Firmware nicht
        benutzt. -->
-  <rect x="390" y="65" width="380" height="345" rx="14" fill="#eef5fb" stroke="#b9d3ec" stroke-width="1.5"/>
+  <!-- Hoehe 320, genau die der beiden Ansichten (y 65..385). Vorher 345: der
+       Kasten stand 25 Einheiten ueber die beiden Bilder hinaus, obwohl unter
+       der letzten Zeile nichts mehr kommt - die letzte Legendenzeile endet bei
+       y 336, es blieben also 49 Einheiten Leerraum am Fuss. -->
+  <rect x="390" y="65" width="380" height="320" rx="14" fill="#eef5fb" stroke="#b9d3ec" stroke-width="1.5"/>
   <text x="406" y="101" fill="#0b3d6b" font-size="26" font-weight="700">Anschlüsse</text>
   <line x1="406" y1="113" x2="750" y2="113" stroke="#b9d3ec" stroke-width="1.5"/>
 

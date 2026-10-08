@@ -120,11 +120,18 @@ SD: /hist/RCT-202609.csv hat 16 Spalten, neue Zeilen haben 23
 
 ## 3. Volume, endurance, power
 
-- CSV line ≈ 165 B (23 columns; the longest row the formatter can produce is
-  163 characters, checked by the host test). 288 lines/day ≈ **~48 kB/day**,
-  ≈ 1,4 MB/month, ≈ **18 MB/year**. (`kLineCap` is 256 for that worst case, with
-  ~90 B to spare; the estimate and the cap are two different numbers and both
-  are pinned by the test.)
+- CSV line, 23 columns: 112 B with the seven-digit lifetime counters a plant has in
+  its first years, 124 B once they reach eight digits, 165 B in the worst case the
+  formatter can produce (163 characters plus CRLF, pinned by the host test).
+  288 lines/day therefore ≈ **32-36 kB/day**, ≈ 1 MB/month, ≈ **13 MB/year**; the
+  absolute worst case is 46 kB/day and 17 MB/year. The rows grow slowly and by
+  little: the seven counters gain a digit each, nothing else changes. (`kLineCap` is
+  256 for that worst case, with ~90 B to spare; the estimate and the cap are two
+  different numbers and both are pinned by the test.)
+
+  The 165 B/48 kB/day/18 MB/year figures that stood here before are that worst case
+  priced onto every row: a valid upper bound, ~35 % above what the panel writes, and
+  never a measurement.
 - Binary (uint32 ts + 14×float32) ≈ 60 B/line ≈ 17 kB/day ≈ 6 MB/year.
 - Either format fits a 1 GB card for decades; SD wear is negligible at this
   rate. Flush after each line: worst case on power loss is the current sample.

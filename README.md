@@ -35,7 +35,8 @@ network — in German or English, one per build.
 
 ## Installer
 
-Blank panel: flash it in the browser — no tool, no cable.
+Blank panel: flash it in the browser — no tool, but a USB cable and Chrome, Edge or
+Firefox (it is ESP Web Tools over Web Serial, so the panel needs the cable).
 
 **<https://fboor.github.io/rct-panel/install/>**
 
