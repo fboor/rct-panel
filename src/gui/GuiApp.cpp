@@ -69,6 +69,7 @@
 // LVGL built-ins for the LV_SYMBOL_* glyphs. See OFL-Montserrat.txt.
 #include "fonts/lv_font_montserrat_14_uml.h"
 #include "fonts/lv_font_montserrat_16_uml.h"
+#include "fonts/lv_font_montserrat_16_uml_bold.h"
 #include "fonts/lv_font_montserrat_20_uml.h"
 #include "fonts/lv_font_montserrat_28_uml.h"
 
@@ -3604,10 +3605,12 @@ void guiStartApp() {
       s_pages[i].labels[k] = nullptr;
     }
     // Page heading: every page gets the same one at the top left, in the same
-    // white and font as the "RCT Power Panel" text in the title bar. Created
+    // white as the "RCT Power Panel" text in the title bar, but one weight
+    // heavier - the page's own name is the only text on the page that is not a
+    // measurement, and at 16 px Medium it read as part of the numbers. Created
     // here rather than per page so the seven pages cannot drift apart again.
     lv_obj_t *head = makeLabel(s_pages[i].root, s_pages[i].title,
-                              &lv_font_montserrat_16_uml, uiText());
+                              &lv_font_montserrat_16_uml_bold, uiText());
     lv_obj_set_pos(head, 20, HEAD_Y);
     builders[i](&s_pages[i]);
   }
