@@ -333,6 +333,10 @@ int main(int argc, char **argv) {
   aktuell.deviceHost = opt.deviceHost;
   aktuell.devicePort = opt.devicePort;
   aktuell.dataFile = opt.dataPath;
+  // The theme as well. This struct is what a settings-page save writes out, and a key
+  // that is not filled in here is written as the default - so without this line every
+  // start saved themeHell back to false and the file could never turn it on.
+  aktuell.themeHell = gespeichert.themeHell;
   // Into a local buffer and then assigned. Writing through std::string::data()
   // with the string's own size as the limit works only once the string has a size:
   // a default-constructed one has room for the terminating NUL and nothing else,
@@ -415,6 +419,13 @@ int main(int argc, char **argv) {
 
   guiSetup();
   guiStartApp();
+
+  // The theme out of data/simulator.json, once, here. The option has been written and
+  // read since the settings page existed and applied to nothing: on a panel the choice
+  // comes out of the NVS, and the simulator has no NVS. Without this line the light
+  // theme is only reachable by hand - the button on the Service page, in a window that
+  // is open - and there is no way to photograph it for the handbook.
+  guiSetTheme(gespeichert.themeHell);
 
   // The clicks, spread out in the panel's own clock so that each one has been
   // processed before the next arrives, and the picture waits 1.5 s of panel time after the

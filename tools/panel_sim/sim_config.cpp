@@ -47,9 +47,26 @@ bool simConfigLoad(SimConfig *cfg) {
   text("devicePort", &cfg->devicePort);
   text("dataFile", &cfg->dataFile);
   text("size", &cfg->size);
-  double hell = 0.0;
-  if (json::getNumber(j, len, "themeHell", &hell)) {
-    cfg->themeHell = (hell != 0.0);
+  // The theme is written as true or false, and json::getNumber does not read a boolean -
+  // on purpose, because a device that answers "true" where a power belongs should not be
+  // read as 1 (see src/device/Json.h). So this one key is read out of the text: the key,
+  // then the word behind its colon. Both forms are accepted, because a file that a human
+  // wrote by hand says either, and the one that is silently ignored would be the one that
+  // costs an hour. An absent key leaves the default alone.
+  {
+    const std::string schluessel = "\"themeHell\"";
+    const size_t at = s.find(schluessel);
+    if (at != std::string::npos) {
+      const size_t kolon = s.find(':', at + schluessel.size());
+      const size_t woert =
+          (kolon == std::string::npos)
+              ? std::string::npos
+              : s.find_first_not_of(" \t\r\n", kolon + 1);
+      if (woert != std::string::npos) {
+        cfg->themeHell =
+            (s.compare(woert, 4, "true") == 0) || (s.compare(woert, 1, "1") == 0);
+      }
+    }
   }
   return true;
 }
