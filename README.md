@@ -74,7 +74,8 @@ the board.
 
 | File | For whom |
 |---|---|
-| [`docs/benutzerhandbuch.pdf`](docs/benutzerhandbuch.pdf) | the installation: connection, pages, settings, CSV format, troubleshooting |
+| [`docs/benutzerhandbuch-de.pdf`](docs/benutzerhandbuch-de.pdf) | the installation: connection, pages, settings, CSV format, troubleshooting (German) |
+| [`docs/benutzerhandbuch-en.pdf`](docs/benutzerhandbuch-en.pdf) | the same in English |
 | [`docs/hardware.md`](docs/hardware.md) | pin map, bring-up checklist, quirks, open questions |
 | [`docs/relay.md`](docs/relay.md) | the switching output and the ten-minute data deadline |
 | [`docs/sd-history.md`](docs/sd-history.md) | the CSV format and the SD logger |

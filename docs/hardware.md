@@ -3,7 +3,7 @@
 The developer's hardware notes for **rct-panel**: the pin map the firmware
 uses, what has to be checked once when the panel is on the bench for the first
 time, the quirks of this board, and what is still open. The user-facing
-documentation is the [Benutzerhandbuch](benutzerhandbuch.md) (German), the
+documentation is the [Benutzerhandbuch](benutzerhandbuch-de.md) (German), the
 firmware's behaviour is in the `docs/` files next to it.
 
 ## Pin map
