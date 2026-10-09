@@ -259,17 +259,19 @@ static void finishWifiUp() {
   if (shouldSaveConfig) {
     // Portal save: the form edited the WiFiManager parameter buffers in
     // place, so adopt the submitted RCT settings and persist everything.
-    strcpy(device_host, p_device_host.getValue());
-    strcpy(device_port, p_device_port.getValue());
+    strncpy(device_host, p_device_host.getValue(), sizeof(device_host) - 1);
+    device_host[sizeof(device_host) - 1] = '\0';
+    strncpy(device_port, p_device_port.getValue(), sizeof(device_port) - 1);
+    device_port[sizeof(device_port) - 1] = '\0';
     // The driver, from the portal's number back to the name the device layer
     // knows. Anything else is ignored rather than guessed at, like relay_mode
     // below: the wrong driver gives a panel that reads nothing, and quietly
     // falling back to RCT would hide the typo instead of reporting it.
     const char *typ = p_device_type.getValue();
     if (strcmp(typ, "2") == 0) {
-      strcpy(device_type, "OIG");
+      strncpy(device_type, "OIG", sizeof(device_type) - 1);
     } else if (strcmp(typ, "1") == 0) {
-      strcpy(device_type, "RCT");
+      strncpy(device_type, "RCT", sizeof(device_type) - 1);
     } else {
       Serial.printf("Portal: device_type '%s' ignoriert, bleibe bei %s\n", typ,
                     device_type);
