@@ -307,23 +307,28 @@ static void checkFlowBalanced(DeviceState s, const char *what) {
   // Panels: everything they produce is placed somewhere.
   checkNear(f.pvToHouse + f.pvToBattery + f.pvToGrid, ruleGenerationW(s),
             "Biline: die Panels geben ab, was sie erzeugen");
-  // House: what fills its consumption.
-  checkNear(f.pvToHouse + f.battToHouse + f.gridToHouse, ruleHouseW(s),
-            "Biline: das Haus bekommt so viel, wie es verbraucht");
+  // House: what fills its consumption (or what it exports when negative).
+  checkNear(f.pvToHouse + f.battToHouse + f.gridToHouse - f.houseToGrid - f.houseToBattery,
+            ruleHouseW(s),
+            "Biline: das Haus bekommt so viel, wie es verbraucht (oder gibt ab)");
   // Battery: + = discharge, so what leaves it minus what arrives is batW.
-  checkNear(f.battToHouse + f.battToGrid - f.pvToBattery - f.gridToBattery, s.batW,
+  checkNear(f.battToHouse + f.battToGrid - f.pvToBattery - f.gridToBattery - f.houseToBattery,
+            s.batW,
             "Biline: der Akku liefert minus nimmt = seine Leistung");
   // Grid: what goes out over it minus what comes in is the export, - gridExchangeW.
-  checkNear(f.pvToGrid + f.battToGrid - f.gridToHouse - f.gridToBattery,
+  checkNear(f.pvToGrid + f.battToGrid + f.houseToGrid - f.gridToHouse - f.gridToBattery,
             -s.gridExchangeW, "Biline: ueber das Netz geht hinaus minus hinein");
-  // And the conservation law over all seven: everything that moves has to end up in
+  // And the conservation law over all nine: everything that moves has to end up in
   // the house, out over the meter, or in the battery. This is what says there is no
   // way into the panels - a figure that had nowhere to go could not be added here.
+  // When the house exports (house < 0), the export itself is a source, so the
+  // expected sum is max(house, 0) + export + charge.
   const float einspeisung = s.gridExchangeW < 0.0f ? -s.gridExchangeW : 0.0f;
   const float geladen = s.batW < 0.0f ? -s.batW : 0.0f;
+  const float verbrauch = ruleHouseW(s) > 0.0f ? ruleHouseW(s) : 0.0f;
   checkNear(f.pvToHouse + f.pvToBattery + f.pvToGrid + f.battToHouse + f.battToGrid +
-                f.gridToHouse + f.gridToBattery,
-            ruleHouseW(s) + einspeisung + geladen,
+                f.gridToHouse + f.gridToBattery + f.houseToGrid + f.houseToBattery,
+            verbrauch + einspeisung + geladen,
             "Biline: alles Bewegte landet im Haus, im Netz oder im Akku");
   (void)what;
 }
@@ -409,8 +414,50 @@ static void testFlowSplit() {
     s.haveData = false;
     const FlowSplit f = ruleFlowSplit(s);
     checkNear(f.pvToHouse + f.pvToBattery + f.pvToGrid + f.battToHouse +
-                  f.battToGrid + f.gridToHouse + f.gridToBattery,
+                  f.battToGrid + f.gridToHouse + f.gridToBattery +
+                  f.houseToGrid + f.houseToBattery,
               0.0f, "vor der ersten Antwort: nichts fliesst");
+  }
+  // Negative house consumption: the household exports energy. The export goes
+  // to the grid. PV generation also goes to the grid. Nothing flows into the house.
+  {
+    DeviceState s = flowState(2000.0f, -500.0f, 0.0f, -2500.0f);
+    const FlowSplit f = ruleFlowSplit(s);
+    checkNear(f.houseToGrid, 500.0f, "Haus exportiert: 500 W ins Netz");
+    checkNear(f.pvToGrid, 2000.0f, "Haus exportiert: PV geht ins Netz");
+    checkNear(f.pvToHouse, 0.0f, "Haus exportiert: nichts ins Haus");
+    checkNear(f.gridToHouse, 0.0f, "Haus exportiert: nichts aus dem Netz");
+    checkFlowBalanced(s, "Haus exportiert");
+  }
+  // Negative house consumption with charging battery: part of the export charges
+  // the battery, the rest goes to the grid.
+  {
+    DeviceState s = flowState(0.0f, -800.0f, -300.0f, -500.0f);
+    const FlowSplit f = ruleFlowSplit(s);
+    checkNear(f.houseToBattery, 300.0f, "Haus exportiert: 300 W in den Akku");
+    checkNear(f.houseToGrid, 500.0f, "Haus exportiert: 500 W ins Netz");
+    checkNear(f.pvToGrid, 0.0f, "Haus exportiert: keine PV");
+    checkFlowBalanced(s, "Haus exportiert, Akku lädt");
+  }
+  // Negative house consumption with discharging battery: the battery discharge
+  // and the house export both go to the grid.
+  {
+    DeviceState s = flowState(0.0f, -400.0f, 200.0f, -600.0f);
+    const FlowSplit f = ruleFlowSplit(s);
+    checkNear(f.houseToGrid, 400.0f, "Haus exportiert: 400 W ins Netz");
+    checkNear(f.battToGrid, 200.0f, "Haus exportiert: Akku entlädt 200 W ins Netz");
+    checkNear(f.pvToGrid, 0.0f, "Haus exportiert: keine PV");
+    checkFlowBalanced(s, "Haus exportiert, Akku entlädt");
+  }
+  // Negative house consumption with PV: PV goes to the grid, house export
+  // also goes to the grid.
+  {
+    DeviceState s = flowState(2000.0f, -500.0f, 0.0f, -2500.0f);
+    const FlowSplit f = ruleFlowSplit(s);
+    checkNear(f.pvToGrid, 2000.0f, "Haus exportiert: PV geht ins Netz");
+    checkNear(f.houseToGrid, 500.0f, "Haus exportiert: 500 W ins Netz");
+    checkNear(f.pvToHouse, 0.0f, "Haus exportiert: nichts ins Haus");
+    checkFlowBalanced(s, "Haus exportiert mit PV");
   }
 }
 

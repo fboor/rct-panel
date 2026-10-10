@@ -148,6 +148,7 @@ struct FlowLayout {
   bool islandMark;      // the warning triangle has a connector to sit on
   bool grossPvIco;      // the PV icon is scaled like the hub's
   bool pvIcoNative;     // the PV icon has a font of its own and is drawn 1:1
+  float houseToBattery; // export from house to battery, for the arrow direction
 };
 
 // The layout for one device family.
@@ -209,11 +210,13 @@ static const int16_t kPilleRand = 11;
 // them are and a diagram that rearranges itself ten seconds after every boot is
 // worse than one that starts out right.
 static inline FlowLayout flowLayoutFor(const DeviceCaps &caps,
-                                       const UiLayout &ui) {
+                                       const UiLayout &ui,
+                                       float houseToBattery = 0.0f) {
   const UiFlow &f = ui.flow;
   FlowLayout L;
   L.batterySoc = false;
   L.islandMark = true;
+  L.houseToBattery = houseToBattery;
 
   // What the device can report - or, until it has answered once, everything:
   // an RCT Power is what most of them are, and a diagram that rearranges itself
@@ -270,6 +273,12 @@ static inline FlowLayout flowLayoutFor(const DeviceCaps &caps,
   L.linkGrid.y1 = hubY;
   L.linkGrid.x2 = L.grid.x;
   L.linkGrid.y2 = L.grid.y;
+  // All three connectors carry the power OUT of the hub and INTO the outer node:
+  // the panels, the meter and the battery each receive. The battery is the one
+  // that can run the other way - the house exports into it - and that case
+  // swaps the two ends in the refresh, so the arrow follows the measurement
+  // rather than the layout. Storing hub -> node is the default because that is
+  // the direction two of the three always have.
   L.linkBattery.visible = kenneAkku;
   L.linkBattery.x1 = hubX;
   L.linkBattery.y1 = hubY;
@@ -511,25 +520,25 @@ static inline FlowPfeil flowKeilPfeil(const UiFlow &f, float grad, bool laeuftAu
 // arc, and the same 2 px of stroke - a 4 px glyph on a 2 px line says two different
 // things at once.
 //
-// The tip stands on the connector at its middle and the two barbs trail behind it, so the
-// mark straddles the line the way the ring's straddles the arc. It always points TOWARDS
-// THE HUB: a connector is only lit when the power runs that way, so the arrow has one
-// direction to be and it is the one the link is stored against - the links run hub to
-// node, and the power runs the other way round.
+// The tip stands on the connector at its middle and the two barbs trail behind it, so
+// the mark straddles the line the way the ring's straddles the arc. The direction
+// follows the link's ends: the arrow points FROM x1/y1 TO x2/y2. Every link is stored
+// hub -> node, which is the way the power runs in the normal case; the battery link is
+// the one that can run the other way and the caller swaps its ends to say so.
 static inline FlowPfeil flowLinkPfeil(const FlowLink &l) {
-  const float dx = (float)(l.x1 - l.x2), dy = (float)(l.y1 - l.y2);
+  const float dx = (float)(l.x2 - l.x1), dy = (float)(l.y2 - l.y1);
   const float len = sqrtf(dx * dx + dy * dy);
   FlowPfeil p;
   p.spitzeX = (int16_t)((l.x1 + l.x2) / 2);
   p.spitzeY = (int16_t)((l.y1 + l.y2) / 2);
-  // The unit direction of travel towards the hub, and the two sides of the line: the
-  // same perpendicular, rotated, without an ellipse to take it from.
+  // The unit direction of travel from x1/y1 to x2/y2, and the two sides of the line:
+  // the same perpendicular, rotated, without an ellipse to take it from.
   const float ux = (len > 0.0f) ? dx / len : 0.0f, uy = (len > 0.0f) ? dy / len : 0.0f;
   const float c = 0.8660254f, s = 0.5f; // cos und sin von 30 Grad
   for (int i = 0; i < 2; i++) {
     const float seite = (i == 0) ? 1.0f : -1.0f;
-    const float ox = kPfeilLaenge * (-c * ux - seite * s * uy);
-    const float oy = kPfeilLaenge * (-c * uy + seite * s * ux);
+    const float ox = kPfeilLaenge * (c * ux - seite * s * uy);
+    const float oy = kPfeilLaenge * (c * uy + seite * s * ux);
     p.armX[i] = p.spitzeX + (int16_t)lroundf(ox);
     p.armY[i] = p.spitzeY + (int16_t)lroundf(oy);
   }

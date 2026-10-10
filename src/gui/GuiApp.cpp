@@ -590,7 +590,7 @@ static lv_obj_t *s_batIco = nullptr;
 // layout is part of how the page comes up.
 static uint8_t flowCapsKey(const DeviceCaps &c);
 static DeviceCaps capsFromKey(uint8_t key);
-static void applyFlowLayout(const FlowLayout &L, AppPage *ov);
+static void applyFlowLayout(const FlowLayout &L, float houseToBattery, AppPage *ov);
 
 static lv_obj_t *s_statusLabel = nullptr; // link/status badge top-right
 static lv_obj_t *s_splashLabel = nullptr; // splash page label
@@ -758,6 +758,16 @@ struct SpeerLinie {
   lv_point_precise_t p[3];
 };
 static SpeerLinie s_speer[3];
+// Whether the battery arrowhead currently points house -> battery (the house
+// exports into the charging battery) instead of the stored hub -> node
+// direction. It is a merk and not a computation because the swap in the refresh
+// exchanges the two stored ends: doing it unconditionally on every tick would
+// flip the arrow back and forth each second while the export lasts.
+static bool s_batPfeilGedreht = false;
+// The same merk for the grid connector: while the household exports, the arrow
+// on the grid link points out of the hub into the meter instead of the stored
+// hub -> node direction.
+static bool s_gridPfeilGedreht = false;
 
 // ONE width for every line and every mark in the diagram: the ring's three sectors, the
 // three connectors and all six arrowheads. 3 px, tried at the user's request - the two
@@ -1288,7 +1298,7 @@ static void pageBuildOverview(AppPage *p) {
   }
   p->labelCount = OV_LABEL_COUNT;
 
-  applyFlowLayout(fl, p);
+  applyFlowLayout(fl, 0.0f, p);
 }
 
 // ---------------------------------------------------------------------------
@@ -1444,8 +1454,13 @@ static DeviceCaps capsFromKey(uint8_t key) {
 // red arrowhead sat on the page with nothing under it.
 static FlowLayout s_layout;
 
-static void applyFlowLayout(const FlowLayout &L, AppPage *ov) {
+static void applyFlowLayout(const FlowLayout &L, float houseToBattery, AppPage *ov) {
   s_layout = L;
+  // A new layout stores the links hub -> node again, so both direction merks
+  // have to start over - otherwise the arrows would still read the swapped
+  // ends of the device that was drawn before.
+  s_batPfeilGedreht = false;
+  s_gridPfeilGedreht = false;
   setNodeShown(s_nodePv, L.pv);
   setNodeShown(s_nodeHaus, L.house);
   setNodeShown(s_nodeGrid, L.grid);
@@ -2765,9 +2780,10 @@ static void refreshCb(lv_timer_t *t) {
   // compared first, and only a device that reports something different from the
   // one the page was built for moves anything.
   {
+    const FlowSplit fs = ruleFlowSplit(s);
     const uint8_t key = flowCapsKey(s.caps);
     if (s.caps.isKnown() && key != s_flowKey) {
-      applyFlowLayout(flowLayoutFor(s.caps, ui()), &s_pages[PAGE_OVERVIEW]);
+      applyFlowLayout(flowLayoutFor(s.caps, ui(), fs.houseToBattery), fs.houseToBattery, &s_pages[PAGE_OVERVIEW]);
       s_flowKey = key;
       flowKeySpeichern(key);
     }
@@ -2923,8 +2939,47 @@ static void refreshCb(lv_timer_t *t) {
         lv_label_set_text(ov.labels[OV_GRID_VAL], blank);
         lv_obj_set_style_text_color(ov.labels[OV_GRID_VAL], FLOW_WHITE, 0);
       }
-      lv_obj_set_style_line_color(s_lineGrid, fliesst ? FLOW_RED : FLOW_LINE, 0);
-      speerPfeilSetzen(1, s_layout.linkGrid.visible, fliesst);
+      // A negative house value means the household exports: the grid spoke
+      // carries the export (houseToGrid), not the import (gridToHouse).
+      // The line is only red when there is an actual flow on it.
+      const bool exportGrid = !fliesst && fs.houseToGrid >= kFlowGridActiveW;
+      lv_obj_set_style_line_color(s_lineGrid, (fliesst || exportGrid) ? FLOW_RED : FLOW_LINE, 0);
+      // The arrow follows the direction the power runs. On an import it points
+      // into the house (the stored hub -> node direction); while the household
+      // exports it points the other way, out of the hub and into the meter.
+      // The same merk discipline as the battery's: the swap exchanges the two
+      // stored ends, so it is done once per change of direction and not per tick.
+      if (exportGrid && !s_gridPfeilGedreht) {
+        const int16_t tx = s_layout.linkGrid.x1, ty = s_layout.linkGrid.y1;
+        s_layout.linkGrid.x1 = s_layout.linkGrid.x2;
+        s_layout.linkGrid.y1 = s_layout.linkGrid.y2;
+        s_layout.linkGrid.x2 = tx;
+        s_layout.linkGrid.y2 = ty;
+        s_gridPfeilGedreht = true;
+        const FlowPfeil fp = flowLinkPfeil(s_layout.linkGrid);
+        s_speer[1].p[0].x = fp.armX[0];
+        s_speer[1].p[0].y = fp.armY[0];
+        s_speer[1].p[1].x = fp.spitzeX;
+        s_speer[1].p[1].y = fp.spitzeY;
+        s_speer[1].p[2].x = fp.armX[1];
+        s_speer[1].p[2].y = fp.armY[1];
+        if (s_speer[1].ln != nullptr) {
+          lv_line_set_points(s_speer[1].ln, s_speer[1].p, 3);
+        }
+      } else if (!exportGrid && s_gridPfeilGedreht) {
+        s_gridPfeilGedreht = false;
+        const FlowPfeil fp = flowLinkPfeil(s_layout.linkGrid);
+        s_speer[1].p[0].x = fp.armX[0];
+        s_speer[1].p[0].y = fp.armY[0];
+        s_speer[1].p[1].x = fp.spitzeX;
+        s_speer[1].p[1].y = fp.spitzeY;
+        s_speer[1].p[2].x = fp.armX[1];
+        s_speer[1].p[2].y = fp.armY[1];
+        if (s_speer[1].ln != nullptr) {
+          lv_line_set_points(s_speer[1].ln, s_speer[1].p, 3);
+        }
+      }
+      speerPfeilSetzen(1, s_layout.linkGrid.visible, fliesst || exportGrid);
     } else {
       lv_label_set_text(ov.labels[OV_GRID_VAL], dash);
       lv_obj_set_style_text_color(ov.labels[OV_GRID_VAL], FLOW_WHITE, 0);
@@ -2977,8 +3032,49 @@ static void refreshCb(lv_timer_t *t) {
           lv_label_set_text(ov.labels[OV_BAT_VAL], has ? blank : dash);
           lv_obj_set_style_text_color(ov.labels[OV_BAT_VAL], FLOW_WHITE, 0);
         }
-        const bool fliesst = has && fs.battToHouse >= kFlowBatActiveW;
+        const bool fliesst = has && (fs.battToHouse >= kFlowBatActiveW || fs.houseToBattery >= kFlowBatActiveW);
         lv_obj_set_style_line_color(s_lineBat, fliesst ? FLOW_RED : FLOW_LINE, 0);
+        // The house exports into the battery: the arrow has to point the other way.
+        // The link is stored hub -> node (house at the top, battery below), so the
+        // swap is a plain exchange of the two ends - and it is redone every tick
+        // against the stored direction, because the export starts and stops.
+        // Without the merk flag the swap would run on every tick and the arrow
+        // would flip back and forth each second while the house exports.
+        if (fs.houseToBattery > 0.0f && !s_batPfeilGedreht) {
+          const int16_t tx = s_layout.linkBattery.x1, ty = s_layout.linkBattery.y1;
+          s_layout.linkBattery.x1 = s_layout.linkBattery.x2;
+          s_layout.linkBattery.y1 = s_layout.linkBattery.y2;
+          s_layout.linkBattery.x2 = tx;
+          s_layout.linkBattery.y2 = ty;
+          s_batPfeilGedreht = true;
+          // The arrowhead's own points follow the link's ends, so they are written
+          // again here rather than only in applyFlowLayout().
+          const FlowPfeil fp = flowLinkPfeil(s_layout.linkBattery);
+          s_speer[2].p[0].x = fp.armX[0];
+          s_speer[2].p[0].y = fp.armY[0];
+          s_speer[2].p[1].x = fp.spitzeX;
+          s_speer[2].p[1].y = fp.spitzeY;
+          s_speer[2].p[2].x = fp.armX[1];
+          s_speer[2].p[2].y = fp.armY[1];
+          if (s_speer[2].ln != nullptr) {
+            lv_line_set_points(s_speer[2].ln, s_speer[2].p, 3);
+          }
+        } else if (fs.houseToBattery <= 0.0f && s_batPfeilGedreht) {
+          s_batPfeilGedreht = false;
+          // The layout's own direction is the one applyFlowLayout() last wrote;
+          // the hub's and the battery's coordinates are in it unchanged, so the
+          // arrow goes back to house -> battery reading from the stored link.
+          const FlowPfeil fp = flowLinkPfeil(s_layout.linkBattery);
+          s_speer[2].p[0].x = fp.armX[0];
+          s_speer[2].p[0].y = fp.armY[0];
+          s_speer[2].p[1].x = fp.spitzeX;
+          s_speer[2].p[1].y = fp.spitzeY;
+          s_speer[2].p[2].x = fp.armX[1];
+          s_speer[2].p[2].y = fp.armY[1];
+          if (s_speer[2].ln != nullptr) {
+            lv_line_set_points(s_speer[2].ln, s_speer[2].p, 3);
+          }
+        }
         speerPfeilSetzen(2, s_layout.linkBattery.visible, fliesst);
     } else {
       lv_label_set_text(ov.labels[OV_BAT_VAL], dash);
@@ -3058,7 +3154,13 @@ static void refreshCb(lv_timer_t *t) {
       // as "importing" from 20 W on: below that the device regulates around zero
       // and the sign is noise, so a house that is only drawing its last few watts
       // from the grid is independent as far as this button is concerned.
-      if (house < OV_BTN_NONE_W) {
+      // A negative house value means the household is exporting energy - the
+      // meter reads negative. This is rare but possible (e.g. a BKW that feeds
+      // back into the grid). The pill shows "Export" in red, the same
+      // colour as the active flow lines.
+      if (house < 0.0f) {
+        ovSetState(1, lv_color_hex(0xCA0C0F), tr(T_D_TEND_EXPORT));
+      } else if (house < OV_BTN_NONE_W) {
         ovSetState(1, ST_GRAU, tr(T_D_TEND_NOLOAD));
       } else if (pTot >= OV_BTN_GRID_W) {
         ovSetState(1, ST_ORANGE, tr(T_D_TEND_MAINS));

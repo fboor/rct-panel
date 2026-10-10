@@ -234,6 +234,7 @@ enum LangId : int {
   T_D_TEND_SELF,    // the house runs on its own
   T_D_TEND_INACTIVE, // PV below 20 W: the panels are not producing
   T_D_TEND_NOLOAD,  // below 10 W: no household draw to name
+  T_D_TEND_EXPORT,  // the household exports energy (negative meter)
   T_D_TEND_DISCHARGE,
   T_D_TEND_CHARGE,
   T_D_TEND_STANDBY,

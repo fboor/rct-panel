@@ -2,21 +2,23 @@
   "_konsistenz": "Die Tageszahlen muessen zusammenpassen, sonst widersprechen sie sich: Eigenverbrauch = Verbrauch - Bezug UND = Erzeugung - Einspeisung. Bei 13600 erzeugt, 6800 verbraucht, 300 bezogen und 7100 eingespeist stimmt beides: 6500. Die erste Fassung dieser Datei hatte 5200 eingespeist und damit zwei verschiedene Eigenverbraeche - 6500 und 8400 - und der Simulator hat es gezeigt, weil er die echte Rules.h rechnen laesst.",
   "_comment": "A midday in July on this installation: the PV string produces, the house draws, the surplus goes into the battery and a little is fed in. Chosen so that all four values in the flow diagram are non-zero and one of them is negative - the sign is a formatting rule (NumFmt.h) and a mock without one never shows it. Magnitudes are the ones the real device produces; the counters come from a real capture of this panel.",
 
-  "gridExchangeW": -250,
+  "gridExchangeW": -6555,
   "gridV0": 231.4, "gridV1": 230.8, "gridV2": 231.1,
   "gridHz0": 50.01, "gridHz1": 49.99, "gridHz2": 50.00,
 
-  "genW0": 3400, "genW1": 0,
+  "genW0": 0, "genW1": 0,
   "extW": 0,
 
-  "houseW0": 210, "houseW1": 195, "houseW2": 240,
+  "houseW0": -300, "houseW1": -200, "houseW2": -150,
+  "simPvSpitzeW": 0, "simLastBasisW": -300, "simLastSpitzeW": -200,
+  "simAkkuW": 100, "simKapazitahtAh": 100,
 
   "socPct": 33,
   "batW": -2505, "batV": 396.2, "batA": -6.3,
   "batteryTemp": 24.6, "batteryCycles": 404, "batterySoh": 100,
 
-  "dayGenWh": 13600, "dayHouseWh": 6800, "dayFeedInWh": 7100,
-  "dayGridDrawWh": 300, "dayExtWh": 0,
+  "dayGenWh": 13600, "dayHouseWh": -650, "dayFeedInWh": 7100,
+  "dayGridDrawWh": 0, "dayExtWh": 0,
 
   "monthGenWh": 136500, "yearGenWh": 9064800, "totalGenWh": 19608700,
   "monthHouseWh": 42600, "yearHouseWh": 2523900, "totalHouseWh": 6554000,

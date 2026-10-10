@@ -219,6 +219,7 @@ const char *const kLang[T_COUNT] = {
     "Unabhängig",      // T_D_TEND_SELF
     "Inaktiv",         // T_D_TEND_INACTIVE
     "Verbrauch",     // T_D_TEND_NOLOAD
+    "Export",        // T_D_TEND_EXPORT
     "Entladen",        // T_D_TEND_DISCHARGE
     "Laden",           // T_D_TEND_CHARGE
     "Standby",         // T_D_TEND_STANDBY
