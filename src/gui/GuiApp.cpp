@@ -40,8 +40,10 @@
 #include <string.h>
 #include <time.h>
 
+#ifndef PANEL_SIM
 #include <nvs.h>
 #include <nvs_flash.h>
+#endif
 #include <WiFi.h>
 
 #include "GuiApp.h"
@@ -216,6 +218,11 @@ static void themeDurchlaufen(lv_obj_t *o, bool aufBg) {
 // value was ignored - so the theme was dark again after every restart and the diagram
 // was rebuilt on every boot. Measured 2026-10-11; the failure is silent, so the write
 // says what it did.
+#ifdef PANEL_SIM
+// The emulator has no NVS and nothing to remember: it starts in the dark theme and
+// rebuilds its diagram on every run, which is what a fresh panel does.
+static bool guiU8(const char *, uint8_t *, bool) { return false; }
+#else
 static bool guiU8(const char *key, uint8_t *wert, bool schreiben) {
   nvs_handle_t h = 0;
   if (nvs_open("gui", schreiben ? NVS_READWRITE : NVS_READONLY, &h) != ESP_OK) {
@@ -230,6 +237,7 @@ static bool guiU8(const char *key, uint8_t *wert, bool schreiben) {
   nvs_close(h);
   return ok;
 }
+#endif  // PANEL_SIM
 
 static void themeLaden() {
   uint8_t thema = 0;
@@ -2753,7 +2761,13 @@ static void buildApOverlay() {
   lv_obj_t *title = lv_label_create(s_apOverlay);
   lv_label_set_text(title, tr(T_D_AP_TITLE));
   lv_obj_set_style_text_font(title, &lv_font_montserrat_20_uml, 0);
-  lv_obj_set_style_text_color(title, uiText(), 0);
+  // White, and not uiText(), for the reason the navigation buttons give: the bar is
+  // COL_BAR in both themes, so the text on it must not follow the theme. With uiText()
+  // the title came up dark on a bar that stays dark, and nothing said so - a theme
+  // switch keeps the colour it booted with, because the walk leaves labels inside the
+  // bar alone. It only became visible when the theme survived a restart and the panel
+  // actually booted into the light one.
+  lv_obj_set_style_text_color(title, FLOW_WHITE, 0);
 
   // LVGL 9 QR widget (MIT, qrcodegen inside LVGL): 220 px canvas, white
   // background with black modules so it scans cleanly off the dark panel.
@@ -3726,7 +3740,13 @@ void guiSetup() {
   lv_obj_t *title = lv_label_create(bar);
   lv_label_set_text(title, "RCT Power Panel");
   lv_obj_set_style_text_font(title, &lv_font_montserrat_16_uml, 0);
-  lv_obj_set_style_text_color(title, uiText(), 0);
+  // White, and not uiText(), for the reason the navigation buttons give: the bar is
+  // COL_BAR in both themes, so the text on it must not follow the theme. With uiText()
+  // the title came up dark on a bar that stays dark, and nothing said so - a theme
+  // switch keeps the colour it booted with, because the walk leaves labels inside the
+  // bar alone. It only became visible when the theme survived a restart and the panel
+  // actually booted into the light one.
+  lv_obj_set_style_text_color(title, FLOW_WHITE, 0);
   lv_obj_align(title, LV_ALIGN_LEFT_MID, 12, 0);
   s_statusLabel = lv_label_create(bar);
   lv_label_set_text(s_statusLabel, "boot");

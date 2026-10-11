@@ -52,8 +52,10 @@
 #include <WebServer.h>
 #include <WiFi.h>
 #include <esp_system.h>
+#ifndef PANEL_SIM
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
+#endif
 
 #include <uri/UriBraces.h>
 
@@ -72,6 +74,10 @@
 // anyone sees. The browser installer writes app0 and leaves no valid selection, the
 // panel's own OTA writes the other slot and selects it - so the slot follows from
 // how the firmware was last installed, and it has to be readable rather than guessed.
+#ifdef PANEL_SIM
+// There is no flash and no bootloader in the emulator; there is one program, running.
+static const char *laufenderSlot() { return "Simulator"; }
+#else
 static const char *laufenderSlot() {
   static char s[24];
   const esp_partition_t *p = esp_ota_get_running_partition();
@@ -82,6 +88,7 @@ static const char *laufenderSlot() {
   snprintf(s, sizeof(s), "%s @0x%06X", p->label, p->address);
   return s;
 }
+#endif
 
 static const char kPanelVersion[] =
     RCT_FW_VERSION_FULL " " RCT_LANG_NAME " " RCT_BUILD_SHA;
