@@ -147,31 +147,45 @@ inline FlowSplit ruleFlowSplit(const DeviceState &s) {
       panelsRest = 0.0f;
     }
 
+    // What the house still needs after the panels have paid their share. It is also the
+    // ceiling for everything that is supposed to feed it: a meter that reports more
+    // import than the house can use - 1000 W into a house of 500 W, measured on this
+    // plant - used to put that whole meter reading on the house, and the page then
+    // added 500 W that are nowhere. The house is served before anything else is placed.
+    const float bedarf = house - f.pvToHouse;
+
     if (bat < 0.0f) {
-      // Charging. The panels pay first, whatever is left of their surplus; only then
-      // does the meter, and that is the lower right of the ring running upwards.
+      // Charging. Only PV goes into the battery while the panels produce enough of it:
+      // the surplus first, and only what is missing does the meter add - that is the
+      // lower right of the ring running upwards.
       const float willHaben = -bat;
       f.pvToBattery = panelsRest < willHaben ? panelsRest : willHaben;
       panelsRest -= f.pvToBattery;
+      // The meter serves the house before it charges the battery.
+      f.gridToHouse = grid > 0.0f ? (grid < bedarf ? grid : bedarf) : 0.0f;
+      const float uebrig = grid > f.gridToHouse ? grid - f.gridToHouse : 0.0f;
       const float ausDemNetz = willHaben - f.pvToBattery;
-      f.gridToBattery = grid > 0.0f ? (grid < ausDemNetz ? grid : ausDemNetz) : 0.0f;
+      f.gridToBattery = uebrig < ausDemNetz ? uebrig : ausDemNetz;
     } else {
-      // Discharging: the house first, and what is left of it across the meter.
-      const float bedarf = house - f.pvToHouse;
-      f.battToHouse = bedarf > 0.0f ? (bat < bedarf ? bat : bedarf) : 0.0f;
+      // Discharging: the meter first, the battery with what the house has not taken,
+      // and what the battery gives up beyond that across the meter. It feeds the grid
+      // only with what it releases beyond what the house takes after the panels - the
+      // panels' surplus goes to the meter first, so the battery is left with the
+      // difference or with nothing.
+      f.gridToHouse = grid > 0.0f ? (grid < bedarf ? grid : bedarf) : 0.0f;
+      const float uebrig = bedarf - f.gridToHouse;
+      f.battToHouse = bat < uebrig ? bat : uebrig;
+      if (f.battToHouse < 0.0f) {
+        f.battToHouse = 0.0f;
+      }
       f.battToGrid = bat - f.battToHouse;
       if (f.battToGrid < 0.0f) {
         f.battToGrid = 0.0f;
       }
     }
+    // The panels' surplus is what goes over the meter, and it goes there first: what
+    // they do not place in the house is feed-in from them, not from the battery.
     f.pvToGrid = panelsRest;
-
-    // The hub spoke to the grid: what is left of the import after the battery took its
-    // share. On an export there is nothing left for it - the panels and the battery put
-    // all of it on the ring - so the spoke's arrow follows the sign of the measured
-    // exchange and carries no figure of its own.
-    const float bezug = grid > 0.0f ? grid - f.gridToBattery : 0.0f;
-    f.gridToHouse = bezug > 0.0f ? bezug : 0.0f;
   } else {
     // The household is exporting energy - the meter reads negative. Rare but
     // possible: a BKW feeds back into the grid, and the household meter reads
@@ -188,11 +202,16 @@ inline FlowSplit ruleFlowSplit(const DeviceState &s) {
       const float chargeNeed = -bat;
       f.houseToBattery = exportW < chargeNeed ? exportW : chargeNeed;
       f.houseToGrid = exportW - f.houseToBattery;
+      // What the export did not charge, the panels do - or the battery takes less than
+      // it measures and the difference has nowhere to go. pv 1500 / house -500 /
+      // bat -1000 / grid -1000 lost 500 W on the battery and 500 W on the meter.
+      const float rest = chargeNeed - f.houseToBattery;
+      f.pvToBattery = pv < rest ? pv : rest;
     }
-    // PV generation still goes to the grid (the house is not consuming)
-    f.pvToGrid = pv;
+    // PV generation: what the panels did not put into the battery goes to the grid
+    // (the house is not consuming).
+    f.pvToGrid = pv - f.pvToBattery;
     f.pvToHouse = 0.0f;
-    f.pvToBattery = 0.0f;
     // Battery: if discharging, the whole discharge goes to the grid
     f.battToHouse = 0.0f;
     f.battToGrid = bat > 0.0f ? bat : 0.0f;
