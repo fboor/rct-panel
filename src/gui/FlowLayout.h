@@ -87,6 +87,23 @@ struct FlowValue {
   bool gross;      // the 36 px font, for the value of the big PV
 };
 
+// What the household button says.
+//
+// The export state needs the meter BELOW THE FLOOR, not below zero: a household meter
+// three watts under zero is the meter talking to itself, and the panels feeding 2 kW
+// into the meter does not make the household a source. The value on the page already
+// ignores anything under the floor; the word next to it said otherwise, and the page
+// showed "Export" while the PV was exporting.
+enum FlowHausPille { FLOW_HAUS_EXPORT, FLOW_HAUS_NICHTS, FLOW_HAUS_NETZ, FLOW_HAUS_SELBST };
+
+constexpr FlowHausPille flowHausPille(float hausW, float netzW, float floorW,
+                                       float netzFloorW) {
+  return hausW < -floorW   ? FLOW_HAUS_EXPORT
+         : hausW < floorW  ? FLOW_HAUS_NICHTS
+         : netzW >= netzFloorW ? FLOW_HAUS_NETZ
+                              : FLOW_HAUS_SELBST;
+}
+
 // What may be drawn at the grid node, and it is one direction per state.
 //
 // The meter has one sign, so the node has one direction: a page with an arrow into the

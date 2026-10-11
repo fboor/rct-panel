@@ -3188,18 +3188,24 @@ static void refreshCb(lv_timer_t *t) {
       // as "importing" from its own floor on: below that the device regulates
       // around zero and the sign is noise, so a house that is only drawing its last
       // few watts from the grid is independent as far as this button is concerned.
-      // A negative house value means the household is exporting energy - the
-      // meter reads negative. This is rare but possible (e.g. a BKW that feeds
-      // back into the grid). The pill shows "Export" in red, the same
-      // colour as the active flow lines.
-      if (house < 0.0f) {
-        ovSetState(1, lv_color_hex(0xCA0C0F), tr(T_D_TEND_EXPORT));
-      } else if (house < kFlowActiveW) {
-        ovSetState(1, ST_GRAU, tr(T_D_TEND_NOLOAD));
-      } else if (pTot >= kFlowGridActiveW) {
-        ovSetState(1, ST_ORANGE, tr(T_D_TEND_MAINS));
-      } else {
-        ovSetState(1, ST_GRUEN, tr(T_D_TEND_SELF));
+      // A household meter below the floor in the negative direction means the
+      // household is exporting - rare but possible, a BKW feeding back into the grid.
+      // The word follows flowHausPille(): a meter three watts under zero is the meter
+      // talking to itself, and "Export" appeared while the panels were the ones
+      // feeding the meter.
+      switch (flowHausPille(house, pTot, kFlowActiveW, kFlowGridActiveW)) {
+        case FLOW_HAUS_EXPORT:
+          ovSetState(1, lv_color_hex(0xCA0C0F), tr(T_D_TEND_EXPORT));
+          break;
+        case FLOW_HAUS_NICHTS:
+          ovSetState(1, ST_GRAU, tr(T_D_TEND_NOLOAD));
+          break;
+        case FLOW_HAUS_NETZ:
+          ovSetState(1, ST_ORANGE, tr(T_D_TEND_MAINS));
+          break;
+        default:
+          ovSetState(1, ST_GRUEN, tr(T_D_TEND_SELF));
+          break;
       }
 
       // Batterie: charging (green) or discharging (orange), and "no current" below

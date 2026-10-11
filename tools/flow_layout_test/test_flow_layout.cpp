@@ -601,6 +601,28 @@ static void testNetzEinRichtung() {
   }
 }
 
+// What the household button says, around zero. The export state needs the meter below
+// the floor: three watts under zero is the meter talking to itself, and the panels
+// feeding the meter do not make the household a source.
+static void testHausPille() {
+  const float f = 10.0f, nf = 20.0f;
+  check(flowHausPille(-90.0f, 0.0f, f, nf) == FLOW_HAUS_EXPORT,
+        "Pille: -90 W ist Export");
+  check(flowHausPille(-3.0f, -2000.0f, f, nf) == FLOW_HAUS_NICHTS,
+        "Pille: -3 W ist Rundung, kein Export");
+  check(flowHausPille(-1.0f, 0.0f, f, nf) == FLOW_HAUS_NICHTS,
+        "Pille: -1 W ist nichts");
+  check(flowHausPille(0.0f, 0.0f, f, nf) == FLOW_HAUS_NICHTS, "Pille: 0 W ist nichts");
+  check(flowHausPille(2.0f, 0.0f, f, nf) == FLOW_HAUS_NICHTS,
+        "Pille: 2 W ist unter der Schwelle");
+  check(flowHausPille(162.0f, 0.0f, f, nf) == FLOW_HAUS_SELBST,
+        "Pille: 162 W ohne Netzbezug ist unabhaengig");
+  check(flowHausPille(162.0f, 41.0f, f, nf) == FLOW_HAUS_NETZ,
+        "Pille: 162 W mit 41 W Bezug ist Netzbezug");
+  check(flowHausPille(162.0f, 19.0f, f, nf) == FLOW_HAUS_SELBST,
+        "Pille: 19 W Bezug ist unter der Netzschwelle");
+}
+
 int main() {
   testFullDeviceIsUnchanged();
   testTheRingAndItsSectors();
@@ -611,6 +633,8 @@ int main() {
   testUnknownCaps();
   testPillGeometry();
   testWideProfile();
+  testNetzEinRichtung();
+  testHausPille();
 
   printf("%s: %d Prüfungen, %d fehlgeschlagen\n",
          g_failed == 0 ? "OK" : "FEHLER", g_checks, g_failed);
