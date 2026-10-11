@@ -13,22 +13,42 @@
 # its boot log on the same line. esptool.py does both, which is why this is a few
 # lines and not a protocol.
 #
-# The application image goes to the offset the partition table asks for - 0x10000
-# here, because partitions/16mb_app.csv puts the first app slot there - and not
-# to an address invented by this script. The bootloader and the partition table
-# are left alone; the running bootloader is what hands over to the new app.
+# The application image goes to the offset the running app sits at, not to the
+# first slot the partition table names: this panel boots 0x710000, so 0x10000 -
+# which is where app0 starts in partitions/16mb_app.csv - takes the image,
+# verifies byte for byte, and changes nothing that anyone sees. Its otadata is
+# written (measured, not inferred: two sectors with sequence numbers), so the
+# bootloader follows it instead of falling back to the factory slot. An earlier
+# version of this script flashed app0 and reported success through three updates
+# while the panel kept running what app1 held. An image with a build marker
+# printed in the web interface (RCT_BUILD_SHA) is what turned that into a reading
+# rather than an argument.
 #
-# The current app is read back into BACKUP first. Not because a botched flash is
-# expected, but because "the panel is bricked" is a much worse sentence than
-# "put this file back", and the read costs fifteen seconds.
+# The bootloader and the partition table are left alone; the running bootloader is
+# what hands over to the new app.
+#
+# No backup of the running firmware, because there is nothing to fall back to that
+# is not in the tree anyway: every image here is built from it, and a panel that
+# does not come up is flashed again rather than restored. BACKUP=pfad reads the
+# slot out first, for the one case where that is false - an image that came from
+# somewhere else and cannot be rebuilt.
 #
 # SPDX-License-Identifier: MIT
 set -e
 
 PORT=${PORT:-/dev/ttyUSB0}
 ENV=${ENV:-esp32-s3}
-OFFSET=${OFFSET:-0x10000}
-BACKUP=${BACKUP:-/tmp/rct-panel-backup.bin}
+# 0x710000 ist app1 aus partitions/16mb_app.csv und der Slot, den dieses Panel
+# bootet. 0x10000 (app0) nimmt das Image zwar an und veraendert nichts - siehe
+# den Kopf dieser Datei.
+OFFSET=${OFFSET:-0x710000}
+# Eine Taktstufe fuer beide Richtungen, und zwar die schnelle: das Lesen lief mit der
+# esptool-Vorgabe 115200 und brauchte fuer die 16 MB einer vollen Sicherung 148
+# Sekunden (88,8 kbit/s). Dieselbe Leitung schafft im Lesen 598,4 kbit/s, also 22
+# Sekunden fuer den App-Slot.
+BAUD=${BAUD:-921600}
+# Leer heisst: keine Sicherung. Gesetzt ist es ein Ziel, in das gelesen wird.
+BACKUP=${BACKUP:-}
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BIN="$ROOT/.pio/build/$ENV/firmware.bin"
 
@@ -59,16 +79,10 @@ echo "Image       $BIN ($(wc -c < "$BIN") bytes)"
 echo "Offset      $OFFSET"
 echo
 
-echo "=== 1/3 Chip lesen ==="
+echo "=== Chip lesen ==="
 "$ESP" --chip "$CHIP" --port "$PORT" chip_id
 echo
 
-echo "=== 2/3 Aktuellen Stand sichern ==="
-if [ -f "$BACKUP" ]; then
-  echo "Es gibt schon eine Sicherung: $BACKUP ($(wc -c < "$BACKUP") bytes)"
-  echo "Unverueberschreiben mit BACKUP=pfad oder BACKUP=leer"
-  exit 1
-fi
 # read_flash braucht die Groesse; die des Images ist die des alten Standes
 # ebenfalls, solange niemand etwas anderes gebaut hat.
 #
@@ -76,18 +90,26 @@ fi
 # was esptool 2.x mitgeschluckt hat und 4.x mit einem argparse-Fehler abweist - und
 # weil `set -e` gesetzt ist, brach der Flash danach ab. Die Sicherung war also nie
 # kaputt, sie hat nur nie jemanden erreicht, seit esptool 4 auf dieser Maschine liegt.
-"$ESP" --chip "$CHIP" --port "$PORT" read_flash "$OFFSET" \
-        $(wc -c < "$BIN") "$BACKUP"
-echo "Sicherung: $BACKUP"
-echo
+if [ -n "$BACKUP" ]; then
+  if [ -f "$BACKUP" ]; then
+    echo "Es gibt schon eine Sicherung: $BACKUP ($(wc -c < "$BACKUP") bytes)"
+    echo "Anderen Zielpfad mit BACKUP=pfad setzen"
+    exit 1
+  fi
+  echo "=== Aktuellen Stand sichern ==="
+  "$ESP" --chip "$CHIP" --port "$PORT" --baud "$BAUD" \
+          read_flash "$OFFSET" $(wc -c < "$BIN") "$BACKUP"
+  echo "Sicherung: $BACKUP"
+  echo
+fi
 
-echo "=== 3/3 Schreiben ==="
+echo "=== Schreiben ==="
 # --verify, and no ELF. esptool 4.x reads every second argument as an address, so
 # handing it the .elf after the .bin aborted the write with "Address ... must be a
 # number" - the flash never happened, and `set -e` turned that into a silent no-op
 # rather than a failed flash. The ELF was never a thing write_flash accepts; what it
 # was reaching for is --verify, which actually checks what landed.
-"$ESP" --chip "$CHIP" --port "$PORT" --baud 921600 \
+"$ESP" --chip "$CHIP" --port "$PORT" --baud "$BAUD" \
         write_flash --verify "$OFFSET" "$BIN"
 echo
 
