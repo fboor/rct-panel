@@ -41,6 +41,13 @@ Nachrichtentext steht. Notieren statt beheben.
 | `d869113` | Scratch-Pfad in der Nachricht | auf `origin/master` |
 | `aa0ef58` | dasselbe | auf `origin/master` |
 
+## Offene Punkte
+
+| Was | Wo |
+|---|---|
+| Build-Kennung ist ein Compiler-Flag: nach einem Commit, der andere Datei ändert, übersetzt `pio run` die Objektdateien nicht neu und das Image trägt die alte | `tools/git_sha.py`, `tools/pack_web_install.sh` |
+| Release-Binaries neu bauen, `devices.json` prüfen | `docs/install/v1.0-rc2/` |
+
 ## Sprache
 
 - Commit-Nachrichten: englisch
