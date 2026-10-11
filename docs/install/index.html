@@ -72,6 +72,18 @@
 <h1>Install the RCT Power Panel firmware</h1>
 <p class="sub">Flashing a blank panel over USB, from the browser.</p>
 
+<p class="sub">
+  An energy panel for an <b>RCT Power</b> inverter. It shows what the inverter is doing
+  right now &mdash; the power running between the house, the panels, the battery and the
+  grid &mdash; together with the day's totals and the last 24 hours as a graph. German or
+  English, whichever you pick below.
+</p>
+<p class="sub">
+  <b>Supported hardware:</b> the Guition ESP32-S3 4848S040 wall display
+  (480 &times; 480, touch). This page is for a new panel; one that already has firmware
+  updates itself from its own settings page.
+</p>
+
 <h2>Choose</h2>
 <div class="row">
   <div>
@@ -91,13 +103,6 @@
     <span slot="not-allowed">This page must be served over https://</span>
   </esp-web-install-button>
   <p class="version">Release <span id="version">&mdash;</span></p>
-</div>
-
-<div class="card warn">
-  <p>
-    <strong>Everything on the panel is erased, including its configuration.</strong>
-    An already installed panel has its own updater &mdash; use that one.
-  </p>
 </div>
 
 <h2>Next steps</h2>
@@ -120,6 +125,13 @@
   <li>The flash stopped halfway &mdash; run it again. Everything is erased first anyway.</li>
   <li>Nothing after the flash &mdash; press reset once.</li>
 </ul>
+
+<div class="card warn">
+  <p>
+    <strong>Everything on the panel is erased, including its configuration.</strong>
+    An already installed panel has its own updater &mdash; use that one.
+  </p>
+</div>
 
 <footer>
   <p>
