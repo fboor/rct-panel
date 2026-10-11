@@ -89,8 +89,8 @@ const UiLayout kGuition4848S040 = {
         // closer to its node's centre along the SAME ray it was on. The battery's sideways
         // is 60 and not 53: its node is 60 px across, and at 53 the number would start
         // inside the circle.
-        /* pvValDx */ -53, /* gridValDx */ 53, /* batValDx */ 60, /* hubValDx */ 53,
-        /* pvValDy */ 29,  /* gridValDy */ 29,  /* batValDy */ 19,  /* hubValDy */ 29,
+        /* pvValDx */ -53, /* gridValDx */ 58, /* batValDx */ 60, /* hubValDx */ 53,
+        /* pvValDy */ 29,  /* gridValDy */ 28,  /* batValDy */ 19,  /* hubValDy */ 29,
         /* alleinValW */ 200,
     },
     // The "today" cards. Three columns on top, two below, and the cell width comes

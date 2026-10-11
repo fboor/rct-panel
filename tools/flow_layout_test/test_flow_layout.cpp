@@ -88,7 +88,7 @@ static void testFullDeviceIsUnchanged() {
   check(L.valPv.x == 26 && L.valPv.y == 97 && !L.valPv.gross,
         "voll: PV-Wert links unten am Knoten und klein");
   check(L.valHouse.x == 233 && L.valHouse.y == 155, "voll: Haus-Wert rechts der Akkuleitung");
-  check(L.valGrid.x == 333 && L.valGrid.y == 97,
+  check(L.valGrid.x == 338 && L.valGrid.y == 96,
         "voll: Netz-Wert rechts unten am Knoten");
   check(L.valBattery.x == 240 && L.valBattery.y == 257,
         "voll: Akku-Wert rechts unten am Knoten");
@@ -179,8 +179,8 @@ static void testTheRingAndItsSectors() {
   checkEq((f.hubX - ringWeite(L.valPv.y)) - pvTextRechts, 15,
           "Ring: 15 px Luft zwischen Bogen und PV-Zahl");
   const int16_t netzTextLinks = (int16_t)(L.valGrid.x + f.valW / 2 - textHalb);
-  checkEq(netzTextLinks - (f.hubX + ringWeite(L.valGrid.y)), 14,
-          "Ring: 14 px Luft zwischen Bogen und Netz-Zahl");
+  checkEq(netzTextLinks - (f.hubX + ringWeite(L.valGrid.y)), 19,
+          "Ring: 19 px Luft zwischen Bogen und Netz-Zahl");
   checkEq((f.hubX + ringWeite(L.valHouse.y)) -
               (L.valHouse.x + f.valW / 2 + textHalb),
           32, "Ring: 32 px Luft zwischen Bogen und Haus-Zahl");
