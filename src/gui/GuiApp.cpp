@@ -2650,6 +2650,16 @@ static void pageBuildGraph(AppPage *p) {
     lv_obj_set_style_pad_all(scaleLabels[i], 2, 0);
     lv_obj_set_style_radius(scaleLabels[i], 3, 0);
   }
+  // The zero marker is "0" for its whole life, while the other two carry "3,4 kW" or
+  // "-2,1". Its field is therefore as wide as that one digit and the padding around
+  // it - and not the 52 px of its neighbours, whose card-coloured background sits over
+  // the left end of every series line whether a digit needs it or not.
+  {
+    lv_point_t sz;
+    lv_text_get_size(&sz, "0", &lv_font_montserrat_14_uml, 0, 0, LV_COORD_MAX,
+                     LV_TEXT_FLAG_NONE);
+    lv_obj_set_width(s_scaleZero, sz.x + 4);
+  }
 
   // --- Gap summary ---
   // The chart itself shows where the recording broke (the stroke is interrupted).
