@@ -8,6 +8,8 @@
 // answers of a simulator run captured in the file below.
 //
 // SPDX-License-Identifier: MIT
+#include <unistd.h>
+
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -175,6 +177,41 @@ static void testHighBytes() {
   checkNear(v, 1.0, "x = 1");
 }
 
+// Ein Dokument, das der Scanner nicht lesen kann, muss die Suche beenden und
+// nicht endlos drehen. Der Treffer: ein Komma dort, wo ein Schluessel stehen
+// muss. skipValue() liest einen nackten Wert bis zum Komma und steht dann
+// wieder auf demselben Byte - die Schleife kam nie weiter. Auf dem Geraet ist
+// das keine Ausnahme, sondern eine Antwort, die nicht das ist, was der Treiber
+// erwartet: eine Fehlerseite des Geraets, ein Komma an erster Stelle, ein Wert
+// mit einfachen statt doppelten Anfuehrungszeichen. Ein Panel, das darauf
+// wartet, zeigt gar nichts mehr, also wird hier jede der Formen aufgerufen -
+// haengen wuerde den Test zum Haeenger machen, also mit einer Grenze darum.
+static void testBrokenInputTerminates() {
+  double v = 0;
+  char buf[32] = {0};
+  struct {
+    const char *json;
+    const char *was;
+  } faelle[] = {
+      {"{, \"a\": 5}", "Komma an erster Stelle"},
+      {"{'a': 5, \"b\": 2}", "einfache Anfuehrungszeichen"},
+      {"{\"_x\": \"'a': 1\", \"b\": 2}", "Anfuehrungszeichen in einem Wert"},
+      {"<!DOCTYPE html>\n<html><body>Error, 502</body></html>", "Fehlerseite"},
+      {"{\"DcPower\": 23", "gekappte Antwort"},
+      {"{\"a\": 1,, \"b\": 2}", "zwei Kommas"},
+  };
+  for (const auto &f : faelle) {
+    // getNumber, getString und has laufen ueber dieselbe Schleife; alle drei
+    // werden aufgerufen, weil jede fuer sich stehen bleiben kann.
+    alarm(5); // ein Hang waere ein Test ohne Ende
+    (void)json::getNumber(f.json, strlen(f.json), "a", &v);
+    (void)json::getString(f.json, strlen(f.json), "a", buf, sizeof(buf));
+    (void)json::has(f.json, strlen(f.json), "a");
+    alarm(0);
+    check(true, f.was);
+  }
+}
+
 int main() {
   testNumbersFromTheWire();
   testStrings();
@@ -183,6 +220,7 @@ int main() {
   testWrongTypes();
   testTruncated();
   testHighBytes();
+  testBrokenInputTerminates();
 
   printf("%s: %d Prüfungen, %d fehlgeschlagen\n",
          g_failed == 0 ? "OK" : "FEHLER", g_checks, g_failed);

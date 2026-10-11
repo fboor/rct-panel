@@ -96,6 +96,18 @@ static inline const char *skipValue(const char *p, const char *end) {
   return p;
 }
 
+// The same step, but it always leaves the position it was given. skipValue()
+// stands still when the byte in front of it is a comma or a closing brace - the
+// bare token is over before it starts - and a scan loop that came back to the
+// same byte would go round for ever. The three public readers below call this
+// instead, because a document they cannot read is an answer from a device, not a
+// programming error: the scan has to run out of input rather than out of
+// patience, and a panel that hangs on one bad answer shows nothing at all.
+static inline const char *skipValueStep(const char *p, const char *end) {
+  const char *q = skipValue(p, end);
+  return (q > p) ? q : (p < end ? p + 1 : end);
+}
+
 // UTF-8 from a \u escape, for a JSON producer that writes one. A producer that
 // writes UTF-8 directly (which ArduinoJSON does) never gets here, but a name
 // like "Wechselrichter \u00fc" would otherwise reach the display as the six
@@ -158,7 +170,7 @@ static inline bool getString(const char *json, size_t len, const char *key,
       break;
     }
     if (*p != '"') {
-      p = skipValue(p, end);
+      p = skipValueStep(p, end);
       continue;
     }
     // The key.
@@ -206,7 +218,7 @@ static inline bool getString(const char *json, size_t len, const char *key,
       dst[n] = '\0';
       return true;
     }
-    p = skipValue(p, end);
+    p = skipValueStep(p, end);
     p = skipSpace(p, end);
     if (p < end && *p == ',') {
       p++;
@@ -236,7 +248,7 @@ static inline bool getNumber(const char *json, size_t len, const char *key,
       break;
     }
     if (*p != '"') {
-      p = skipValue(p, end);
+      p = skipValueStep(p, end);
       continue;
     }
     const char *ks = ++p;
@@ -267,7 +279,7 @@ static inline bool getNumber(const char *json, size_t len, const char *key,
       *out = strtod(buf, nullptr);
       return true;
     }
-    p = skipValue(p, end);
+    p = skipValueStep(p, end);
     p = skipSpace(p, end);
     if (p < end && *p == ',') {
       p++;
@@ -293,7 +305,7 @@ static inline bool has(const char *json, size_t len, const char *key) {
       break;
     }
     if (*p != '"') {
-      p = skipValue(p, end);
+      p = skipValueStep(p, end);
       continue;
     }
     const char *ks = ++p;
@@ -311,7 +323,7 @@ static inline bool has(const char *json, size_t len, const char *key) {
     if (match) {
       return true;
     }
-    p = skipValue(p, end);
+    p = skipValueStep(p, end);
     p = skipSpace(p, end);
     if (p < end && *p == ',') {
       p++;
