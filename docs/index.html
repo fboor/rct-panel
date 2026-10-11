@@ -39,12 +39,30 @@
   }
   a:hover { border-color: #8ab4f8; }
   p { color: #9aa0a6; font-size: .875rem; margin: 1.5rem 0 0; }
+  .text {
+    max-width: 34rem; margin: 1.75rem auto 0; text-align: left;
+    color: #9aa0a6; font-size: .9375rem; line-height: 1.7;
+  }
+  .text b { color: #e8eaed; font-weight: 600; }
+  .text p { margin: 0 0 .75rem; font-size: inherit; }
 </style>
 </head>
 <body>
 <main>
   <h1>RCT Power Panel</h1>
   <a href="install/">Install the firmware</a>
+  <div class="text">
+    <p>
+      An energy panel for an <b>RCT Power</b> inverter. It shows what the inverter is
+      doing right now &mdash; the power running between the house, the panels, the battery
+      and the grid &mdash; together with the day's totals and the last 24 hours as a
+      graph. German or English, whichever the panel is set to.
+    </p>
+    <p>
+      <b>Supported hardware:</b> the Guition ESP32-S3 4848S040 wall display
+      (480 &times; 480, touch). The installer lists what it can flash.
+    </p>
+  </div>
   <p>Not affiliated with RCT Power GmbH.</p>
 </main>
 </body>
