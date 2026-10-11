@@ -52,6 +52,9 @@
 #include <WebServer.h>
 #include <WiFi.h>
 #include <esp_system.h>
+#include <esp_ota_ops.h>
+#include <esp_partition.h>
+
 #include <uri/UriBraces.h>
 
 #include <stdlib.h>
@@ -63,6 +66,23 @@
 // language says which one a device is running. The commit is on the same line:
 // with two app slots the number alone does not say which of two builds of the
 // same version a device is running.
+// Which slot the panel is running from, printed with the version. It is the one
+// thing that decides where an update has to go: with two app slots and a bootloader
+// that picks by itself, a write to the wrong one verifies and changes nothing that
+// anyone sees. The browser installer writes app0 and leaves no valid selection, the
+// panel's own OTA writes the other slot and selects it - so the slot follows from
+// how the firmware was last installed, and it has to be readable rather than guessed.
+static const char *laufenderSlot() {
+  static char s[24];
+  const esp_partition_t *p = esp_ota_get_running_partition();
+  if (p == nullptr) {
+    strlcpy(s, "unbekannt", sizeof(s));
+    return s;
+  }
+  snprintf(s, sizeof(s), "%s @0x%06X", p->label, p->address);
+  return s;
+}
+
 static const char kPanelVersion[] =
     RCT_FW_VERSION_FULL " " RCT_LANG_NAME " " RCT_BUILD_SHA;
 
@@ -476,6 +496,7 @@ void handleRoot() {
   escape(s.firmwareVersion, escName, sizeof(escName));
   row(T_ROW_CONTROLLER, escName[0] ? escName : "--");
   row(T_ROW_FW_PANEL, kPanelVersion);
+  row(T_ROW_FW_SLOT, laufenderSlot());
   snprintf(v, sizeof(v), "%lu s", (unsigned long)(millis() / 1000));
   row(T_ROW_UPTIME, v);
   snprintf(v, sizeof(v), "%u kB", (unsigned)(ESP.getFreeHeap() / 1024));

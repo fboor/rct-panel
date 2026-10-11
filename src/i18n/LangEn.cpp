@@ -50,6 +50,7 @@ const char *const kLang[T_COUNT] = {
     "Name",                             // T_ROW_INVERTER_NAME
     "Controller firmware",              // T_ROW_CONTROLLER
     "Panel firmware",                   // T_ROW_FW_PANEL
+    "Running slot",                   // T_ROW_FW_SLOT
     "Uptime",                           // T_ROW_UPTIME
     "Free memory",                      // T_ROW_FREEMEM
     "SD card",                          // T_ROW_SDCARD

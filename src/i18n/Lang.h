@@ -86,6 +86,7 @@ enum LangId : int {
   T_ROW_INVERTER_NAME, // what the device calls itself
   T_ROW_CONTROLLER,
   T_ROW_FW_PANEL,
+  T_ROW_FW_SLOT, // which app slot the panel is running from
   T_ROW_UPTIME,
   T_ROW_FREEMEM,
   T_ROW_SDCARD,
