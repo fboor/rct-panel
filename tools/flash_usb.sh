@@ -35,8 +35,11 @@
 # been OTA-ed comes back to the factory slot on the next USB update - which is the
 # price of not having to ask anybody where their panel is booting from.
 #
-# The bootloader and the partition table are left alone; the running bootloader is
-# what hands over to the new app.
+# The bootloader and the partition table are left alone, on purpose: this is an update
+# of a panel that is already running, and its bootloader is what hands over to the new
+# app. A panel whose partition table still comes from a release before the first one
+# (app0, otadata, the two app slots) is not a panel to update this way - that is what
+# the browser installer is for, and it writes all three parts.
 #
 # No backup of the running firmware, because there is nothing to fall back to that
 # is not in the tree anyway: every image here is built from it, and a panel that
