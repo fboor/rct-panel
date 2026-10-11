@@ -871,6 +871,22 @@ pio run -e esp32-s3 -t upload    # flash (USB)
 pio device monitor               # serial diagnostics, 115200 baud
 ```
 
+```sh
+tools/flash_usb.sh              # as -t upload, plus erasing the boot selection
+```
+
+**Which slot runs follows from how the firmware was last installed.** After an update
+through the panel's own web interface the panel boots the second app slot (0x710000),
+after an installation through the browser the first one (0x10000). An update written
+to the other one is written, verified byte for byte, and changes nothing — with no
+error message. `tools/flash_usb.sh` therefore erases the boot selection first and
+writes to the first slot; the panel then boots what was just written. The slot a panel
+is running from is in its info page ("Running slot" row).
+
+This writes the application only. A panel whose partition table still comes from
+before the first release is not one to update this way — the browser installer is for
+that, and it writes bootloader, partition table and application together.
+
 Diagnostic messages (e.g. `RCT: grid ...`) appear in the serial monitor.
 To reset to factory defaults: `pio run -e esp32-s3 -t erase` (erases
 saved Wi-Fi and RCT configuration).

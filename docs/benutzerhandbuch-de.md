@@ -880,6 +880,23 @@ pio run -e esp32-s3 -t upload    # flashen (USB)
 pio device monitor               # serielle Diagnose, 115200 Baud
 ```
 
+```sh
+tools/flash_usb.sh              # wie -t upload, plus das Loeschen der Boot-Auswahl
+```
+
+**Welcher Slot laeuft, ist eine Folge davon, wie zuletzt geflasht wurde.** Nach einem
+Update ueber die Weboberflaeche bootet das Panel den zweiten App-Slot (0x710000),
+nach einer Installation ueber den Browser den ersten (0x10000). Ein Update auf den
+anderen Slot wird geschrieben, Byte fuer Byte verifiziert und bleibt ohne Wirkung —
+ohne Fehlermeldung. `tools/flash_usb.sh` loescht deshalb zuerst die Boot-Auswahl und
+schreibt danach in den ersten Slot; danach bootet das Panel zwingend, was gerade
+geschrieben wurde. Welchen Slot ein Panel gerade nutzt, steht in der Info-Seite der
+Weboberflaeche (Zeile „Fahrslot“).
+
+Der Weg schreibt nur die Anwendung. Ein Panel mit einer Partitionstabelle aus der
+Zeit vor dem ersten Release gehoert nicht hierher — dafuer ist der Installer im
+Browser da, der Bootloader, Partitionstabelle und Anwendung gemeinsam schreibt.
+
 Diagnosemeldungen (z. B. `RCT: grid ...`) erscheinen im seriellen Monitor.
 Zur Werkseinstellung zurück: `pio run -e esp32-s3 -t erase` (löscht
 gespeichertes WLAN und RCT-Konfiguration).
