@@ -2943,11 +2943,15 @@ static void refreshCb(lv_timer_t *t) {
       // sign: a node cannot be a source and a sink at the same time.
       const bool ohneDaten = !has;
       const FlowNetzPfeile netzPfeile = flowNetzPfeile(!ohneDaten && s.gridExchangeW > 0.0f);
-      // The four ring sectors, at the floor of the node they run between.
+      // The four ring sectors, each at the floor of the node it runs into or out of:
+      // the two that touch the grid ask the grid (30 W), the two that touch the battery
+      // ask the battery (10 W). Measured on 2026-10-11, where the battery's share of the
+      // grid line stood at 15 W: the lower right arc was lit, the grid node showed no
+      // figure - an arrow for a feed-in of two watts.
       const bool pvAnsNetz = netzPfeile.pvInsNetz && !ohneDaten && fs.pvToGrid >= kFlowGridActiveW;
       const bool pvAnsAkku = !ohneDaten && fs.pvToBattery >= kFlowActiveW;
-      const bool akkuAnNetz = netzPfeile.akkuInsNetz && !ohneDaten && fs.battToGrid >= kFlowActiveW;
-      const bool netzAnAkku = netzPfeile.netzInsAkku && !ohneDaten && fs.gridToBattery >= kFlowActiveW;
+      const bool akkuAnNetz = netzPfeile.akkuInsNetz && !ohneDaten && fs.battToGrid >= kFlowGridActiveW;
+      const bool netzAnAkku = netzPfeile.netzInsAkku && !ohneDaten && fs.gridToBattery >= kFlowGridActiveW;
 
     // --- Grid ---
     // Island mode (grid outage): warning triangle on the connector. The flag
