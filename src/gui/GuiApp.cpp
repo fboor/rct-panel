@@ -40,7 +40,8 @@
 #include <string.h>
 #include <time.h>
 
-#include <Preferences.h>
+#include <nvs.h>
+#include <nvs_flash.h>
 #include <WiFi.h>
 
 #include "GuiApp.h"
@@ -205,34 +206,58 @@ static void themeDurchlaufen(lv_obj_t *o, bool aufBg) {
   }
 }
 
-// The theme is the only thing of ours in this namespace, which keeps the question
-// "what does the panel remember" answerable by looking at two places.
-static Preferences prefs;
+// The theme and the layout key are the only things of ours in the "gui" namespace,
+// which keeps "what does the panel remember" answerable by looking in two places.
+//
+// Both go in through the NVS API and not through Arduino's Preferences. Preferences
+// refused the write on this panel for as long as anybody remembers: begin() answered
+// yes, putUChar() answered no, the partition had 466 free entries, and the same key
+// written with nvs_set_u8 in the same call landed. Nothing ever said so - the return
+// value was ignored - so the theme was dark again after every restart and the diagram
+// was rebuilt on every boot. Measured 2026-10-11; the failure is silent, so the write
+// says what it did.
+static bool guiU8(const char *key, uint8_t *wert, bool schreiben) {
+  nvs_handle_t h = 0;
+  if (nvs_open("gui", schreiben ? NVS_READWRITE : NVS_READONLY, &h) != ESP_OK) {
+    return false;
+  }
+  bool ok;
+  if (schreiben) {
+    ok = nvs_set_u8(h, key, *wert) == ESP_OK && nvs_commit(h) == ESP_OK;
+  } else {
+    ok = nvs_get_u8(h, key, wert) == ESP_OK;
+  }
+  nvs_close(h);
+  return ok;
+}
 
 static void themeLaden() {
-  prefs.begin("gui", false);
-  s_hell = prefs.getUChar("theme", 0) != 0;
-  s_flowKey = prefs.getUChar("flowcaps", 0xFF);
-  prefs.end();
+  uint8_t thema = 0;
+  guiU8("theme", &thema, false);
+  s_hell = thema != 0;
+  uint8_t key = 0xFF;
+  guiU8("flowcaps", &key, false);
+  s_flowKey = key;
 }
+
 
 // Called once when the live capabilities turn out to be different from what the
 // page was built with - i.e. when this device is not the one that was there at
 // the last boot. One line in the log, because a diagram that changed shape is
 // something to be able to explain afterwards.
 static void flowKeySpeichern(uint8_t key) {
-  prefs.begin("gui", true);
-  prefs.putUChar("flowcaps", key);
-  prefs.end();
+  guiU8("flowcaps", &key, true);
   Serial.printf("gui: Diagramm neu aufgebaut - Haus %s, Akku %s, Netz %s\n",
                 (key & 1u) ? "ja" : "nein", (key & 2u) ? "ja" : "nein",
                 (key & 4u) ? "ja" : "nein");
 }
 
 static void themeSpeichern() {
-  prefs.begin("gui", true);
-  prefs.putUChar("theme", s_hell ? 1 : 0);
-  prefs.end();
+  uint8_t wert = s_hell ? 1 : 0;
+  if (!guiU8("theme", &wert, true)) {
+    Serial.printf("gui: Theme %s liess sich nicht speichern - nach dem Neustart"
+                  " wieder dunkel\n", s_hell ? "hell" : "dunkel");
+  }
 }
 
   // Energiefluss palette (reference values)
