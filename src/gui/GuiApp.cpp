@@ -319,11 +319,9 @@ static const char kSolarIcon[] =
 // text is centred in what starts there.
 #define OV_ICO_X 12
 #define OV_ICO_W 24
-// What counts as "nothing happening" for the buttons: below 10 W there is no
-// household draw and no battery current to name, and the grid only counts as
-// importing from 20 W (the device regulates around zero below that).
-#define OV_BTN_NONE_W 10.0f
-#define OV_BTN_GRID_W 20.0f
+// What counts as "nothing happening" for the buttons, and how much a node has to move
+// before it is named at all: the floors in Rules.h, the same ones the lines are drawn
+// with, so a button cannot announce a flow its node does not show.
 // The diagram sits in a container of its own (see pageBuildOverview), so the
 // space the buttons freed up can be handed to it by moving one object instead of
 // fifteen coordinates that would have to stay in step. 35 px: the heading ends at
@@ -2906,6 +2904,15 @@ static void refreshCb(lv_timer_t *t) {
       // What goes where, once. The connectors and the ring both read it, so a
       // connector and the sector beside it cannot disagree about the same power.
       const FlowSplit fs = ruleFlowSplit(s);
+      // Which way the meter runs is decided once, in FlowLayout.h, from the meter's
+      // sign: a node cannot be a source and a sink at the same time.
+      const bool ohneDaten = !has;
+      const FlowNetzPfeile netzPfeile = flowNetzPfeile(!ohneDaten && s.gridExchangeW > 0.0f);
+      // The four ring sectors, at the floor of the node they run between.
+      const bool pvAnsNetz = netzPfeile.pvInsNetz && !ohneDaten && fs.pvToGrid >= kFlowGridActiveW;
+      const bool pvAnsAkku = !ohneDaten && fs.pvToBattery >= kFlowActiveW;
+      const bool akkuAnNetz = netzPfeile.akkuInsNetz && !ohneDaten && fs.battToGrid >= kFlowActiveW;
+      const bool netzAnAkku = netzPfeile.netzInsAkku && !ohneDaten && fs.gridToBattery >= kFlowActiveW;
 
     // --- Grid ---
     // Island mode (grid outage): warning triangle on the connector. The flag
@@ -2929,20 +2936,29 @@ static void refreshCb(lv_timer_t *t) {
       lv_obj_add_flag(ov.labels[OV_ISLAND], LV_OBJ_FLAG_HIDDEN);
     }
     if (has) {
-      const bool fliesst = fs.gridToHouse >= kFlowGridActiveW;
-      // The node's own number follows the METER, both directions: it is the exchange
-      // at that connection and the number belongs there whether power comes or goes.
-      if (fabsf(pTot) >= kFlowGridActiveW) {
+      // The spoke takes the direction the meter reports: while the meter says import it
+      // is the only thing drawn at the node, and while it says export the household's
+      // export is what the spoke carries (houseToGrid), not the import.
+      const bool fliesst = netzPfeile.netzInsHaus && fs.gridToHouse >= kFlowGridActiveW;
+      const bool exportGrid = netzPfeile.hausInsNetz && fs.houseToGrid >= kFlowGridActiveW;
+      // The node's own number, and nothing else: the METER, both directions. The lines
+      // beside it carry the model's split of the same measurement, so they can differ
+      // from it by what the plant loses on the way - that is the measurement, not a
+      // drawing, and the number stays what the device reported.
+      //
+      // But only while one of the node's lines carries something. A number with no
+      // arrow says a flow the diagram does not draw, and the split is what cannot place
+      // it: a meter reporting 158 W of feed-in while a battery takes 83 W and the
+      // panels have 5 W over - the feed-in cannot charge the battery, so 78 W of it have
+      // no source and the page showed "-83 W" at a battery nothing pointed at.
+      const bool netzTraegt = fliesst || exportGrid || pvAnsNetz || akkuAnNetz || netzAnAkku;
+      if (fabsf(pTot) >= kFlowGridActiveW && netzTraegt) {
         setPower(ov.labels[OV_GRID_VAL], pTot);
         lv_obj_set_style_text_color(ov.labels[OV_GRID_VAL], FLOW_RED, 0);
       } else {
         lv_label_set_text(ov.labels[OV_GRID_VAL], blank);
         lv_obj_set_style_text_color(ov.labels[OV_GRID_VAL], FLOW_WHITE, 0);
       }
-      // A negative house value means the household exports: the grid spoke
-      // carries the export (houseToGrid), not the import (gridToHouse).
-      // The line is only red when there is an actual flow on it.
-      const bool exportGrid = !fliesst && fs.houseToGrid >= kFlowGridActiveW;
       lv_obj_set_style_line_color(s_lineGrid, (fliesst || exportGrid) ? FLOW_RED : FLOW_LINE, 0);
       // The arrow follows the direction the power runs. On an import it points
       // into the house (the stored hub -> node direction); while the household
@@ -2994,11 +3010,18 @@ static void refreshCb(lv_timer_t *t) {
     // reach, fs.pvToHouse stays at zero, and following the connector's rule left the
     // one number this page exists for empty. Red while something is being produced, the
     // same reading the battery's number gets.
-    const bool pvFliesst = has && fs.pvToHouse >= kFlowPvActiveW;
+    //
+    // And it follows the ring: the panels that go only into the battery or only into
+    // the meter light their sectors on their own, and a production with nothing of it
+    // reaching the house still has to be named at the node that produces it.
+    const bool pvFliesst = has && fs.pvToHouse >= kFlowActiveW;
     const bool pvIstDieGanzeseite = !s_layout.linkPv.visible;
-    const bool pvArbeitet =
-        pvFliesst || (pvIstDieGanzeseite && pvTotal >= kFlowPvActiveW);
-    if (has && (pvFliesst || pvIstDieGanzeseite)) {
+    // What the node is asked, and what the number beside it: is anything being
+    // PRODUCED.
+    const bool pvProduziert = has && pvTotal >= kFlowActiveW;
+    const bool pvArbeitet = pvProduziert || (pvIstDieGanzeseite && pvTotal >= kFlowActiveW);
+    const bool pvTraegt = pvFliesst || pvAnsNetz || pvAnsAkku || pvIstDieGanzeseite;
+    if (has && pvProduziert && pvTraegt) {
       setPower(ov.labels[OV_PV_VAL], pvTotal);
       lv_obj_set_style_text_color(ov.labels[OV_PV_VAL],
                                   pvArbeitet ? FLOW_RED : FLOW_WHITE, 0);
@@ -3025,14 +3048,17 @@ static void refreshCb(lv_timer_t *t) {
       // and it is red, because a battery taking 1.2 kW is doing something.
       if (s.haveBattery) {
         setText(ov.labels[OV_BAT_SOC], "%.0f %%", s.socPct);
-        if (fabsf(pBat) >= kFlowBatActiveW) {
+        const bool fliesstBatt =
+            has && (fs.battToHouse >= kFlowActiveW || fs.houseToBattery >= kFlowActiveW);
+        const bool akkuTraegt = fliesstBatt || pvAnsAkku || netzAnAkku;
+        if (fabsf(pBat) >= kFlowActiveW && akkuTraegt) {
           setPower(ov.labels[OV_BAT_VAL], pBat);
           lv_obj_set_style_text_color(ov.labels[OV_BAT_VAL], FLOW_RED, 0);
         } else {
           lv_label_set_text(ov.labels[OV_BAT_VAL], has ? blank : dash);
           lv_obj_set_style_text_color(ov.labels[OV_BAT_VAL], FLOW_WHITE, 0);
         }
-        const bool fliesst = has && (fs.battToHouse >= kFlowBatActiveW || fs.houseToBattery >= kFlowBatActiveW);
+        const bool fliesst = fliesstBatt;
         lv_obj_set_style_line_color(s_lineBat, fliesst ? FLOW_RED : FLOW_LINE, 0);
         // The house exports into the battery: the arrow has to point the other way.
         // The link is stored hub -> node (house at the top, battery below), so the
@@ -3089,7 +3115,10 @@ static void refreshCb(lv_timer_t *t) {
     // It is the same case as the three above it - measured, nothing happening - and now
     // says the same thing they do, which is nothing. What is left to say "the meter works"
     // is that its node and its three lines are drawn at all.
-    if (has && house >= 5.0f) {
+    const bool hausTraegt = pvFliesst || fs.battToHouse >= kFlowActiveW ||
+                            fs.houseToBattery >= kFlowActiveW ||
+                            fs.gridToHouse >= kFlowGridActiveW;
+    if (has && house >= kFlowActiveW && hausTraegt) {
       setPower(ov.labels[OV_HOUSE_VAL], house);
       lv_obj_set_style_text_color(ov.labels[OV_HOUSE_VAL], FLOW_RED, 0);
     } else {
@@ -3108,11 +3137,6 @@ static void refreshCb(lv_timer_t *t) {
       // Three comparisons and nothing more: the figure that used to stand on each sector
       // is gone, so a sector is lit or not, and its arrowhead appears with it.
       if (s_layout.keilOben.visible) {
-        const bool ohneDaten = !has;
-        const bool pvAnsNetz = !ohneDaten && fs.pvToGrid >= kFlowPvActiveW;
-        const bool pvAnsAkku = !ohneDaten && fs.pvToBattery >= kFlowPvActiveW;
-        const bool akkuAnNetz = !ohneDaten && fs.battToGrid >= kFlowBatActiveW;
-        const bool netzAnAkku = !ohneDaten && fs.gridToBattery >= kFlowBatActiveW;
         keilSetzen(0, pvAnsNetz);
         keilSetzen(1, pvAnsAkku);
         keilSetzen(2, akkuAnNetz || netzAnAkku);
@@ -3139,10 +3163,10 @@ static void refreshCb(lv_timer_t *t) {
       // it - without that, a house running on S0 would read as "Erzeugung" in
       // orange while its own production covered it.
       //
-      // Below 20 W the word, not the dash: the dash says "the device has not
+      // Below the floor the word, not the dash: the dash says "the device has not
       // reported a value yet", and at that point it has - the panels are simply
-      // other five. The dash stays for the case where no value has arrived at all.
-      if (pvTotal < kFlowPvActiveW) {
+      // below it. The dash stays for the case where no value has arrived at all.
+      if (pvTotal < kFlowActiveW) {
         ovSetState(0, ST_GRAU, tr(T_D_TEND_INACTIVE));
       } else if (house > pvTotal) {
         ovSetState(0, ST_ORANGE, tr(T_D_ROW_PRODUCTION));
@@ -3151,28 +3175,28 @@ static void refreshCb(lv_timer_t *t) {
       }
 
       // Verbrauch: nothing at all, or where the power comes from. The grid counts
-      // as "importing" from 20 W on: below that the device regulates around zero
-      // and the sign is noise, so a house that is only drawing its last few watts
-      // from the grid is independent as far as this button is concerned.
+      // as "importing" from its own floor on: below that the device regulates
+      // around zero and the sign is noise, so a house that is only drawing its last
+      // few watts from the grid is independent as far as this button is concerned.
       // A negative house value means the household is exporting energy - the
       // meter reads negative. This is rare but possible (e.g. a BKW that feeds
       // back into the grid). The pill shows "Export" in red, the same
       // colour as the active flow lines.
       if (house < 0.0f) {
         ovSetState(1, lv_color_hex(0xCA0C0F), tr(T_D_TEND_EXPORT));
-      } else if (house < OV_BTN_NONE_W) {
+      } else if (house < kFlowActiveW) {
         ovSetState(1, ST_GRAU, tr(T_D_TEND_NOLOAD));
-      } else if (pTot >= OV_BTN_GRID_W) {
+      } else if (pTot >= kFlowGridActiveW) {
         ovSetState(1, ST_ORANGE, tr(T_D_TEND_MAINS));
       } else {
         ovSetState(1, ST_GRUEN, tr(T_D_TEND_SELF));
       }
 
       // Batterie: charging (green) or discharging (orange), and "no current" below
-      // 10 W rather than a direction that flips with the last rounding error.
+      // the floor rather than a direction that flips with the last rounding error.
       if (!s.haveBattery) {
         ovSetState(2, ST_GRAU, tr(T_D_TEND_NOBAT));
-      } else if (fabsf(pBat) < OV_BTN_NONE_W) {
+      } else if (fabsf(pBat) < kFlowActiveW) {
         ovSetState(2, ST_GRAU, tr(T_D_TEND_STANDBY));
       } else if (pBat < 0.0f) {
         ovSetState(2, ST_GRUEN, tr(T_D_TEND_CHARGE));

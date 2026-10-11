@@ -583,6 +583,24 @@ static void testWideProfile() {
           "800x480: 126 px zwischen der Spalte und dem Ring");
 }
 
+// The grid node draws one direction per state. Not a matter of taste: with 41 W of
+// import and a red sector out of the panels, the page showed an arrow into the meter
+// and one out of it, and the meter has one sign. The figures are not asked about here
+// - what the split wants to place may be above any floor and must not turn this on.
+static void testNetzEinRichtung() {
+  for (int bezug = 0; bezug < 2; bezug++) {
+    const FlowNetzPfeile p = flowNetzPfeile(bezug != 0);
+    const int hinein = (p.netzInsHaus ? 1 : 0) + (p.netzInsAkku ? 1 : 0);
+    const int heraus = (p.hausInsNetz ? 1 : 0) + (p.pvInsNetz ? 1 : 0) + (p.akkuInsNetz ? 1 : 0);
+    check(!(hinein > 0 && heraus > 0),
+          "Netzknoten: nie Bezug und Einspeisung zugleich");
+    check(hinein + heraus > 0, "Netzknoten: eine Richtung wird gezeichnet");
+    // And the direction is the meter's: draw is what it says, feed-in what it does not.
+    check(p.netzInsHaus == (bezug != 0), "Netzknoten: Bezug zeichnet aus dem Zaehler");
+    check(p.hausInsNetz == (bezug == 0), "Netzknoten: Export zeichnet in den Zaehler");
+  }
+}
+
 int main() {
   testFullDeviceIsUnchanged();
   testTheRingAndItsSectors();

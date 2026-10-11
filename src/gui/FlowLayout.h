@@ -87,6 +87,30 @@ struct FlowValue {
   bool gross;      // the 36 px font, for the value of the big PV
 };
 
+// What may be drawn at the grid node, and it is one direction per state.
+//
+// The meter has one sign, so the node has one direction: a page with an arrow into the
+// meter and another out of it contradicts itself, and the user saw exactly that on
+// 2026-10-11 - 41 W of import next to a red sector out of the panels. The split can ask
+// for both at once, because its four figures come from four moments and the plant loses
+// power on the way; the meter is the one thing measured at that connection, so its sign
+// decides and the other direction is not drawn, whatever its figure is worth.
+//
+// Two sets, never both: the meter supplies (into the house, into the battery) or
+// everything supplies it (the household's export, the panels, the battery).
+struct FlowNetzPfeile {
+  bool netzInsHaus;  // hub spoke: the meter feeds the house
+  bool netzInsAkku;  // lower right sector: the meter charges the battery
+  bool hausInsNetz;  // hub spoke: the household exports
+  bool pvInsNetz;    // top sector: the panels feed the meter
+  bool akkuInsNetz;  // lower right sector: the battery feeds the meter
+};
+
+constexpr FlowNetzPfeile flowNetzPfeile(bool meterBezug) {
+  return meterBezug ? FlowNetzPfeile{true, true, false, false, false}
+                    : FlowNetzPfeile{false, false, true, true, true};
+}
+
 // Where the ring's three sectors begin and end, and where their figures stand.
 //
 // The cut between the top sector and the two lower ones sits 0.2 radii above the

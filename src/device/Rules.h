@@ -115,13 +115,12 @@ struct FlowSplit {
   float houseToBattery; // hub spoke to the battery, when the house exports
 };
 
-// The panel's thresholds, unchanged: 50 W for the grid and the battery, 20 W for
-// generation. Written here rather than in the caller because two drawings of the same
-// instant that answer "is that a flow" differently are worse than a threshold that is
-// slightly too high - one of the two is wrong and nobody can say which.
-constexpr float kFlowGridActiveW = 50.0f; // below = standby
-constexpr float kFlowPvActiveW = 20.0f;   // below = no visible generation
-constexpr float kFlowBatActiveW = 50.0f;  // below = standby
+// Below its floor a meter is talking to itself rather than reporting a flow: the panel
+// draws nothing and names nothing. One floor for the page, so a line and the number at
+// its end are decided by the same rule; the grid carries its own, because its meter
+// regulates around zero harder than the others do.
+constexpr float kFlowActiveW = 10.0f;
+constexpr float kFlowGridActiveW = 20.0f;
 
 inline FlowSplit ruleFlowSplit(const DeviceState &s) {
   FlowSplit f;
