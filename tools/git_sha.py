@@ -33,11 +33,11 @@ kurz = git("rev-parse", "--short", "HEAD")
 if not kurz:
     kennung = "ohne-git"
 else:
-    # docs/install is what tools/pack_web_install.sh writes BEFORE it builds: the
-    # release folder, the manifests and the release name in devices.json. Counting that
-    # as a dirty tree marks every release binary "-dirty" over its own output, and a
-    # release that says it was built from an uncommitted tree says nothing.
-    if git("status", "--porcelain", "--", ".", ":!docs/install"):
+    # What counts is a changed source, not everything git notices: docs/install is
+    # written before the build by tools/pack_web_install.sh, and an untracked file
+    # cannot have been compiled. Both used to mark a release binary "-dirty" over
+    # neither.
+    if git("status", "--porcelain", "--untracked-files=no", "--", ".", ":!docs/install"):
         kurz = kurz + "-dirty"
     kennung = kurz
 
