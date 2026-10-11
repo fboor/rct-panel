@@ -120,7 +120,7 @@ struct FlowSplit {
 // its end are decided by the same rule; the grid carries its own, because its meter
 // regulates around zero harder than the others do.
 constexpr float kFlowActiveW = 10.0f;
-constexpr float kFlowGridActiveW = 20.0f;
+constexpr float kFlowGridActiveW = 30.0f;
 
 inline FlowSplit ruleFlowSplit(const DeviceState &s) {
   FlowSplit f;

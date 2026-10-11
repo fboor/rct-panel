@@ -15,6 +15,7 @@
 #include <cstdio>
 
 #include "device/DeviceCaps.h"
+#include "device/Rules.h"
 #include "gui/FlowLayout.h"
 #include "ui/UiLayout.h"
 
@@ -605,7 +606,9 @@ static void testNetzEinRichtung() {
 // the floor: three watts under zero is the meter talking to itself, and the panels
 // feeding the meter do not make the household a source.
 static void testHausPille() {
-  const float f = 10.0f, nf = 20.0f;
+  // The page's floors, not numbers of their own: a test that writes them down can
+  // keep passing after the threshold it checks has moved.
+  const float f = kFlowActiveW, nf = kFlowGridActiveW;
   check(flowHausPille(-90.0f, 0.0f, f, nf) == FLOW_HAUS_EXPORT,
         "Pille: -90 W ist Export");
   check(flowHausPille(-3.0f, -2000.0f, f, nf) == FLOW_HAUS_NICHTS,
@@ -619,8 +622,10 @@ static void testHausPille() {
         "Pille: 162 W ohne Netzbezug ist unabhaengig");
   check(flowHausPille(162.0f, 41.0f, f, nf) == FLOW_HAUS_NETZ,
         "Pille: 162 W mit 41 W Bezug ist Netzbezug");
-  check(flowHausPille(162.0f, 19.0f, f, nf) == FLOW_HAUS_SELBST,
-        "Pille: 19 W Bezug ist unter der Netzschwelle");
+  check(flowHausPille(162.0f, 29.0f, f, nf) == FLOW_HAUS_SELBST,
+        "Pille: 29 W Bezug ist unter der Netzschwelle");
+  check(flowHausPille(162.0f, 31.0f, f, nf) == FLOW_HAUS_NETZ,
+        "Pille: 31 W Bezug ist ueber der Netzschwelle");
 }
 
 int main() {
