@@ -13,16 +13,27 @@
 # its boot log on the same line. esptool.py does both, which is why this is a few
 # lines and not a protocol.
 #
-# The application image goes to the offset the running app sits at, not to the
-# first slot the partition table names: this panel boots 0x710000, so 0x10000 -
-# which is where app0 starts in partitions/16mb_app.csv - takes the image,
-# verifies byte for byte, and changes nothing that anyone sees. Its otadata is
-# written (measured, not inferred: two sectors with sequence numbers), so the
-# bootloader follows it instead of falling back to the factory slot. An earlier
-# version of this script flashed app0 and reported success through three updates
-# while the panel kept running what app1 held. An image with a build marker
-# printed in the web interface (RCT_BUILD_SHA) is what turned that into a reading
-# rather than an argument.
+# The application image goes to app0 at 0x10000, and the otadata is erased first.
+#
+# Which of the two app slots boots is not a fixed fact, it is a consequence of how the
+# firmware was last installed, and that is the whole reason this script once flashed a
+# panel three times without changing anything it could see:
+#
+#   otadata valid   -> the bootloader follows it, that slot boots. The panel's own OTA
+#                      writes the second slot and selects it, so an OTA-ed panel runs
+#                      app1 at 0x710000.
+#   otadata erased  -> the bootloader falls back to the first app slot. The browser
+#                      installer writes app0 at 0x10000 and leaves no valid selection,
+#                      so an installed panel runs app0.
+#
+# Both are measured on this panel, not inferred (2026-10-11: the release image in app0
+# ran after an install through the website; before that, with a valid selection, the
+# panel ran app1 while three writes to 0x10000 had verified byte for byte).
+#
+# So this script does what both other ways do and makes no assumption: erase the
+# selection, write app0, and the panel runs what was just written. A panel that had
+# been OTA-ed comes back to the factory slot on the next USB update - which is the
+# price of not having to ask anybody where their panel is booting from.
 #
 # The bootloader and the partition table are left alone; the running bootloader is
 # what hands over to the new app.
@@ -38,10 +49,13 @@ set -e
 
 PORT=${PORT:-/dev/ttyUSB0}
 ENV=${ENV:-esp32-s3}
-# 0x710000 ist app1 aus partitions/16mb_app.csv und der Slot, den dieses Panel
-# bootet. 0x10000 (app0) nimmt das Image zwar an und veraendert nichts - siehe
-# den Kopf dieser Datei.
-OFFSET=${OFFSET:-0x710000}
+# app0, und das otadata wird vorher geloescht - siehe den Kopf dieser Datei. Das ist
+# derselbe Weg, den der Installer nimmt, und derselbe, den die eigene OTA nimmt, wenn
+# es app1 besetzt: danach bootet der Bootloader die Adresse, in die gerade geschrieben
+# wurde.
+OFFSET=${OFFSET:-0x10000}
+OTADATA=${OTADATA:-0xE000}
+OTADATA_LEN=${OTADATA_LEN:-0x2000}
 # Eine Taktstufe fuer beide Richtungen, und zwar die schnelle: das Lesen lief mit der
 # esptool-Vorgabe 115200 und brauchte fuer die 16 MB einer vollen Sicherung 148
 # Sekunden (88,8 kbit/s). Dieselbe Leitung schafft im Lesen 598,4 kbit/s, also 22
@@ -77,6 +91,12 @@ echo "Port        $PORT"
 echo "Chip        $CHIP"
 echo "Image       $BIN ($(wc -c < "$BIN") bytes)"
 echo "Offset      $OFFSET"
+echo
+
+echo "=== Boot-Auswahl zuruecksetzen ==="
+# 8 KB loeschen: danach bootet der Bootloader den ersten App-Slot, in den
+# geschrieben wird - siehe den Kopf dieser Datei.
+"$ESP" --chip "$CHIP" --port "$PORT" --baud "$BAUD" erase_region "$OTADATA" "$OTADATA_LEN"
 echo
 
 echo "=== Chip lesen ==="
