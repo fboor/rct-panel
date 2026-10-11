@@ -25,7 +25,7 @@
 #ifndef RCT_FW_VERSION_H
 #define RCT_FW_VERSION_H
 
-#define RCT_FW_VERSION "1.0-rc1"
+#define RCT_FW_VERSION "1.0-rc2"
 #define RCT_FW_VERSION_MON "2026-10"
 
 // Both parts at once, for the places that print the version as one string.
