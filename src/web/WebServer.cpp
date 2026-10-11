@@ -60,8 +60,11 @@
 // at (and so a support case can be pinned to a firmware). The number lives in
 // include/FirmwareVersion.h, which the browser installer reads too; the language is
 // part of the line because the two builds share a version number, and only the
-// language says which one a device is running.
-static const char kPanelVersion[] = RCT_FW_VERSION_FULL " " RCT_LANG_NAME;
+// language says which one a device is running. The commit is on the same line:
+// with two app slots the number alone does not say which of two builds of the
+// same version a device is running.
+static const char kPanelVersion[] =
+    RCT_FW_VERSION_FULL " " RCT_LANG_NAME " " RCT_BUILD_SHA;
 
 // Upper bound for a firmware image: the app slots in partitions/16mb_app.csv are
 // 7 MB. The upload announces no size (see handleUpdateUpload), so this is

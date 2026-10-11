@@ -31,4 +31,15 @@
 // Both parts at once, for the places that print the version as one string.
 #define RCT_FW_VERSION_FULL RCT_FW_VERSION " (" RCT_FW_VERSION_MON ")"
 
+// Which commit, which the version above cannot say: it moves when the behaviour
+// does, not when the code does. On a panel with two app slots that matters - the
+// bootloader picks the slot itself, so an update can land in the one nobody boots
+// and the device keeps running something older while it says the same version as
+// the build on the bench. The web interface prints this next to the version.
+// tools/git_sha.py sets it from the tree that is built; without a git the build
+// says so instead of pretending to be a release.
+#ifndef RCT_BUILD_SHA
+#define RCT_BUILD_SHA "ohne-Kennung"
+#endif
+
 #endif  // RCT_FW_VERSION_H
