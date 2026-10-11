@@ -2761,13 +2761,10 @@ static void buildApOverlay() {
   lv_obj_t *title = lv_label_create(s_apOverlay);
   lv_label_set_text(title, tr(T_D_AP_TITLE));
   lv_obj_set_style_text_font(title, &lv_font_montserrat_20_uml, 0);
-  // White, and not uiText(), for the reason the navigation buttons give: the bar is
-  // COL_BAR in both themes, so the text on it must not follow the theme. With uiText()
-  // the title came up dark on a bar that stays dark, and nothing said so - a theme
-  // switch keeps the colour it booted with, because the walk leaves labels inside the
-  // bar alone. It only became visible when the theme survived a restart and the panel
-  // actually booted into the light one.
-  lv_obj_set_style_text_color(title, FLOW_WHITE, 0);
+  // The page background, so this title follows the theme - the opposite of the one in
+  // the title bar, which sits on a bar that stays dark in both themes. Written down
+  // because both lines said the same thing once and only one of them was right.
+  lv_obj_set_style_text_color(title, uiText(), 0);
 
   // LVGL 9 QR widget (MIT, qrcodegen inside LVGL): 220 px canvas, white
   // background with black modules so it scans cleanly off the dark panel.
