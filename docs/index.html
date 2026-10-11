@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>RCT Power Panel</title>
 <!--
-  The site root. One link, because there is one thing to do here.
+  The site root. One thing to do here - install the firmware - and everything else
+  only says what that button leads to.
 
   It is docs/index.html because that is the one folder GitHub Pages can be pointed at
   without a workflow: Settings, Pages, "Deploy from a branch", folder /docs. The
@@ -15,6 +16,11 @@
 
   The German documentation lives here too and is published alongside it. Serving a
   .md file shows its text, which is harmless and is what a reader gets anyway.
+
+  The order is the way down the page: what it is, what it looks like, the button,
+  what it runs on. The screenshot is a copy in img/ rather than the one in
+  screenshots/, because Pages serves /docs as the root and a path out of it is a
+  404 - the handbook's ../screenshots/ links break for the same reason.
 -->
 <style>
   body {
@@ -26,8 +32,12 @@
     color: #e8eaed;
     font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
   }
-  main { text-align: center; }
+  main { text-align: center; max-width: 42rem; padding: 2.5rem 1.25rem; }
   h1 { font-size: 1.4rem; font-weight: 600; margin: 0 0 1.5rem; }
+  img.shot {
+    display: block; width: 480px; max-width: 100%; height: auto;
+    margin: 2rem auto; border: 1px solid #2c3038; border-radius: 10px;
+  }
   a {
     display: inline-block;
     padding: .6rem 1.2rem;
@@ -38,32 +48,42 @@
     text-decoration: none;
   }
   a:hover { border-color: #8ab4f8; }
-  p { color: #9aa0a6; font-size: .875rem; margin: 1.5rem 0 0; }
   .text {
-    max-width: 34rem; margin: 1.75rem auto 0; text-align: left;
+    max-width: 34rem; margin: 2.5rem auto 0; text-align: left;
     color: #9aa0a6; font-size: .9375rem; line-height: 1.7;
   }
-  .text b { color: #e8eaed; font-weight: 600; }
   .text p { margin: 0 0 .75rem; font-size: inherit; }
+  .text b { color: #e8eaed; font-weight: 600; }
+  /* The description at the top: the same block one step brighter and larger, since
+     it is the first thing read and the text below it is the small print. */
+  .text.lead { margin-top: 0; color: #b9c0c7; font-size: 1rem; }
+  p { color: #9aa0a6; font-size: .875rem; margin: 1.5rem 0 0; }
+  p.note { color: #6e747b; margin-top: 3rem; }
 </style>
 </head>
 <body>
 <main>
   <h1>RCT Power Panel</h1>
-  <a href="install/">Install the firmware</a>
-  <div class="text">
+  <div class="text lead">
     <p>
       An energy panel for an <b>RCT Power</b> inverter. It shows what the inverter is
       doing right now &mdash; the power running between the house, the panels, the battery
       and the grid &mdash; together with the day's totals and the last 24 hours as a
       graph. German or English, whichever the panel is set to.
     </p>
+  </div>
+  <img class="shot" src="img/uebersicht.png" width="480" height="480"
+       alt="The overview page of the panel: the house in the middle, PV, battery and
+            grid around it with the power running between them, and three fields below
+            for generation, self-sufficiency and charging">
+  <a href="install/">Install the firmware</a>
+  <div class="text">
     <p>
       <b>Supported hardware:</b> the Guition ESP32-S3 4848S040 wall display
       (480 &times; 480, touch). The installer lists what it can flash.
     </p>
   </div>
-  <p>Not affiliated with RCT Power GmbH.</p>
+  <p class="note">Not affiliated with RCT Power GmbH.</p>
 </main>
 </body>
 </html>
