@@ -117,6 +117,10 @@ class SimDriver : public DeviceDriver {
     m_state.caps.houseMeter = merkmalAusDerDatei("hasHouseMeter", true);
     m_state.caps.gridMeter = merkmalAusDerDatei("hasGridMeter", true);
     m_state.caps.battery = merkmalAusDerDatei("hasBattery", true);
+    // "fixed": the file's values stand and the day curve does not run. The curve cannot
+    // make a household meter read negative or a battery charge with the panels at
+    // zero; a file is where a moment a device reported belongs.
+    m_fixed = merkmalAusDerDatei("fixed", false);
     m_state.caps.islandFlag = true;
     m_state.caps.faultBits = true;
     m_state.caps.sleepsWithoutGeneration = false;
@@ -143,6 +147,21 @@ class SimDriver : public DeviceDriver {
   void poll(uint32_t) override {
     const float h = stundeAmTag();
     DeviceState &s = deviceStateMutable();
+
+    // "fixed" in the file: only what follows from the powers - the battery current, the
+    // voltage, the flags a reading page needs. The powers themselves stay where the
+    // file put them.
+    if (m_fixed) {
+      s.batA = (s.batV > 1.0f) ? (s.batW / s.batV) : 0.0f;
+      s.haveData = true;
+      s.haveBattery = s.caps.battery;
+      s.connected = true;
+      s.islandKnown = true;
+      s.islandMode = false;
+      s.asleep = false;
+      s.lastUpdateMs = millis();
+      return;
+    }
 
     // PV: two strings, the second a quarter of the first, both following the sun.
     // The peak is the one this installation reaches at midsummer noon, which is the
@@ -243,6 +262,7 @@ class SimDriver : public DeviceDriver {
   float m_akkuW = 2500.0f;        // what the battery will take or give
   float m_kapazitahtAh = 100.0f;  // enough to make the state of charge move visibly
   float m_simBatV = 392.0f;
+  bool m_fixed = false;
   uint32_t m_letzterPollMs = 0;
   DeviceState m_state;
 
