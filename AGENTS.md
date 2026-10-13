@@ -26,12 +26,20 @@ Emulator, nicht über das Panel.
 
 ## Historie
 
-Kein Rewrite: kein `amend`, kein `rebase`, kein `filter-branch`, kein
-`--force`. Auch nicht für einen Tippfehler — ein Rewrite ändert die SHA unter
-allen späteren Commits.
+Kein Rewrite, sobald ein Commit gepusht ist: kein `amend`, kein `rebase`, kein
+`filter-branch`, kein `--force`. Auch nicht für einen Tippfehler — ein Rewrite
+ändert die SHA unter allen späteren Commits.
 
-Fund in einem existierenden Commit: neuer Commit, oder keiner wenn es nur im
-Nachrichtentext steht. Notieren statt beheben.
+**Gepushte Commits sind tabu. Ungepushte dürfen vor dem Push umsortiert und
+zusammengefasst werden**, solange der letzte gepushte Commit (`origin/master`) die
+Grenze bleibt und am Ende derselbe Dateistand dasteht. Grund: 38 Commits für eine
+Arbeitswoche, davon mehr als die Hälfte verworfene Zwischenschritte (ein Takt, der
+sich als Ursache ausgegeben hat und keiner war; eine Puffergröße, die um die Hälfte
+zu groß war; eine Logumleitung auf einen Port, den das Board gar nicht hat), sind
+als Historie schlechter zu lesen als als eine einzige Zeile pro Ergebnis.
+
+Fund in einem existierenden **gepushten** Commit: neuer Commit, oder keiner wenn es
+nur im Nachrichtentext steht. Notieren statt beheben.
 
 ## Bekannte Fundstellen
 
@@ -47,6 +55,13 @@ Nachrichtentext steht. Notieren statt beheben.
 |---|---|
 | Build-Kennung ist ein Compiler-Flag: nach einem Commit, der andere Datei ändert, übersetzt `pio run` die Objektdateien nicht neu und das Image trägt die alte | `tools/git_sha.py`, `tools/pack_web_install.sh` |
 | Release-Binaries neu bauen, `devices.json` prüfen | `docs/install/v1.0-rc2/` |
+| Das gelinkte `libesp_lcd.a` kann weder Bounce-Puffer noch zwei Framebuffer. Der Flush-Callback wartet nur noch darauf, dass der Strahl **nicht auf dem Streifen** ist (`on_frame_trans_done` + Zeiten aus dem Boardprofil); das frühere Warten auf „Strahl ist vorbei" kostete bis zu ein halbes Frame je Streifen. Der neuere Treiber liegt im `-libs`-Paket, wird aber nicht gelinkt — Struct und Bibliothek müssen dieselbe Fassung sein. Das Springen kam nicht vom Schreibzeitpunkt, sondern vom PSRAM-Schreibdruck (LVGL-Puffer jetzt im SRAM) | `src/display/Display.cpp` |
+| Auf dem 7-Zoll-Board antwortet **kein** IO-Expander: ein Bus-Scan über 0x08..0x77 findet nur den GT911 bei 0x14. Verdrahtung und Adresse stimmen mit der Hersteller-Konfiguration (SDA 8, SCL 9, 0x20). Folge: LCD-Reset, USB/CAN-Umschalter, Karten-Chip-Select und Touch-Reset laufen nie. **Nach jedem Flash muss das Panel vom Strom genommen werden**, sonst bleibt der Bildschirm weiß (die Firmware zeichnet, der Scan läuft mit 29,4 fps) | `src/board/Ch422G.cpp` |
+| Karte auf dem 7-Zoll-Board: Chip Select ist EXIO4, kein GPIO; die Arduino-SD-Bibliothek verträgt das nicht, der Mount muss über den IDF-Treiber mit `gpio_cs = -1` | `src/storage/sdlog.cpp` |
+| Rechte Navigationstaste auf dem 7-Zoll-Board: sie geht, seit der Touch-Bereich nicht mehr auf 480 px feststeht — dort stand die halbe Bildschirmbreite als tote Zone | `src/display/Touch.cpp` |
+| Seitenwechsel dauern spürbar (20 Streifen, jeder mit Kopie und Cache-Rückschreiben über den ganzen Framebuffer). Der Bildwechsel geht vor dem Zeichnen im alten Zustand, also sichtbar von oben nach unten | `src/display/Display.cpp` |
+| Der RCT-Abruf blockiert die Hauptschleife ~470 ms alle 10 s: der Treiber wartet die volle Ruhepause (`RCT_QUIET_MS` 300 ms), weil der Simulator auf manche OIDs nicht antwortet. Die Oberfläche friert dabei sichtbar ein — Werte, Uhr und Navigation stehen 0,5 s still | `src/rct/RctDriver.cpp` |
+| Das 7-Zoll-Board ist seit dem 13.10. mit einem Image aus `RCT_SIM_HOST` unterwegs; das steht nicht im Repo. Für ein Release: ohne das Flag bauen | `platformio.ini` |
 
 ## Sprache
 
