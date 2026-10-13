@@ -39,6 +39,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "lvgl.h"
+#include "display/Display.h"
 
 // A phase this long is worth complaining about. The device is polled every 10 s
 // and a single unanswered OID costs up to RCT_RX_TIMEOUT_MS (2 s), so the poll
@@ -198,8 +199,16 @@ static void diagTask(void *) {
       // ESP.getFreeHeap() when LVGL uses its built-in pool, but that is a fixed
       // build-time configuration, so the rare line is where it belongs and not
       // the heartbeat that prints every 30 s.
-      Serial.printf("[diag] ok: alle Tasks laufen, frei %u B\n",
-                    (unsigned)ESP.getFreeHeap());
+      uint32_t zeichnungen = 0;
+      uint32_t gezeichnetMs = 0;
+      const uint32_t langsamstes =
+          displaySlowestDrawMs(&zeichnungen, &gezeichnetMs);
+      Serial.printf("[diag] ok: alle Tasks laufen, frei %u B, Bild %.1f fps "
+                    "bei %lu, zeichnen %lu ms in %lu, langsamstes %lu ms\n",
+                    (unsigned)ESP.getFreeHeap(), displayFrameRate(),
+                    (unsigned long)displayFrameCount(),
+                    (unsigned long)gezeichnetMs, (unsigned long)zeichnungen,
+                    (unsigned long)langsamstes);
     }
   }
 }
