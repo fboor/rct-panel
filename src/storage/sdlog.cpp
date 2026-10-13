@@ -29,6 +29,8 @@
 #include <SD.h>
 
 #include "../Diag.h"
+#include "../board/BoardPins.h"
+#include "../board/Ch422G.h"
 #include "../device/Device.h"
 #include "../NumFmt.h"
 #include "../i18n/Lang.h"
@@ -314,6 +316,33 @@ bool probeMount(float *kbsOut) {
 // One mount attempt at a given clock: bus, mount, /hist, self-test. Leaves the
 // card unmounted on any failure so the next attempt starts from a clean bus.
 static bool tryMount(uint32_t hz, float *kbsOut, bool *probeOkOut) {
+#if BOARD_CH422G_PRESENT
+  // The card's chip select on this board is EXIO4, not a GPIO, and the SD library
+  // wants a pin number. The way through is the one the vendor's own SD demo takes:
+  // drive the select once, low, and mount with CS = -1 - which works because the
+  // bus carries nothing else. The chip select is active low, so low is selected.
+  if (!ch422gFound()) {
+    Serial.println(F("SD: kein IO-Expander - die Karte haengt an EXIO4"));
+  } else {
+    ch422gWrite(BOARD_CH422G_PIN_SD_CS, false);
+    Serial.printf("SD: Chip Select dauerhaft ueber EXIO%d\n",
+                  BOARD_CH422G_PIN_SD_CS);
+  }
+#endif
+#if !BOARD_SD_CS_IS_GPIO
+  // No pin to hand the library: the chip select sits on the expander and is
+  // already driven low above, one card on one bus. The Arduino SD class wants a
+  // uint8_t and -1 arrives as 255, so every card command asks pinMode() for pin
+  // 255 - "Invalid pin selected", then "Card Failed", without end, and the mount
+  // task tries again every few seconds. Say it once and leave the card alone
+  // until the mount goes through the IDF driver, which takes gpio_cs = -1.
+  static bool gemeldet = false;
+  if (!gemeldet) {
+    gemeldet = true;
+    Serial.println(F("SD: CS am Expander, kein GPIO - SD unbenutzt"));
+  }
+  return false;
+#endif
   s_spi.begin(PIN_SD_SCK, PIN_SD_MISO, PIN_SD_MOSI, PIN_SD_CS);
   if (!SD.begin(PIN_SD_CS, s_spi, hz, "/sd", 4)) {
     SD.end(); // leave the bus clean for the next attempt
