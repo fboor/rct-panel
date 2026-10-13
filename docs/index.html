@@ -38,16 +38,20 @@
     display: block; width: 480px; max-width: 100%; height: auto;
     margin: 2rem auto; border: 1px solid #2c3038; border-radius: 10px;
   }
-  a {
+  a { color: #8ab4f8; text-decoration: none; }
+  a.cta {
     display: inline-block;
     padding: .6rem 1.2rem;
     border: 1px solid #2c3038;
     border-radius: 6px;
     background: #1e2126;
-    color: #8ab4f8;
-    text-decoration: none;
   }
-  a:hover { border-color: #8ab4f8; }
+  a.cta:hover { border-color: #8ab4f8; }
+  /* A link inside a paragraph is a link, not a button: it keeps the button's
+     colour and underlines itself on hover. Without its own rule it inherits
+     display: inline-block and lands in the text as a box. */
+  .text a { border-bottom: 1px solid #38455a; }
+  .text a:hover { border-bottom-color: #8ab4f8; }
   .text {
     max-width: 34rem; margin: 2.5rem auto 0; text-align: left;
     color: #9aa0a6; font-size: .9375rem; line-height: 1.7;
@@ -76,11 +80,12 @@
        alt="The overview page of the panel: the house in the middle, PV, battery and
             grid around it with the power running between them, and three fields below
             for generation, self-sufficiency and charging">
-  <a href="install/">Install the firmware</a>
+  <a class="cta" href="install/">Install the firmware</a>
   <div class="text">
     <p>
-      <b>Supported hardware:</b> the Guition ESP32-S3 4848S040 wall display
-      (480 &times; 480, touch). The installer lists what it can flash.
+      <b>Supported hardware:</b> the Guition ESP32-S3 4848S040, 480 &times; 480 with
+      touch, and the Waveshare ESP32-S3-Touch-LCD-7, 800 &times; 480 with touch.
+      What each board needs is in the <a href="hardware.md">hardware notes</a>.
     </p>
   </div>
   <p class="note">Not affiliated with RCT Power GmbH.</p>

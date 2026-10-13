@@ -40,6 +40,20 @@ Firefox (it is ESP Web Tools over Web Serial, so the panel needs the cable).
 
 **<https://fboor.github.io/rct-panel/install/>**
 
+## Hardware
+
+| Board | Panel | Build |
+|---|---|---|
+| Guition ESP32-S3 4848S040 | 480 × 480, ST7701 | `pio run -e esp32-s3` |
+| Waveshare ESP32-S3-Touch-LCD-7 (with touch) | 800 × 480, ST7262 | `pio run -e esp32-s3-touch-lcd-7` |
+
+Both come out of one source tree; the board profiles in `src/board/` say where
+they differ, and the browser installer flashes the Guition. What the Waveshare
+needs — the IO expander that carries the display's reset, the TF card's chip
+select and the USB/CAN selector, the cut in the backlight's enable net, the
+switching output on an optocoupler's input — is in
+[`docs/hardware.md`](docs/hardware.md).
+
 ## Build and flash
 
 PlatformIO with `espressif32@6.8.0` (Arduino-ESP32 core 3.x), LVGL 9 and
@@ -58,6 +72,7 @@ pins appears as `/dev/ttyUSB0` and flashes just as well.
 | `pio run -e esp32-s3` | build the German firmware into `.pio/build/esp32-s3/` |
 | `pio run -e esp32-s3 -t upload` | build and flash it (`--upload-port` if several boards are attached) |
 | `pio run -e esp32-s3-en -t upload` | the English build instead |
+| `pio run -e esp32-s3-touch-lcd-7` | the 7-inch board — see Hardware above |
 | `pio run -e esp32-s3 -t erase` | erase the stored Wi-Fi and settings |
 | `pio device monitor` | serial console, 115200 baud |
 | `tools/run_host_tests.sh` | the host tests — no panel, no card, no inverter |

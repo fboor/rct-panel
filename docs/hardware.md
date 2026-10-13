@@ -92,6 +92,114 @@ appears and the GUI keeps rendering while the portal stays available at
   correction as the panel (`dispCorrectPixel`), so a picture on the card matches
   what the panel shows.
 
+## The second board: Waveshare ESP32-S3-Touch-LCD-7
+
+Same firmware, second panel: 800 × 480 with an ST7262 instead of 480 × 480 with an
+ST7701, and an IO expander for what the first board has on GPIOs. Its profile is
+`src/board/waveshare_touch_lcd7/`, its build `pio run -e esp32-s3-touch-lcd-7`.
+
+Waveshare sells four boards under that name and the revision matters: the 7B is
+**1024 × 600** and has an extra output (EXIO6 = LCD_VDD_EN), while the RGB data
+pins are the same to the number. A profile written for the wrong one builds and
+puts an 800-line picture on a 1024-line panel.
+
+| | Guition 4848S040 | Waveshare Touch-LCD-7 |
+|---|---|---|
+| Panel | 480 × 480, ST7701 | 800 × 480, ST7262 |
+| Module | ESP32-S3-WROOM-1-N16R8, 16 MB / 8 MB PSRAM | same part |
+| Pixel clock | 12 MHz | **16 MHz**, falling edge — 12 MHz is out of sync (colours wander) |
+| Vertical blanking | 8 back / 8 front | **16 back / 16 front** — 8/8 gives a picture that jumps |
+| Display | init sequence over a 3-wire SPI, plus RGB timings | **reset on EXIO3**, plus RGB timings — this controller has no init sequence |
+| LVGL draw buffer | 24 lines, 23 040 B, internal RAM | 24 lines, 38 400 B, internal RAM |
+| Backlight | GPIO 38, PWM | GPIO 6, PWM, **behind a hardware mod** |
+| TF card | CS on GPIO 42, mounts at 4 MHz | **does not mount**: CS is EXIO4 and no GPIO is behind it |
+| USB / CAN selector | — | EXIO5 has to be low, or the board sits in CAN mode |
+| Log over USB | CH343 USB-UART on the UART pins | the ESP32-S3's own USB (`ARDUINO_USB_CDC_ON_BOOT=1`) |
+| Switching output | GPIO 40 | EXIO2, once the enable net is cut |
+
+Two entries in that table are the connector and the expander, and both were wrong
+before this board was built for:
+
+- **`ARDUINO_USB_CDC_ON_BOOT` is per board.** It puts `Serial` on the ESP32-S3's own
+  USB, which is what the 7-inch connector is. The 4848S040 has a CH343 USB-UART on
+  the ESP32's UART pins; with the flag its log goes to a port the board does not
+  connect, and the panel goes silent while it runs perfectly well. The flag lives
+  in the two 7-inch environments and nowhere else.
+- **No IO expander answers on the board that was tested.** A bus scan over
+  0x08–0x77 on GPIO 8/9 finds the GT911 at 0x14 and nothing else; the wiring and
+  the address (0x20) are the vendor's. Consequences, all four on the expander:
+  LCD reset, USB/CAN selector, card chip select, touch reset. **After every flash
+  the panel has to be unplugged** — a flash resets the ESP32 only, and a panel
+  without its reset shows a white screen while the firmware draws and the scan runs
+  at its 37.8 frames per second.
+
+Two things about this board are not visible in the table and decide how it is
+built:
+
+- **The enable net has to be cut.** The backlight's enable is an input while the
+  board comes up, and the board's own pull holds it there; afterwards it is the
+  driver's business. With the wire from GPIO 6 to it the light takes a PWM — but
+  then EXIO2 has to be off that net, and the expander's direction is one direction
+  for all eight of its I/O pins. One line in the profile says which of the two
+  worlds the board is in: `BOARD_CH422G_LCD_DISP_CUT` 1 = cut, light on GPIO 6
+  with PWM; 0 = factory board, light on EXIO2 without the three-minute step. Both
+  build.
+- **The switching output is not a GPIO, and not a coil either.** What is connected
+  to it is a module whose input side is an optocoupler LED, so it is a logic input
+  with a resistor in front of it; the coil current is drawn on the module's
+  isolated side.
+
+The CH422G driver is `src/board/Ch422G.cpp`; register map and pin roles come from
+the vendor's `esp_io_expander_ch422g.c` and `esp_panel_board_custom_conf.h`. Two
+things the vendor's code does that a comment here had wrong: `IO_OE` **set** means
+the pins are outputs (`write_direction_reg()` sets it for any non-zero direction
+mask, `read_direction_reg()` answers "all twelve" when it is set), and a
+transmission without a data byte returns success in this core without touching the
+bus — so an address probe that way finds every address there is.
+
+## What the 7-inch panel's own screen said
+
+Four builds, four different symptoms, and the pin set of every one of them matches
+a configuration that drives this board steadily — red 1/2/42/41/40, blue
+14/38/18/17/10, green 39/0/45/48/47/21, HSYNC 46, VSYNC 3, DE 5, PCLK 7, inverted
+edge.
+
+| Pixel clock | Vertical blanking | What the panel did |
+|---|---|---|
+| 16 MHz | 8 / 8 | picture jumps |
+| 12 MHz | 8 / 8 | colours wander |
+| 12 MHz | 16 / 16 | colours wander — so 16 MHz is the panel's floor, not a preference |
+| **16 MHz** | **16 / 16** | **picture still, colours right** |
+
+The jumping is not the write. It is the scan out of PSRAM: 800 · 480 · 2 · 37.8 =
+29 MB/s of continuous read, out of the same memory LVGL renders into and the network
+stack works in. A line that arrives late is what a panel shows as the picture
+jumping, with the colours left alone — which is how a late line is told from a
+panel out of sync, which takes the colours with it.
+
+| Redraw of the whole screen | PSRAM written |
+|---|---|
+| two LVGL buffers in PSRAM | 2.3 MB |
+| one LVGL buffer in internal RAM | **1.5 MB** |
+
+| Way out that is not available | |
+|---|---|
+| pixel clock below 16 MHz | the panel goes out of sync |
+| frame buffer out of the PSRAM | 768 kB against 512 kB of SRAM |
+| bounce buffer or second frame buffer | the linked `esp_lcd` has neither |
+
+The flush callback waits for one thing only: that the beam is not on the strip it
+is writing. Behind the strip the change appears a frame later, ahead of it in this
+frame; only writing while the beam is on it shows half old and half new. The beam
+is on a 24-line strip for 24 of 516 lines, so that wait is about 1.3 ms.
+
+The touch controller's X_MAX/Y_MAX registers (0x8148) are read and used to scale
+onto the panel, but only when they can be a range at all — both sides non-zero and
+within a factor of two of the panel. This board's controller reads **480 × 0**, a
+range nobody configured it with, so its numbers are the panel's own. That is worth
+knowing against a fixed 480 in the driver: on this board that made everything right
+of x = 480 a dead zone, half the screen, with the right navigation button in it.
+
 ## Open questions
 
 - The sign of `battery.current` follows the rctclient documentation; it should
@@ -109,7 +217,8 @@ appears and the GUI keeps rendering while the portal stays available at
 - German labels are written without umlauts (ue/ae/oe) because the built-in
   Montserrat has none; the generated `_uml` fonts add the Latin-1 range, so
   this only affects the strings compiled into the firmware.
-- PCLK and porch values may need tuning for other panel revisions.
+- PCLK and porch values are measured on the 7-inch board above; other panel
+  revisions may need their own.
 - There is no "reconfigure" path other than powering up without a reachable
   network; the Service page links back to the portal.
 - The flow lines show direction and colour, not moving dashes like the portal.
@@ -125,25 +234,29 @@ dimensioned in mm, the second one at 1:1 for printing:
 |---|---|
 | `img/frontplatte.svg` | front view with dimensions, section A–A, legend, colour variants |
 | `img/frontplatte-1zu1.svg` | front view at 1:1, with the glue ring and the cut edge filled in |
-| `img/frontplatte.dxf` | DXF R12 in mm for the laser cutter, three layers: `SCHNITT`, `GRAVIEREN`, `MARKIERUNG` |
+| `img/frontplatte.dxf` | DXF R12 in mm for the laser cutter, four layers: `SCHNITT`, `GRAVIEREN`, `MARKIERUNG`, `RASTER` |
 
 Visicut imports DXF (and the 1:1 SVG, but that one has filled shapes and the
 DXF is unambiguous). The geometry is nominal, so let Visicut compensate the
-kerf. The three layers are three operations:
+kerf. The four layers are four operations:
 
 | Layer | Geometry | Operation |
 |---|---|---|
 | `SCHNITT` | outer contour 120 × 200 (r 8) and the 81 mm window (r 2) | cut through |
 | `GRAVIEREN` | 84.3 mm outer (r 2.2) and the 81 mm window, as two closed contours | fill the ring between them and engrave it **0.45 mm deep** — this is the glue surface, 1.65 mm wide |
-| `MARKIERING` | four crosses at the window corners | align on the bed |
+| `MARKIERUNG` | four crosses at the window corners | align on the bed |
+| `RASTER` | 16 closed loops at 0.1 mm spacing inside the ring, each a rounded square like `GRAVIEREN` | trace the ring loop by loop, for machines that cannot fill an area — same 0.45 mm depth as `GRAVIEREN` |
 
 Two things to know about the `GRAVIEREN` layer. The depth is not in the file —
 DXF R12 has no depth for an entity, so 0.45 mm goes into the machine's job
 parameters. And the machine has to *fill* the area between the two contours
 rather than follow them: a laser that only traces a path would burn two lines
-where the pocket should be. If it cannot fill, the ring is given as two loops
-anyway so the contour is unambiguous, and the alternative is to mill the recess
-or print the plate in PETG.
+where the pocket should be. If it cannot fill, the `RASTER` layer carries the
+ring as 16 closed loops — the `GRAVIEREN` shape shrunk by 0.1 mm per loop, each
+traced as one continuous path so the head never reverses. Run it as an engrave at
+the same 0.45 mm depth instead of the fill, and `GRAVIEREN` stays in the file
+untouched as the contour reference. The alternative if the machine can do
+neither: mill the recess, or print the plate in PETG.
 
 Without the recess the panel sits 0.3 mm proud of the front and the glue seam
 becomes a visible hairline at 42 mm from the centre — which is why the recess is
