@@ -267,8 +267,24 @@ const UiLayout kBreit800x480 = [] {
 // simulator build (PANEL_SIM) does not get this one, it gets the profile it asked
 // for from tools/panel_sim/sim_board.cpp. Same symbol, one definition either way,
 // and no build machine has to edit this file to look at a second board.
+//
+// The board's own macro picks the profile. It used to be the Guition's,
+// unconditionally, which is what a second board makes wrong: the 7-inch panel ran
+// the 480 px layout, so everything was laid out for a square and the navigation
+// bar's right button sat where nothing on the screen answered for it.
+//
+// The switch is on the macro and not on BOARD_SCREEN_W because UiLayout.cpp is
+// also compiled by the host tests without a board - tools/flow_layout_test does
+// exactly that - and including the pin map there would make a build without a
+// board a #error. What the switch costs is one line per board; what the board test
+// checks is the thing that matters: that uiLayout() agrees with the resolution
+// the board claims.
 #ifndef PANEL_SIM
+#if defined(RCT_BOARD_WAVESHARE_TOUCH_LCD7)
+const UiLayout &uiLayout() { return kBreit800x480; }
+#else
 const UiLayout &uiLayout() { return kGuition4848S040; }
+#endif
 #endif
 
 // The size the build machine asks for, or nullptr if this tree has no board of that

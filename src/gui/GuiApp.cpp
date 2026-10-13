@@ -51,6 +51,7 @@
 #include "Theme.h"
 
 #include "../Charts.h"
+#include "../board/BoardPins.h"
 #include "../ui/UiLayout.h"
 #include "../DataStatus.h"
 #include "../NumFmt.h"
@@ -2005,6 +2006,14 @@ static void serviceRelayState() {
     return;
   }
   const RelayMode m = relayMode();
+  // A board with no output for this says so, instead of showing a state that
+  // never changes. The block around it - mode, threshold, test button - stays:
+  // the settings are still there, and the pin may yet be found.
+  if (!BOARD_RELAY_PRESENT) {
+    setText(st, "%s", tr(T_D_OUT_NO_OUTPUT));
+    lv_obj_set_style_text_color(st, COL_MUTED, 0);
+    return;
+  }
   // "AN" / "AUS" in beiden Zeilen darunter: der Test und die Funktion zeigen
   // fuer denselben Zustand immer dasselbe Wort.
   const char *on = tr(T_D_OUT_ON);
