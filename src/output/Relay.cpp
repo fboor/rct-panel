@@ -216,6 +216,19 @@ static bool ruleWantsOn() {
 // --- Lifecycle --------------------------------------------------------------
 
 void relayInit() {
+#if !BOARD_RELAY_PRESENT
+  // A board that has no usable output for this. Nothing is driven, on purpose:
+  // the pin a board silkscreens as an output can be something else entirely -
+  // on the Waveshare it is the I2C data line, and driving it low before
+  // anything else runs would take the expander, the touch and everything else
+  // on that bus with it. The page and the web interface say "no output" from
+  // the same flag.
+  Serial.println(F("Relais: dieses Board hat keinen Ausgang fuer das Relais"));
+  s_on = false;
+  s_lastEvalMs = millis();
+  s_testPhase = -1;
+  return;
+#else
   // Before the pin becomes an output, hold the off level with an internal
   // pull: a pin that is briefly an input must not float to the level that
   // closes the relay. Then drive it. That is why relayInit() is the first call
@@ -243,9 +256,14 @@ void relayInit() {
                 (int)RELAY_PIN, kLogName[(int)s_mode], s_threshold,
                 RELAY_LEVEL_ON == HIGH ? "HIGH" : "LOW",
                 RELAY_LEVEL_OFF == HIGH ? "HIGH" : "LOW");
+#endif // BOARD_RELAY_PRESENT
 }
 
 bool relayUpdate() {
+#if !BOARD_RELAY_PRESENT
+  (void)millis();
+  return false;
+#else
   const uint32_t now = millis();
   const bool before = s_on;
 
@@ -290,9 +308,13 @@ bool relayUpdate() {
     relayWrite(false);
   }
   return s_on != before;
+#endif // BOARD_RELAY_PRESENT
 }
 
 bool relayStartTest() {
+#if !BOARD_RELAY_PRESENT
+  return false;
+#else
   if (s_testPhase >= 0) {
     return false;
   }
@@ -301,6 +323,7 @@ bool relayStartTest() {
   relayWrite(true);
   Serial.println(F("Relais: Test laeuft (5 s an / 5 s aus, zweimal)"));
   return true;
+#endif // BOARD_RELAY_PRESENT
 }
 
 bool relayTestRunning() { return s_testPhase >= 0; }

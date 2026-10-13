@@ -343,6 +343,7 @@ enum LangId : int {
   T_D_OUT_ON,
   T_D_OUT_OFF,
   T_D_OUT_NOTHING,
+    T_D_OUT_NO_OUTPUT,
 
   // --- Anzeige: die Screenshot-Ausgabe -------------------------------------
   T_D_SHOT_BUSY,

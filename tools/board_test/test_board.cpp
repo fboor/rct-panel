@@ -55,7 +55,7 @@ struct Belegung {
 
 int main() {
   printf("=== Boardpruefung: %s ===\n",
-#if defined(RCT_BOARD_WAVESHARE_LCD7)
+#if defined(RCT_BOARD_WAVESHARE_TOUCH_LCD7)
          "Waveshare ESP32-S3-Touch-LCD-7"
 #else
          "Guition ESP32-S3-4848S040"
@@ -80,6 +80,9 @@ int main() {
       {"touch.sda", PIN_TOUCH_SDA},      {"touch.scl", PIN_TOUCH_SCL},
       {"sd.sck", PIN_SD_SCK},           {"sd.miso", PIN_SD_MISO},
       {"sd.mosi", PIN_SD_MOSI},         {"sd.cs", PIN_SD_CS},
+#if defined(PIN_LCD_BL)
+      {"lcd.backlight", PIN_LCD_BL},
+#endif
       {"relay", RELAY_PIN},
   };
   for (const auto &b : pins) {
@@ -143,6 +146,19 @@ int main() {
     return 1;
   }
   const UiLayout &u = *gefunden;
+  // uiLayout() is what the firmware itself asks for. It used to answer with the
+  // Guition's profile whatever board was compiled in, so the 7-inch panel laid
+  // out for 480 px and nothing landed where it was drawn. This is the check that
+  // catches that: the profile the firmware gets has to be the profile of the
+  // resolution this board claims.
+  {
+    const UiLayout &fw = uiLayout();
+    char meldung[96];
+    snprintf(meldung, sizeof(meldung), "uiLayout() liefert %dx%d, Board %dx%d",
+             fw.screenW, fw.screenH, BOARD_SCREEN_W, BOARD_SCREEN_H);
+    ok(fw.screenW == BOARD_SCREEN_W && fw.screenH == BOARD_SCREEN_H,
+       "uiLayout() passt nicht zur Aufloesung des Boards", meldung);
+  }
   char buf[160];
   snprintf(buf, sizeof(buf), "%dx%d", u.screenW, u.screenH);
   ok(u.screenW > 0 && u.screenH > 0, "Bildschirmgroesse unplausibel", buf);
@@ -215,43 +231,61 @@ int main() {
   // PWM, so a slider on it would be a control that does nothing.
 #if BOARD_BACKLIGHT_DIMMABLE
   ok(true, "Backlight dimmbar");
+  // This board has two ways to be built, and the profile says which one it is.
+  // What the profile cannot say is whether the trace really is cut, so the line
+  // is printed on every run: if it is not, a PWM on a GPIO and EXIO2's output sit
+  // on one net, and the difference is a short rather than a colour.
+#if defined(BOARD_CH422G_LCD_DISP_CUT)
+  printf("  Hinweis  Enable-Netz getrennt: Licht an GPIO %d mit PWM, "
+         "EXIO2 unbenutzt\n", PIN_LCD_BL);
+#endif
 #else
+  // The light hangs on the expander here, so the pin has to be one the chip has:
+  // EXIO0..11 and nothing else. A number outside that is a typo that would only
+  // show up as a light that never goes out.
+  snprintf(buf, sizeof(buf), "Backlight an EXIO%d", BOARD_CH422G_PIN_BACKLIGHT);
+  ok(BOARD_CH422G_PRESENT && BOARD_CH422G_PIN_BACKLIGHT >= 0 &&
+         BOARD_CH422G_PIN_BACKLIGHT <= 11,
+     "Backlight angekündigt, aber ohne gültigen Expander-Pin", buf);
   printf("  Hinweis  Backlight ist nicht dimmbar (Schalter hinter dem Expander)\n");
 #endif
 #if BOARD_RELAY_PRESENT
+  // Where the output sits: a GPIO, or a pin of the IO expander when the board has
+  // one and the module's input side is what hangs on it. Exactly one of the two,
+  // and never the I2C bus - that bus carries the touch, the panel's reset, the TF
+  // card's chip select and the USB selector, and a relay on it would take all four
+  // with it. The check used to be BOARD_RELAY_SHARES_I2C, which described a
+  // configuration this board does not have and would have gone on describing it
+  // after it had gone.
+#if defined(BOARD_CH422G_PIN_RELAY)
+  snprintf(buf, sizeof(buf), "Relais an EXIO%d", BOARD_CH422G_PIN_RELAY);
+  ok(BOARD_CH422G_PRESENT && BOARD_CH422G_PIN_RELAY >= 0 &&
+         BOARD_CH422G_PIN_RELAY <= 11,
+     "Relais angekündigt, aber ohne gültigen Expander-Pin", buf);
+#else
   snprintf(buf, sizeof(buf), "Relais an GPIO %d", RELAY_PIN);
   ok(RELAY_PIN >= 0, "Relais angekündigt, aber ohne Pin", buf);
+#endif
 
   // A relay pin that is also a display data line is always wrong: the two drive it.
   for (const auto &d : daten) {
-    if (d.pin < 0) continue;
+    if (d.pin < 0 || RELAY_PIN < 0) continue;
     char meldung[80];
     snprintf(meldung, sizeof(meldung), "%s und %s beide auf %d", d.rolle,
-             "relay", d.pin);
+             "relay", RELAY_PIN);
     ok(d.pin != RELAY_PIN, "Relais auf einem RGB-Datenpin", meldung);
   }
-
-  // On the I2C lines it is a decision, not an oversight, and it is allowed only
-  // where the board says so - with a line printed on every run. The Waveshare board
-  // drives its output from GPIO 8, which is SDA: the GT911 and the CH422G both sit on
-  // that bus, and with the expander gone so do the backlight switch and the SD card's
-  // chip select. A decision nobody reads again is how it becomes an oversight, so it
-  // is stated rather than tolerated silently.
-#if BOARD_RELAY_SHARES_I2C
-  printf("  ACHTUNG  Relais haengt am I2C-Bus: GPIO %d ist SDA (touch.sda = %d).\n"
-         "           Damit fallen Touch, CH422G, Backlicht und die SD-Karte aus.\n",
-         RELAY_PIN, PIN_TOUCH_SDA);
-  ok(RELAY_PIN == PIN_TOUCH_SDA || RELAY_PIN == PIN_TOUCH_SCL,
-     "BOARD_RELAY_SHARES_I2C gesetzt, aber der Pin ist gar keine I2C-Leitung");
-#else
-  snprintf(buf, sizeof(buf), "Relais GPIO %d auf dem I2C-Bus %d/%d", RELAY_PIN,
-           PIN_TOUCH_SDA, PIN_TOUCH_SCL);
   ok(RELAY_PIN != PIN_TOUCH_SDA && RELAY_PIN != PIN_TOUCH_SCL,
-     "Relais auf einer I2C-Leitung, ohne es anzugeben", buf);
-#endif
+     "Relais auf einer I2C-Leitung", buf);
 #else
-  snprintf(buf, sizeof(buf), "Relais an GPIO %d", RELAY_PIN);
+  // No output on this board: then it must not name one either. RELAY_PIN is -1
+  // rather than a number for exactly that reason - a board with no relay must not
+  // look like one with a pin it does not drive.
+  snprintf(buf, sizeof(buf), "kein Relais, aber Pin %d", RELAY_PIN);
   ok(RELAY_PIN < 0, "kein Relais, aber ein Pin gesetzt", buf);
+#if defined(BOARD_CH422G_PIN_RELAY)
+  ok(false, "Relais am Expander, aber als abwesend gemeldet", buf);
+#endif
 #endif
 
   // ---- the panel timings, when the board names its own --------------------

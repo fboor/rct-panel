@@ -50,6 +50,23 @@
 #include "Backlight.h"
 
 #include "board/BoardPins.h"
+#if !BOARD_BACKLIGHT_DIMMABLE
+#include "board/Ch422G.h"
+#endif
+
+// Two backlights, one file. Where the light hangs on a GPIO (the Guition, and any
+// board whose mod gives it one) this is the LEDC PWM below. Where it hangs on an
+// IO expander - the Waveshare's EXIO2 - there is no PWM behind that pin at all,
+// only one bit, so the same timers run with two levels: full, then off. Given up
+// is the three-minute step in between; kept is what matters on a wall, which is
+// that the light goes out when nobody is there.
+
+// --- Timing, shared by both backlights ---------------------------------------
+// The time after which the light goes out. It is the same number whichever
+// backlight this is; the ramp times below exist only for the dimmable one.
+static const uint32_t OFF_IDLE_MS = 5UL * 60 * 1000;
+
+#if BOARD_BACKLIGHT_DIMMABLE
 
 // --- Hardware ---------------------------------------------------------------
 
@@ -63,7 +80,6 @@
 // --- Timing and levels ------------------------------------------------------
 
 static const uint32_t DIM_IDLE_MS = 3UL * 60 * 1000; // no touch -> dim
-static const uint32_t OFF_IDLE_MS = 5UL * 60 * 1000; // no touch -> off
 
 // Waking is fast - the person is there and looking. Dimming and switching off
 // are slow - nobody is there, and the change should not be seen.
@@ -191,3 +207,71 @@ void backlightUpdate() {
 uint8_t backlightPercent() {
   return (uint8_t)((s_duty * 100 + BL_FULL / 2) / BL_FULL);
 }
+
+#else // !BOARD_BACKLIGHT_DIMMABLE
+
+// --- Behind an IO expander: one bit, no PWM ----------------------------------
+//
+// No LEDC here and no ramp: the pin is a single bit of a register, so "dimmer"
+// would mean on and off with a different word for it. The three-minute step is
+// therefore skipped rather than faked - the light stays at full until the five
+// minutes are up, then goes out.
+
+static bool s_ready = false;
+static bool s_wakeable = true;
+static bool s_on = false;
+static uint32_t s_lastTouchMs = 0;
+
+static void write(bool level) {
+  if (level == s_on) {
+    return;
+  }
+  s_on = level;
+  if (s_ready) {
+    ch422gWrite(BOARD_CH422G_PIN_BACKLIGHT,
+                level ? (BOARD_BACKLIGHT_ON_LEVEL != 0) : (BOARD_BACKLIGHT_ON_LEVEL == 0));
+  }
+}
+
+void backlightInit() {
+  // The light is already on - the expander's start-up level says so - so there is
+  // nothing to flash here, and a board whose expander is missing keeps whatever
+  // its hardware does, which is a lit screen and a log line saying why it cannot
+  // be switched.
+  s_ready = ch422gFound();
+  s_lastTouchMs = millis();
+  if (!s_ready) {
+    Serial.println(F("Backlight: kein IO-Expander - das Licht bleibt an"));
+  } else {
+    Serial.printf("Backlight: EXIO%d, an/aus ohne Stufen\n",
+                  BOARD_CH422G_PIN_BACKLIGHT);
+  }
+}
+
+void backlightSetWakeable(bool wakeable) {
+  s_wakeable = wakeable;
+  if (!wakeable) {
+    write(true);
+    Serial.println(F("Backlight: kein Touch - das Licht bleibt an"));
+  }
+}
+
+void backlightActivity() {
+  s_lastTouchMs = millis();
+  write(true);
+}
+
+void backlightUpdate() {
+  if (!s_ready || !s_wakeable) {
+    return;
+  }
+  // Unsigned, so the millis() wrap stays harmless.
+  if (s_on && (uint32_t)(millis() - s_lastTouchMs) >= OFF_IDLE_MS) {
+    write(false);
+    Serial.println(F("Backlight: 5 min ohne Touch - aus"));
+  }
+}
+
+uint8_t backlightPercent() { return s_on ? 100 : 0; }
+
+#endif // BOARD_BACKLIGHT_DIMMABLE

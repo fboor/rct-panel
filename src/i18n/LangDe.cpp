@@ -328,6 +328,7 @@ const char *const kLang[T_COUNT] = {
     "AN",                 // T_D_OUT_ON
     "AUS",                // T_D_OUT_OFF
     "nichts geschaltet",  // T_D_OUT_NOTHING
+    "kein Ausgang an diesem Board",  // T_D_OUT_NO_OUTPUT
 
     // --- Anzeige: die Screenshot-Ausgabe ---------------------------
     "Aufnahme laeuft bereits",  // T_D_SHOT_BUSY

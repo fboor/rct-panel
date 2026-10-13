@@ -324,6 +324,7 @@ const char *const kLang[T_COUNT] = {
     "ON",                // T_D_OUT_ON
     "OFF",               // T_D_OUT_OFF
     "nothing switched",  // T_D_OUT_NOTHING
+    "no output on this board",  // T_D_OUT_NO_OUTPUT
 
     // --- Anzeige: die Screenshot-Ausgabe ---------------------------
     "A capture is already running",  // T_D_SHOT_BUSY

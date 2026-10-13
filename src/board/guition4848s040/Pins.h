@@ -36,6 +36,30 @@
 #define PIN_LCD_B3 7
 #define PIN_LCD_B4 15
 
+// The RGB timings, out of the vendor demo this board shipped with (aquaElectronics).
+// They were in Display.cpp until a second board made the profile the only place
+// where a number about a panel belongs. Nothing changed: these are the values the
+// panel has been running with.
+#define BOARD_LCD_CTRL_ST7701 1
+// Red first, like this board's wires; the ST7701's MADCTL then says the same
+// thing again and the two cancel. See the Waveshare profile for the other case.
+// No bounce buffer on this board: it has run for years with one frame buffer
+#define BOARD_LCD_DATA_ORDER_BGR 0
+#define BOARD_LCD_PCLK_HZ (12 * 1000 * 1000)
+#define BOARD_LCD_PCLK_ACTIVE_NEG 0 // data on the rising edge
+#define BOARD_LCD_HSYNC_PULSE_WIDTH 8
+#define BOARD_LCD_HSYNC_BACK_PORCH 50
+// LVGL's draw buffer, in lines of the panel: 24 lines are 23 kB here. It is the
+// one piece of a redraw that does not have to live in the PSRAM - see the same
+// entry in the 7-inch board's profile.
+#define BOARD_LCD_BUF_ROWS 24
+#define BOARD_LCD_HSYNC_FRONT_PORCH 10
+#define BOARD_LCD_VSYNC_PULSE_WIDTH 8
+#define BOARD_LCD_VSYNC_BACK_PORCH 20
+#define BOARD_LCD_VSYNC_FRONT_PORCH 10
+// No bounce buffer here either - see the Waveshare profile, which says why the
+// field is not there to set.
+
 // SPI link used to configure the ST7701 (3-wire 9-bit, no D/C line).
 #define PIN_LCD_CS 39
 #define PIN_LCD_SCK 48
@@ -44,10 +68,19 @@
 // Backlight (active high). Driven as LEDC PWM, 1 kHz / 10 bits, since the panel
 // dims itself after a few minutes without a touch - see Backlight.h.
 #define PIN_LCD_BL 38
-// Whether the backlight can be dimmed at all. The Waveshare board switches it over
-// an IO expander and can only say on or off, and Backlight.cpp asks before it
-// promises a dimming that would not happen.
+// Whether the backlight can be dimmed at all. Both boards this firmware knows
+// drive it from a GPIO, so the answer is yes twice; the flag exists because the
+// question is worth asking out loud, and because a board whose backlight sits
+// behind an IO expander cannot answer it with anything but no.
 #define BOARD_BACKLIGHT_DIMMABLE 1
+#define BOARD_BACKLIGHT_ON_LEVEL 1
+
+// No IO expander on this board: the touch, the backlight and the SD card's chip
+// select are all on GPIOs of their own.
+#define BOARD_CH422G_PRESENT 0
+// Backlight active level, so that the expander path below reads the same way a
+// GPIO one does: this board's light is on when the pin is high.
+#define BOARD_CH422G_START_IO 0xFF
 
 // GT911 touch controller. Neither INT nor RST is wired on this board, which is why
 // Touch.cpp polls instead of waiting.
@@ -58,6 +91,7 @@
 #define BOARD_TOUCH_HAS_INT 0
 
 // TF slot (see docs/sd-history.md section 1). The chip select is a real GPIO here.
+#define BOARD_SD_CS_IS_GPIO 1
 #define PIN_SD_SCK 48
 #define PIN_SD_MISO 41
 #define PIN_SD_MOSI 47

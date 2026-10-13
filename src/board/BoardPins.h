@@ -18,13 +18,13 @@
 #ifndef RCT_BOARD_BOARDPINS_H
 #define RCT_BOARD_BOARDPINS_H
 
-#if defined(RCT_BOARD_GUITION_4848S040) && defined(RCT_BOARD_WAVESHARE_LCD7)
+#if defined(RCT_BOARD_GUITION_4848S040) && defined(RCT_BOARD_WAVESHARE_TOUCH_LCD7)
 #error "Two boards selected. One firmware is one board."
 #endif
 
-#if defined(RCT_BOARD_WAVESHARE_LCD7)
+#if defined(RCT_BOARD_WAVESHARE_TOUCH_LCD7)
 
-#include "board/waveshare_lcd7/Pins.h"
+#include "board/waveshare_touch_lcd7/Pins.h"
 
 #elif defined(RCT_BOARD_GUITION_4848S040)
 
@@ -34,7 +34,7 @@
 // The default keeps every existing build working and keeps the mistake visible:
 // without a flag the build stops here rather than shipping the 480 board's pin map
 // to a panel it does not belong to.
-#error "No board selected. Set -DRCT_BOARD_GUITION_4848S040 or -DRCT_BOARD_WAVESHARE_LCD7."
+#error "No board selected. Set -DRCT_BOARD_GUITION_4848S040 or -DRCT_BOARD_WAVESHARE_TOUCH_LCD7."
 #endif
 
 #endif // RCT_BOARD_BOARDPINS_H
