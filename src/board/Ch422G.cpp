@@ -53,7 +53,31 @@ static int s_wireFehler = 0;
 // wrong address from a chip that is not there at all.
 static void busFragen() {
   uint8_t gefunden = 0;
+  // The expander's own register addresses first, read the way its driver reads:
+  // the address, a repeated start, one byte back. RD_IO (0x26) is the register
+  // that answers a read.
+  static const uint8_t eigene[] = {CH422G_REG_RD_IO, CH422G_REG_WR_SET,
+                                   CH422G_REG_WR_OC, CH422G_REG_WR_IO};
+  for (size_t i = 0; i < sizeof(eigene) / sizeof(eigene[0]); i++) {
+    Wire.beginTransmission(eigene[i]);
+    if (Wire.endTransmission(false) != 0) {
+      continue;
+    }
+    if (Wire.requestFrom((int)eigene[i], (int)1) > 0) {
+      gefunden++;
+      Serial.printf("CH422G: Busgeraet 0x%02X (Expander-Register)\n", eigene[i]);
+    }
+  }
+  // And the rest of the bus, as before, so a wrong address still tells itself from
+  // a bus that is simply empty.
   for (uint8_t a = 0x08; a < 0x78; a++) {
+    bool bekannt = false;
+    for (size_t i = 0; i < sizeof(eigene) / sizeof(eigene[0]); i++) {
+      bekannt = bekannt || eigene[i] == a;
+    }
+    if (bekannt) {
+      continue;
+    }
     Wire.beginTransmission(a);
     if (Wire.endTransmission(false) != 0) {
       continue;
@@ -68,10 +92,23 @@ static void busFragen() {
   }
 }
 
+// The register number IS the address on the bus - the chip has no single
+// configurable I2C address, it has one address per register. The vendor's own
+// library says so in the line above the address it passes in and never uses:
+//
+//   ESP_IO_EXPANDER_I2C_CH422G_ADDRESS (0x24)  "Just to keep the same with
+//   other IO expanders, but it is ignored."
+//
+// and ESPHome's component, which drives the same chip, comments the same thing on
+// write_reg_(): "Can't use the standard write_byte() method because there is no
+// single pre-configured i2c address" - then uses the register as the address.
+//
+// This used to send the register as the first data byte to a fixed address, which
+// is what every other I2C chip expects. Nothing on this bus does, so the panel found
+// no expander on a board that has one.
 static bool schreibe(uint8_t reg, uint8_t wert) {
   s_wireFehler = 0;
-  Wire.beginTransmission(BOARD_CH422G_I2C_ADDR);
-  Wire.write(reg);
+  Wire.beginTransmission(reg);
   Wire.write(wert);
   const int rc = Wire.endTransmission(true);
   if (rc != 0) {
@@ -103,8 +140,8 @@ bool ch422gBegin() {
       s_found = true;
       return true;
     }
-    Serial.printf("CH422G: 0x%02X nicht schreibbar bei %lu Hz\n",
-                  BOARD_CH422G_I2C_ADDR, (unsigned long)takte[t]);
+      Serial.printf("CH422G: WR_SET 0x%02X nicht schreibbar bei %lu Hz\n",
+                    CH422G_REG_WR_SET, (unsigned long)takte[t]);
   }
   busFragen();
   return false;

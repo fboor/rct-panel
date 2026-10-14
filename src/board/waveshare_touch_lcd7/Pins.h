@@ -133,7 +133,7 @@
 #define BOARD_CH422G_PRESENT 1
 // The chip answers at 0x20; the wiki's address map shows the CH422G occupying
 // 0x20..0x27 and the GT911 at 0x5D. The bus runs at 400 kHz in the vendor config.
-#define BOARD_CH422G_I2C_ADDR 0x20
+#define BOARD_CH422G_I2C_ADDR 0x20 // unbenutzt: siehe Ch422G.cpp
 #define BOARD_CH422G_I2C_HZ 400000
 // EXIOn is CH422G pin n. The backlight (pin 2) is in the board's own backlight
 // block below, which says which of the two worlds this board is in; the four
