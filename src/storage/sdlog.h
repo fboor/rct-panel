@@ -96,6 +96,18 @@ bool sdShotOk();
 // by asking for one chunk per GUI tick and writing that chunk to the socket.
 // A single stream runs at a time; a second request replaces the first.
 //
+//   sdBeginStreamRequest()           - clear the state of a finished stream, under
+//                                    the lock, BEFORE sdRequestStream(). The
+//                                    worker resets the same fields, but it does
+//                                    so in its own task, and the caller reads
+//                                    the state right away: without this the
+//                                    "done" of the previous download is still
+//                                    standing and the first
+//                                    sdTakeStreamChunk() answers -1, i.e. a
+//                                    complete HTTP 200 with an empty body.
+//                                    Measured: download 1 after boot 1152054
+//                                    bytes, download 2 zero, download 3 a
+//                                    stalled fragment.
 //   sdRequestStream(path, tailBytes) - ask. tailBytes 0 = whole file, otherwise
 //                                    start that many bytes back from the end
 //                                    (clamped to the file size). Returns
@@ -120,6 +132,7 @@ bool sdShotOk();
 // full and the worker waits. At most one chunk of delay for a queued 5-minute
 // CSV row, so logging and streaming do not starve each other.
 // --------------------------------------------------------------------------
+void sdBeginStreamRequest();
 void sdRequestStream(const char *path, uint32_t tailBytes);
 uint32_t sdStreamTotal();
 int sdTakeStreamChunk(uint8_t *out, uint32_t max);

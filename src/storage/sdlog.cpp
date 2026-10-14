@@ -1376,6 +1376,32 @@ static void sdWorkerListDir(const SdReq &req) {
   xSemaphoreGive(s_lock);
 }
 
+// Forget a finished stream, in the caller's own task and under the lock, so that
+// the first read after the request cannot see the previous download's state.
+//
+// The worker resets the same fields when it picks the request up - but that
+// happens in the other task, and the web layer reads sdStreamTotal() and
+// sdTakeStreamChunk() immediately. A finished stream leaves done = true, so
+// without this the new request reads the OLD total (the header goes out with
+// it), the first chunk ask answers -1, and the browser gets a complete
+// HTTP 200 with an empty body. Measured on the 7-inch panel, same file, four
+// downloads in a row: 1152054 bytes, 0 bytes, 6144 bytes and a stall, 0 bytes.
+void sdBeginStreamRequest() {
+  if (s_lock == nullptr) {
+    return;
+  }
+  xSemaphoreTake(s_lock, portMAX_DELAY);
+  s_stream.active = false; // the worker's handle, if any, is closed there
+  s_stream.ready = false;
+  s_stream.done = false;
+  s_stream.failed = false;
+  s_stream.stop = false;
+  s_stream.total = 0;
+  s_stream.sent = 0;
+  s_stream.have = 0;
+  xSemaphoreGive(s_lock);
+}
+
 void sdRequestStream(const char *path, uint32_t tailBytes) {
   if (s_reqQ == nullptr || path == nullptr || s_streamBuf == nullptr) {
     return;

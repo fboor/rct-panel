@@ -1106,6 +1106,11 @@ void openStream(const char *path, uint32_t tail, StreamKind kind) {
   s_streamHeaderSent = false;
   s_streamOpenedMs = millis();
   Serial.printf("Web: Download %s (tail %u)\n", s_streamFile, (unsigned)tail);
+  // Before the ask, not after: the worker resets the same state, but in its own
+  // task, and the loop below reads it in the next iteration. The reset has to be
+  // in this task or the first chunk ask still sees the previous download's "done"
+  // - a complete HTTP 200 with an empty body, on every download after the first.
+  sdBeginStreamRequest();
   sdRequestStream(s_streamFile, s_streamTail);
 
   // One chunk per pass, with the display in between. kStreamMaxMs is the backstop
