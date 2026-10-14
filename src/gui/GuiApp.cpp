@@ -2613,7 +2613,11 @@ static void applyScaleMarkers(float loW, float hiW) {
     setScaleVal(l, v);
     lv_obj_set_pos(l, labelX, yv - 9 + dy);
   };
-  place(s_scaleMax, yMax, hiW, -2);
+  // -1, not -2: at -2 the top label stands one pixel too high, which is what
+  // the eye reads as a label that does not belong to its line. Both outer
+  // labels ride above their line on purpose (see above), so this corrects the
+  // amount, not the decision.
+  place(s_scaleMax, yMax, hiW, -1);
   place(s_scaleZero, yZero, 0.0f, 0);
   if (loW < 0.0f) {
     place(s_scaleMin, yMin, loW, -5);
@@ -2771,7 +2775,8 @@ static void pageBuildGraph(AppPage *p) {
   // to read as "the value dipped" if nobody states that no value was measured.
   p->labels[GH_GAPS] =
       makeLabel(root, "", &lv_font_montserrat_14_uml, COL_MUTED);
-  lv_obj_set_pos(p->labels[GH_GAPS], 20, 336); // 4 px under the chart
+  lv_obj_set_pos(p->labels[GH_GAPS], 20,
+                   ui().chart.y + ui().chart.h + 4); // 4 px under the chart
   lv_obj_set_width(p->labels[GH_GAPS], 440);
 
   p->labelCount = GH_LABEL_COUNT;

@@ -123,9 +123,9 @@ const UiLayout kGuition4848S040 = {
     // the plot area instead.
     /* chart */
     {
-        /* x */ 10, /* y */ 52, /* w */ 458, /* h */ 280,
+        /* x */ 10, /* y */ 62, /* w */ 458, /* h */ 280,
         /* pad */ 10,
-        /* legendY */ 32, /* legendDot */ 10,
+        /* legendY */ 42, /* legendDot */ 10,
         /* legendTextDx */ 14, /* legendTextDy */ -3,
         /* legendGap */ 24,
     },
@@ -133,11 +133,18 @@ const UiLayout kGuition4848S040 = {
     // value's right edge lands exactly on the track's right edge (340 + 120 = 460 =
     // 20 + 440). These six numbers plus the value's x and width were literals in
     // GuiApp.cpp until the second board asked for a wider bar and could not get one.
+    //
+    // row0Y 80 and rowH 57 where it was 82 and 58, for both boards: one pixel less air
+    // between a bar and the name above the next one - 17 px where it was 18 - and the
+    // first name two pixels higher, which the tab row above can spare (6 px of air where
+    // there were 8). Five rows at one pixel less are the five pixels that make the
+    // bottom roomier: the last bar ends at 348 and 16 px of content follow it to 364,
+    // where 10 did.
     /* bars */
     {
         /* x */ 20, /* w */ 440, /* h */ 16,
         /* labelGap */ 24,
-        /* row0Y */ 82, /* rowH */ 58,
+        /* row0Y */ 80, /* rowH */ 57,
         /* valX */ 340, /* valW */ 120,
     },
     // PERIODS: the 480's own numbers, and they stay its own - 12 + 3 * 114 + 108 = 462,
@@ -258,7 +265,12 @@ const UiLayout kBreit800x480 = [] {
   l.cards.cardRow[6] = 2; l.cards.cardCol[6] = 1;
   l.cards.n = 7;
   l.rows.cols = 2;
-  l.rows.valX = 216;
+  // VALUES: at 180 instead of the 480's 216. MEASURED on this board: the longest
+  // label, "Batterie-Temp:", ends at x = 146, so the air between label and value was
+  // 216 - 147 = 69 px. Half of that is 34, which puts the column at 180. The 480 keeps
+  // its own 216, where the two columns leave no room to close the gap: the second
+  // column's labels start at 24 px inside the screen there.
+  l.rows.valX = 180;
   // CHART: 778 px wide, and the 280 px height is inherited rather than reduced.
   // The chart starts below the 44 px page head, so 280 runs to y = 375 on a 480
   // screen and the gap summary fits under it inside contentH(). Measured on the
