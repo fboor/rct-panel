@@ -36,6 +36,11 @@ bool guiRequestShot();
 // for up to 5 s, so the file appears a second or two after the button.
 bool guiShotRunning();
 
+// The rendered screen in our own buffer, RGB565, one pixel per 16-bit word -
+// what the flush callback sends. nullptr on failure. Diagnostic; see the
+// definition for why a photo cannot answer the same question.
+const uint16_t *guiShotRam(int *w, int *h);
+
 // The five energy figures of one period, in Wh, plus the two percentages:
 //
 //   wh[0] pv generation      wh[3] grid draw

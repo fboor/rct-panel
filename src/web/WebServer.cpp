@@ -30,6 +30,7 @@
 #include "../Charts.h"
 #include "../DataStatus.h"
 #include "../Diag.h"
+#include "../display/Display.h"
 #include "../NumFmt.h"
 #include "../config/Configuration.h"
 #include "../gui/GuiApp.h"
@@ -570,6 +571,64 @@ static void addNum(String &j, float v, int decimals) {
 // The five energy figures of one period and the two percentages, in Wh and in
 // per cent. Same source as the bars on the overview page, so the two cannot
 // disagree. Unknown or missing values mean the day period.
+// What our own code put on the bus, at up to 200 positions in one request.
+//
+// A photo of a panel answers "what comes out of the glass"; this answers "what
+// went in". Only the second one separates a sending fault from a panel that
+// answers differently, and on this project's two panels that difference is the
+// whole open question - a photo cannot tell them apart, because the camera sits
+// in between and contributes its own white balance.
+static void handleApiPixel() {
+  const int x = s_server.hasArg("x") ? atoi(s_server.arg("x").c_str()) : 0;
+  const int y = s_server.hasArg("y") ? atoi(s_server.arg("y").c_str()) : 0;
+  int n = s_server.hasArg("n") ? atoi(s_server.arg("n").c_str()) : 1;
+  const int dx = s_server.hasArg("dx") ? atoi(s_server.arg("dx").c_str()) : 1;
+  const int dy = s_server.hasArg("dy") ? atoi(s_server.arg("dy").c_str()) : 0;
+  if (n < 1) {
+    n = 1;
+  }
+  if (n > 200) {
+    n = 200;
+  }
+  String j;
+  j.reserve(40 + (size_t)n * 26);
+  int bw = 0;
+  int bh = 0;
+  const uint16_t *fb = guiShotRam(&bw, &bh);
+  if (fb == nullptr) {
+    s_server.send(200, "application/json; charset=utf-8", F("{\"error\":1}"));
+    return;
+  }
+  j = F("{\"w\":");
+  j += bw;
+  j += F(",\"h\":");
+  j += bh;
+  j += F(",\"px\":[");
+  for (int i = 0; i < n; i++) {
+    const int px = x + dx * i;
+    const int py = y + dy * i;
+    if (i) {
+      j += ',';
+    }
+    if (px < 0 || py < 0 || px >= bw || py >= bh) {
+      j += F("null");
+      continue;
+    }
+    const uint16_t w = fb[(size_t)py * bw + px];
+    char s[8];
+    snprintf(s, sizeof(s), "%04X", (unsigned)w);
+    j += F("{\"x\":");
+    j += px;
+    j += F(",\"y\":");
+    j += py;
+    j += F(",\"v\":\"");
+    j += s;
+    j += F("\"}");
+  }
+  j += F("]}");
+  s_server.send(200, "application/json; charset=utf-8", j);
+}
+
 void handleApiEnergy() {
   int period = 0;
   if (s_server.hasArg("zeitraum")) {
@@ -1863,6 +1922,7 @@ void webStart() {
   s_server.on(Uri("/"), HTTP_GET, handleRoot);
   s_server.on(Uri("/verlauf"), HTTP_GET, handleVerlauf);
   s_server.on(Uri("/api/energie.json"), HTTP_GET, handleApiEnergy);
+    s_server.on(Uri("/api/px.json"), HTTP_GET, handleApiPixel);
   s_server.on(Uri("/api/verlauf.json"), HTTP_GET, handleApiHistory);
   s_server.on(Uri("/daten"), HTTP_GET, handleData);
   s_server.on(Uri("/bilder"), HTTP_GET, handleShots);

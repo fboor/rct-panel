@@ -2071,6 +2071,24 @@ void guiRelayStateChanged() {
 // ---------------------------------------------------------------------------
 static uint16_t *s_shotBuf = nullptr;
 
+// The one buffer both readers of a rendered screen share: the screenshot that goes
+// to the card, and the diagnostic that hands out single pixels over HTTP. Not a
+// local array and not malloc: this outlives the call by seconds and has to be
+// 460 kB, which is PSRAM territory.
+static uint16_t *shotBuffer(size_t need) {
+  if (!s_shotBuf) {
+    s_shotBuf = (uint16_t *)heap_caps_malloc(need, MALLOC_CAP_SPIRAM);
+    if (s_shotBuf == nullptr) {
+      s_shotBuf = (uint16_t *)heap_caps_malloc(need, MALLOC_CAP_8BIT);
+    }
+    if (s_shotBuf == nullptr) {
+      Serial.printf("Screenshot: %lu B nicht freier\n", (unsigned long)need);
+      return nullptr;
+    }
+  }
+  return s_shotBuf;
+}
+
 // Delay between pressing the button and the capture. The button lives on the
 // Service page, so an immediate shot could only ever photograph the Service
 // page - the delay is what makes the button useful at all: press it, switch to
@@ -2096,19 +2114,10 @@ static void takeShotNow() {
   const int w = (int)lv_display_get_horizontal_resolution(disp);
   const int h = (int)lv_display_get_vertical_resolution(disp);
   const size_t need = (size_t)w * (size_t)h * sizeof(uint16_t);
-  if (!s_shotBuf) {
-    // Not a local array and not malloc: this outlives the call by seconds and
-    // has to be 460 kB, which is PSRAM territory.
-    s_shotBuf = (uint16_t *)heap_caps_malloc(need, MALLOC_CAP_SPIRAM);
-    if (s_shotBuf == nullptr) {
-      s_shotBuf = (uint16_t *)heap_caps_malloc(need, MALLOC_CAP_8BIT);
-    }
-    if (s_shotBuf == nullptr) {
-      Serial.printf("Screenshot: %lu B nicht freier\n", (unsigned long)need);
-      lv_label_set_text(s_pages[PAGE_SERVICE].labels[SV_SHOT],
-                        tr(T_D_SHOT_NOMEM));
-      return;
-    }
+  if (!shotBuffer(need)) {
+    lv_label_set_text(s_pages[PAGE_SERVICE].labels[SV_SHOT],
+                      tr(T_D_SHOT_NOMEM));
+    return;
   }
 
   // RGB565 is what LVGL renders into here, so the conversion on the card side
@@ -2183,6 +2192,40 @@ static void shotCb(lv_event_t *e) {
   // there is no handle to keep and nothing to free here.
   lv_timer_t *timer = lv_timer_create(shotTimerCb, SHOT_DELAY_MS, nullptr);
   lv_timer_set_repeat_count(timer, 1);
+}
+
+// The screen as LVGL renders it, in our own buffer and in the format the flush
+// callback sends: what goes on the bus, before the panel has had anything to do
+// with it. nullptr on failure.
+//
+// The screenshot renders the same picture and then writes it to the card, which
+// is why this one exists separately: the 7-inch board has no usable card, and a
+// photo of a panel cannot answer this question - it shows what comes out of the
+// glass, with the camera's own white balance in between.
+const uint16_t *guiShotRam(int *w, int *h) {
+  lv_display_t *disp = dispGetHandle();
+  if (disp == nullptr) {
+    return nullptr;
+  }
+  *w = (int)lv_display_get_horizontal_resolution(disp);
+  *h = (int)lv_display_get_vertical_resolution(disp);
+  const size_t need = (size_t)*w * (size_t)*h * sizeof(uint16_t);
+  if (shotBuffer(need) == nullptr) {
+    return nullptr;
+  }
+  lv_draw_buf_t shot;
+  if (lv_draw_buf_init(&shot, (uint32_t)*w, (uint32_t)*h, LV_COLOR_FORMAT_RGB565,
+                       0, s_shotBuf, (uint32_t)need) != LV_RESULT_OK) {
+    Serial.printf("Screenshot: draw_buf %dx%d, %lu B abgelehnt\n", *w, *h,
+                  (unsigned long)need);
+    return nullptr;
+  }
+  if (lv_snapshot_take_to_draw_buf(lv_screen_active(), LV_COLOR_FORMAT_RGB565,
+                                   &shot) != LV_RESULT_OK) {
+    Serial.printf("Screenshot: Snapshot fehlgeschlagen\n");
+    return nullptr;
+  }
+  return s_shotBuf;
 }
 
 bool guiShotRunning() {
