@@ -109,12 +109,28 @@ for dev in d["devices"]:
         aufgaben.append((dev["id"], sprache, env))
 
 envs = []
+gesehen = set()
 for _, _, env in aufgaben:
-    if env not in envs:
+    if env not in gesehen:
+        gesehen.add(env)
         envs.append(env)
 print("ENVS=%s" % shlex.quote(" ".join(envs)))
 print("FIRST_ENV=%s" % shlex.quote(envs[0]))
 print("ANZAHL_AUFGABEN=%d" % len(aufgaben))
+
+# What the shell does next needs the device each environment belongs to, because a
+# release folder names its files after the board, not after the build. With one device
+# "devices[0]" was that device; with two it is the first of somebody else's files, so
+# the plan is handed over line by line instead of guessed.
+#
+# One record per (device, language, environment). The first environment of a device
+# also provides that device's bootloader and partition table - they do not differ by
+# language, and a second build that disagreed there would mean two flash layouts.
+zeilen = []
+for dev_id, sprache, env in aufgaben:
+    zeilen.append("%s\t%s\t%s" % (dev_id, sprache, env))
+# One variable, newlines escaped: the shell reads it back line by line with printf.
+print("PLAN_LINES=%s" % shlex.quote("\n".join(zeilen)))
 
 # The release directory is created here rather than in the shell: its name only
 # becomes known in this block, and the manifests below are written into it.
@@ -191,17 +207,14 @@ print("MANIFESTS=%s" % shlex.quote(" ".join(manifests)))
 PY
 )"
 
-# The board id, for the file names: a release folder is self-contained, so its
-# contents have to say what they are without a lookup somewhere else. devices[0] is
-# the first board in the list, which is the one FIRST_ENV belongs to.
-BOARD=$(python3 - "$LIST" <<'PY2'
-import json, sys
-print(json.load(open(sys.argv[1]))["devices"][0]["id"])
-PY2
-)
+# The plan, read back out of that block: one line per (device, language,
+# environment), so every file below is named after the board it belongs to. With a
+# single device "devices[0]" did that job; with two it would name one board's files
+# after the other.
+PLAN=$(printf '%s\n' "$PLAN_LINES")
 
 echo "=== Release $FULL ($RELEASE) ==="
-echo "Geraete: $ANZAHL_AUFGABEN Sprachvarianten, $FIRST_ENV als erste Umgebung"
+echo "Geraete: $ANZAHL_AUFGABEN Sprachvarianten, $(echo "$PLAN" | wc -l) Eintraege"
 echo
 
 echo "=== 1/3 Firmware bauen ==="
@@ -218,27 +231,27 @@ echo "=== 2/3 Teile ablegen ==="
 #
 # The bootloader and the partition table are the same for every build of one device.
 # A second build that disagreed here would mean two flash layouts, and only one could
-# be right - so it is checked rather than silently overwriting.
+# be right - so it is checked rather than silently overwriting. That check is per
+# board, and the first build of a board is the one it is compared against.
 for part in bootloader partitions; do
-  src="$ROOT/.pio/build/$FIRST_ENV/$part.bin"
-  ziel="$OUT/$RELEASE/$BOARD-$part.bin"
-  if [ -f "$ziel" ] && ! cmp -s "$src" "$ziel"; then
-    echo "  $part weicht vom abgelegten $RELEASE ab - die Builds benutzen"
-    echo "  verschiedene Flash-Layouts. Nur eines davon kann stimmen."
-    exit 1
-  fi
-  cp "$src" "$ziel"
-  echo "  $RELEASE/$BOARD-$part.bin  ($FIRST_ENV)"
+  for device in $(printf '%s\n' "$PLAN" | cut -f1 | sort -u); do
+    # The first language of that board, in the order the list gives them.
+    erste=$(printf '%s\n' "$PLAN" | awk -F'\t' -v d="$device" '$1 == d { print $3; exit }')
+    src="$ROOT/.pio/build/$erste/$part.bin"
+    ziel="$OUT/$RELEASE/$device-$part.bin"
+    if [ -f "$ziel" ] && ! cmp -s "$src" "$ziel"; then
+      echo "  $device/$part weicht vom abgelegten $RELEASE ab - die Builds"
+      echo "  benutzen verschiedene Flash-Layouts. Nur eines davon kann stimmen."
+      exit 1
+    fi
+    cp "$src" "$ziel"
+    echo "  $RELEASE/$device-$part.bin  ($erste)"
+  done
 done
 
-for env in $ENVS; do
-  case "$env" in
-    esp32-s3)    sprache=de ;;
-    esp32-s3-en) sprache=en ;;
-    *)           sprache="$env" ;;
-  esac
-  cp "$ROOT/.pio/build/$env/firmware.bin" "$OUT/$RELEASE/$BOARD-$sprache.bin"
-  echo "  $RELEASE/$BOARD-$sprache.bin  ($env)"
+printf '%s\n' "$PLAN" | while IFS='	' read -r device sprache env; do
+  cp "$ROOT/.pio/build/$env/firmware.bin" "$OUT/$RELEASE/$device-$sprache.bin"
+  echo "  $RELEASE/$device-$sprache.bin  ($env)"
 done
 
 echo
