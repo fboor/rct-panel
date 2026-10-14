@@ -95,8 +95,8 @@
 #define BOARD_LCD_HSYNC_BACK_PORCH 8
 #define BOARD_LCD_HSYNC_FRONT_PORCH 8
 #define BOARD_LCD_VSYNC_PULSE_WIDTH 4
-#define BOARD_LCD_VSYNC_BACK_PORCH 16
-#define BOARD_LCD_VSYNC_FRONT_PORCH 16
+#define BOARD_LCD_VSYNC_BACK_PORCH 8
+#define BOARD_LCD_VSYNC_FRONT_PORCH 8
 // LVGL's draw buffer, in lines of the panel. 24 lines are 38 kB on this board at
 // RGB565, and that buffer is the one piece of the redraw that does not have to
 // live in the PSRAM: the driver copies every strip into the frame buffer itself,
