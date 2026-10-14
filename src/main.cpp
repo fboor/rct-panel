@@ -7,6 +7,7 @@
 //
 // SPDX-License-Identifier: MIT
 #include <Arduino.h>
+#include <esp_ota_ops.h>
 
 #include "config/Configuration.h"
 #include "Diag.h"
@@ -36,6 +37,18 @@ void setup() {
   Serial.begin(115200);
   delay(200);
   Serial.println(F("\nRCT Power Panel boot"));
+  // Which app slot this is, named by the panel itself.
+  //
+  // Not a detail: a web update writes the second slot and selects it, and the
+  // bootloader then boots app1 at 0x710000 - where a flash to 0x10000 changes
+  // nothing that runs, and says "verified" while doing it. Reading the slot off the
+  // board is how a flash is checked against what the panel actually runs; reading
+  // it off the flash is how it was checked before, which is the wrong end.
+  {
+    const esp_partition_t *boot = esp_ota_get_running_partition();
+    Serial.printf("Boot: %s @ 0x%06X\n", boot ? boot->label : "?",
+                  boot ? (unsigned)boot->address : 0u);
+  }
   // Started first, so a hang during the rest of the boot is reported too.
   diagStart();
   lv_log_register_print_cb(lvLogPrint);
