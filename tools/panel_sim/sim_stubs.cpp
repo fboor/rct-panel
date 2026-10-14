@@ -173,6 +173,7 @@ bool sdTakeShotDone() { return true; }
 // same answer a card that cannot be read produces. The pages around them still come
 // up, which is the point: looking at the four pages is worth doing without a card,
 // and pretending the downloads work would be worse than saying they do not.
+void sdBeginStreamRequest() {}
 void sdRequestStream(const char *, uint32_t) {}
 uint32_t sdStreamTotal() { return 0; }
 int sdTakeStreamChunk(uint8_t *, uint32_t) { return -1; }
