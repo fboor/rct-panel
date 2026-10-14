@@ -22,6 +22,10 @@ static int16_t s_x = 0;
 static int16_t s_y = 0;
 static bool s_pressed = false;
 static bool s_logPress = true;
+// Set when no controller answered at startup. Polling a bus with nobody on it is
+// what produced a Wire error every 7 ms from that point on - hundreds of lines a
+// second, which is also what pushes the panel's own startup lines out of the log.
+static bool s_keinerDa = false;
 
 // The range the controller reports in. It is told this at configuration time and
 // keeps it in its own registers (X_MAX / Y_MAX), so it is read rather than
@@ -121,6 +125,11 @@ bool touchInit() {
     }
   }
   Serial.println("Touch: GT911 not found (check I2C wiring)");
+  // Nothing answered, and on this board the controller's reset hangs on the IO
+  // expander, which does not answer either - so it comes up whenever it likes.
+  // Say it once and stop asking, rather than reading a bus with nobody on it.
+  s_keinerDa = true;
+  s_addr = 0;
   return false;
 }
 
@@ -129,6 +138,10 @@ void touchReadCb(lv_indev_t *indev, lv_indev_data_t *data) {
   if (!s_addr) { // controller not found / Wire not up: report released
     data->point.x = 0;
     data->point.y = 0;
+    data->state = LV_INDEV_STATE_RELEASED;
+    return;
+  }
+  if (s_keinerDa) { // no controller on the bus: do not keep asking
     data->state = LV_INDEV_STATE_RELEASED;
     return;
   }
