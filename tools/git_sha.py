@@ -33,11 +33,12 @@ kurz = git("rev-parse", "--short", "HEAD")
 if not kurz:
     kennung = "ohne-git"
 else:
-    # What counts is a changed source, not everything git notices: docs/install is
-    # written before the build by tools/pack_web_install.sh, and an untracked file
-    # cannot have been compiled. Both used to mark a release binary "-dirty" over
-    # neither.
-    if git("status", "--porcelain", "--untracked-files=no", "--", ".", ":!docs/install"):
+    # What counts is a changed source, not everything git notices: everything under
+    # docs/ is written by hand or by tools/pack_web_install.sh before the build, none
+    # of it can reach the image, and an untracked file cannot have been compiled. Both
+    # used to mark a release binary "-dirty" over neither - and one drawing in
+    # docs/img was enough to put "-dirty" into a shipped image on its own.
+    if git("status", "--porcelain", "--untracked-files=no", "--", ".", ":!docs"):
         kurz = kurz + "-dirty"
     kennung = kurz
 
