@@ -165,8 +165,19 @@ static bool s_shotDone = true; // nothing in flight
 static bool s_shotOk = true;
 // One converted BMP scanline, reused for every row. Static, not on the stack:
 // the worker task has 4 kB and the card library already needs a good part of
-// that. Sized for kShotMaxW pixels at 3 bytes each.
-#define kShotMaxW 512
+// that. Sized for the widest panel in the tree at 3 bytes each - and the limit
+// below is the same number, so a panel that is wider than this one has to be
+// given a buffer that matches, not a bigger guard.
+//
+// It was 512, which is the 480 px board plus a little. The 7-inch panel is 800 px
+// wide, so every screenshot ended in "SD: Screenshot verworfen, unbrauchbare
+// Groesse 800x480" - the capture was fine, the card was fine, and a constant from
+// the other board threw it away.
+#if BOARD_SCREEN_W > 800
+#define kShotMaxW BOARD_SCREEN_W
+#else
+#define kShotMaxW 800
+#endif
 static uint8_t s_shotRow[kShotMaxW * 3];
 
 // "202609" from the local calendar (SNTP; CET/CEST configured in main.cpp),
@@ -316,42 +327,60 @@ bool probeMount(float *kbsOut) {
 // One mount attempt at a given clock: bus, mount, /hist, self-test. Leaves the
 // card unmounted on any failure so the next attempt starts from a clean bus.
 static bool tryMount(uint32_t hz, float *kbsOut, bool *probeOkOut) {
-#if BOARD_CH422G_PRESENT
-  // The card's chip select on this board is EXIO4, not a GPIO, and the SD library
-  // wants a pin number. The way through is the one the vendor's own SD demo takes:
-  // drive the select once, low, and mount with CS = -1 - which works because the
-  // bus carries nothing else. The chip select is active low, so low is selected.
-  if (!ch422gFound()) {
-    Serial.println(F("SD: kein IO-Expander - die Karte haengt an EXIO4"));
-  } else {
+  #if !BOARD_SD_CS_IS_GPIO
+    // The card's chip select on this board is EXIO4 on the expander, not a GPIO, and
+    // the way through is the one the vendor's own SD demo takes (wsd.h: SD_CS 4, SD_SS
+    // -1): drive the select once, low, and mount with the dummy pin in the board
+    // profile. Low is selected, and the bus carries nothing else, so it stays
+    // selected.
+    //
+    // Without the expander the card is never selected and no mount code reaches it.
+    // That is a fact about this board, not a transient fault, so it is said once and
+    // the card is left alone instead of retried with a line per attempt.
+    //
+    // The condition is the other way round from what it looks like: this is the only
+    // place where the expander decides whether the card is reachable, and a board
+    // whose select is a real GPIO must not lose its card when the expander is quiet.
+    static bool gemeldet = false;
+    if (!ch422gFound()) {
+      if (!gemeldet) {
+        gemeldet = true;
+        Serial.printf("SD: kein IO-Expander - EXIO%d bleibt hoch, die Karte ist nicht auswaehlbar\n",
+                      BOARD_CH422G_PIN_SD_CS);
+      }
+      return false;
+    }
     ch422gWrite(BOARD_CH422G_PIN_SD_CS, false);
     Serial.printf("SD: Chip Select dauerhaft ueber EXIO%d\n",
                   BOARD_CH422G_PIN_SD_CS);
-  }
-#endif
-#if !BOARD_SD_CS_IS_GPIO
-  // No pin to hand the library: the chip select sits on the expander and is
-  // already driven low above, one card on one bus. The Arduino SD class wants a
-  // uint8_t and -1 arrives as 255, so every card command asks pinMode() for pin
-  // 255 - "Invalid pin selected", then "Card Failed", without end, and the mount
-  // task tries again every few seconds. Say it once and leave the card alone
-  // until the mount goes through the IDF driver, which takes gpio_cs = -1.
-  static bool gemeldet = false;
-  if (!gemeldet) {
-    gemeldet = true;
-    Serial.println(F("SD: CS am Expander, kein GPIO - SD unbenutzt"));
-  }
-  return false;
-#endif
+  #endif
   s_spi.begin(PIN_SD_SCK, PIN_SD_MISO, PIN_SD_MOSI, PIN_SD_CS);
   if (!SD.begin(PIN_SD_CS, s_spi, hz, "/sd", 4)) {
     SD.end(); // leave the bus clean for the next attempt
     return false;
   }
-  // mkdir() reports false for an existing directory, so ask first - the old
-  // "cannot create /hist" message was printed on every normal mount.
-  if (!SD.exists("/hist") && !SD.mkdir("/hist")) {
-    Serial.println(F("SD: cannot create /hist"));
+
+  // Both directories the panel uses, created here rather than where they are
+  // needed. A card that has been in another panel, or that was formatted on a
+  // computer, has neither - and the one that failed first was /shot, whose only
+  // creator was the screenshot button. The file open then ended in the VFS's
+  // "does not exist, no permits for creation", and the picture was gone with no
+  // line of our own about it. The user swaps the card now and then, and that is a
+  // question for the mount, not for the button.
+  //
+  // mkdir() reports false for a directory that is already there, so ask first -
+  // that is also where the old "cannot create /hist" on every normal mount came
+  // from.
+  static const char *ordner[] = {"/hist", "/shot"};
+  for (size_t i = 0; i < sizeof(ordner) / sizeof(ordner[0]); i++) {
+    if (SD.exists(ordner[i])) {
+      continue;
+    }
+    if (SD.mkdir(ordner[i])) {
+      Serial.printf("SD: %s angelegt\n", ordner[i]);
+    } else {
+      Serial.printf("SD: %s laesst sich nicht anlegen\n", ordner[i]);
+    }
   }
   const bool probeOk = probeMount(kbsOut);
   if (probeOkOut != nullptr) {
@@ -1402,7 +1431,13 @@ void sdRequestListing(const char *path, bool force) {
 
 uint32_t sdStreamTotal() {
   xSemaphoreTake(s_lock, portMAX_DELAY);
-  const uint32_t t = s_stream.done ? 0 : (uint32_t)s_stream.total;
+  // The size, not the state. It used to answer 0 once the stream was done, and the
+  // web layer reads 0 as "the worker has not reported a size yet" - so a file that
+  // fitted into the first chunk was delivered in full and still got HTTP 500 after
+  // six seconds. That is every small CSV, on both panels, measured on the 480er as
+  // well: /daten/OIG-202610.csv, 555 bytes, HTTP 500. The 1.15 MB screenshot went
+  // through because the stream was still running when the size was read.
+  const uint32_t t = (uint32_t)s_stream.total;
   xSemaphoreGive(s_lock);
   return t;
 }

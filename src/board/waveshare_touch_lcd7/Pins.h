@@ -207,10 +207,18 @@
 // retried. There is no pin number to hand it, so the card stays unused until the
 // mount goes through the IDF's SD/MMC driver, which takes gpio_cs = -1.
 #define BOARD_SD_CS_IS_GPIO 0
+// A dummy, and deliberately so. The card's own select is EXIO4 on the expander, so
+// the SD library has no pin to drive - but it insists on one: it calls
+// pinMode(cs, OUTPUT) and digitalWrite(cs, LOW) around every single transfer
+// (libraries/SD/src/sd_diskio.cpp), and the -1 the vendor's demo passes arrives as
+// 255, which is "Invalid pin selected" before each of them. A pin that goes nowhere
+// serves the purpose just as well: the expander holds the card selected, and nothing
+// else shares that bus. 15 is absent from the vendor's own pin list and is not a
+// strapping pin on the S3 - those are 0, 3, 45 and 46.
 #define PIN_SD_SCK 12
 #define PIN_SD_MISO 13
 #define PIN_SD_MOSI 11
-#define PIN_SD_CS -1            // not a GPIO here; see BOARD_CH422G_PIN_SD_CS
+#define PIN_SD_CS 15             // dummy; the real select is BOARD_CH422G_PIN_SD_CS
 
 // ---- switched output --------------------------------------------------------
 // It goes to EXIO2, the pin the backlight used, once the enable net is cut
