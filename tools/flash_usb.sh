@@ -84,11 +84,18 @@ if [ ! -f "$BIN" ]; then
   exit 1
 fi
 
-# ESP32-S3 for /dev/ttyUSB*, plain ESP32 for the ACM ports of older boards.
-case "$PORT" in
-  /dev/ttyUSB*) CHIP=${CHIP:-esp32s3} ;;
-  *) CHIP=${CHIP:-esp32} ;;
-esac
+# ESP32-S3 for both, and the caller can still say otherwise with CHIP=. The
+# guessing this replaces took ttyUSB* for the S3 and every other port for a plain
+# ESP32 - which is the 7-inch board's port (its connector is the ESP32-S3's own
+# USB) and the one board that was left unflashable by it.
+CHIP=${CHIP:-esp32s3}
+
+# esptool.py is a script, and whether it carries the execute bit depends on how it
+# was unpacked. Calling it directly aborts the whole run with "Permission denied"
+# under `set -e`, before anything is written.
+esp() {
+  python3 "$ESP" "$@"
+}
 
 echo "Port        $PORT"
 echo "Chip        $CHIP"
@@ -99,11 +106,11 @@ echo
 echo "=== Boot-Auswahl zuruecksetzen ==="
 # 8 KB loeschen: danach bootet der Bootloader den ersten App-Slot, in den
 # geschrieben wird - siehe den Kopf dieser Datei.
-"$ESP" --chip "$CHIP" --port "$PORT" --baud "$BAUD" erase_region "$OTADATA" "$OTADATA_LEN"
+esp --chip "$CHIP" --port "$PORT" --baud "$BAUD" erase_region "$OTADATA" "$OTADATA_LEN"
 echo
 
 echo "=== Chip lesen ==="
-"$ESP" --chip "$CHIP" --port "$PORT" chip_id
+esp --chip "$CHIP" --port "$PORT" chip_id
 echo
 
 # read_flash braucht die Groesse; die des Images ist die des alten Standes
@@ -120,7 +127,7 @@ if [ -n "$BACKUP" ]; then
     exit 1
   fi
   echo "=== Aktuellen Stand sichern ==="
-  "$ESP" --chip "$CHIP" --port "$PORT" --baud "$BAUD" \
+  esp --chip "$CHIP" --port "$PORT" --baud "$BAUD" \
           read_flash "$OFFSET" $(wc -c < "$BIN") "$BACKUP"
   echo "Sicherung: $BACKUP"
   echo
@@ -132,7 +139,7 @@ echo "=== Schreiben ==="
 # number" - the flash never happened, and `set -e` turned that into a silent no-op
 # rather than a failed flash. The ELF was never a thing write_flash accepts; what it
 # was reaching for is --verify, which actually checks what landed.
-"$ESP" --chip "$CHIP" --port "$PORT" --baud "$BAUD" \
+esp --chip "$CHIP" --port "$PORT" --baud "$BAUD" \
         write_flash --verify "$OFFSET" "$BIN"
 echo
 
