@@ -157,6 +157,55 @@ mask, `read_direction_reg()` answers "all twelve" when it is set), and a
 transmission without a data byte returns success in this core without touching the
 bus — so an address probe that way finds every address there is.
 
+## Which version of the board
+
+Waveshare sells several things under this name, and the firmware is only right for
+one of them. The vendor distinguishes **variants** on its product pages (two article
+numbers for this one: 27078 with touch, 30406 without; separate pages for the 7B
+and the 7C-BOX). **PCB revisions it does not publish** — but the schematic it
+publishes carries its revision on the drawing, and that one says **V1.2**, which is
+the board this firmware was measured on.
+
+| Name | Resolution | Difference | What this firmware would do |
+|---|---|---|---|
+| **Touch-LCD-7, V1.2** | 800 × 480 | — | **this one**; everything below was measured here |
+| Touch-LCD-7, **V1.1** | 800 × 480 | **RGB data bits on other pins, controller EK9716 instead of ST7262, IO expander at 0x24 instead of 0x20**, 8 MB flash | **builds and runs with wrong colours** — the pins are the same, the bits on them are not |
+| ESP32-S3-LCD-7 (30406) | 800 × 480 | no touch panel or connector | boots, finds no GT911, keeps the light on (the dimming needs a touch) — but the profile claims a touch; untested |
+| **Touch-LCD-7B** | **1024 × 600** | CH32V003 instead of the CH422G, adjustable brightness, own timings | **builds, runs, and puts an 800-line picture on a 1024-line panel.** Not supported, and the installer offers it under no name |
+| Touch-LCD-7C-BOX | 800 × 480 | case version | presumably identical; untested |
+
+The V1.1 row is from a third-party board list, not from the vendor — the vendor
+publishes no V1.1 documentation any more. It is in the table because it is the one
+difference that would make a V1.1 board look broken in a way that has nothing to do
+with the firmware: same sixteen pins, different colour bits on them.
+
+Two more facts from the V1.2 schematic, both of which are about this board's
+hardware rather than about its software:
+
+- **GPIO 6 is the sensor input** (the "AD" net on the three-pin sensor header). The
+  backlight mod puts a PWM on that pin, which works — and costs the sensor input.
+- The chip on the schematic is an **N8R8** (8 MB flash, 8 MB PSRAM) on the printed
+  sheet, while the board we have answers 16 MB flash and quad-spi PSRAM. Vendor
+  documentation and module marking disagree here; the device says 16 MB.
+
+What the same document, Espressif's own FAQ on the RGB panel, says about the
+symptom this board showed (it calls it **drift**), and it is worth having next to
+the measurements above:
+
+| | |
+|---|---|
+| A cause | flash and PSRAM share the SPI interfaces — **PSRAM is disabled while the flash is written**, which Wi-Fi and every update do |
+| Highest pixel clock at **octal** PSRAM, 80 MHz | about 22 MHz |
+| Highest pixel clock at **octal** PSRAM, 120 MHz | about 30 MHz |
+| Highest pixel clock at quad PSRAM, 80 MHz | about 11 MHz |
+| The fix the vendor and the FAQ both name | octal PSRAM at 120 MHz + XIP from PSRAM + the RGB driver's bounce buffer |
+
+This build runs octal PSRAM at 80 MHz — that is what the board file asks the
+Arduino core for, and 120 MHz is a menuconfig switch in ESP-IDF. At 16 MHz pixel
+clock the panel is inside the 22 MHz that 80 MHz allows, which is why the picture
+holds still now; the bounce buffer is not in the linked `esp_lcd` either. Both of
+the named fixes live in ESP-IDF, not in an Arduino build.
+
 ## What the 7-inch panel's own screen said
 
 Four builds, four different symptoms, and the pin set of every one of them matches
