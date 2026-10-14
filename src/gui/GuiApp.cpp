@@ -102,21 +102,30 @@ static inline const UiLayout &ui() { return uiLayout(); }
 // The page background and the text on it are the two colours that follow the
 // theme; everything else is one fixed value. Which two depends on s_hell, and
 // that is the whole mechanism of the switch - see uiBg() and themeWechseln().
-static const lv_color_t COL_BG_DUNKEL = lv_color_hex(0x101418);
+//
+// Every neutral below is neutral, which the portal's own values were not: taken
+// over from a browser on a monitor, they carry 3 to 10 percent more blue than
+// red - the "white" text by 3.2, the bars by 9.7 - and a panel that already
+// tints blue shows a picture whose cast is ours and not its. So the greys here
+// are the same luminance with the blue taken out, computed in RGB888 rather
+// than guessed: #101418 -> #141414, #E8ECF1 -> #ECECEC, and so on down the
+// list. What stays coloured is what means something: the accent, the three
+// states, the flow red.
+static const lv_color_t COL_BG_DUNKEL = lv_color_hex(0x141414);
 static const lv_color_t COL_BG_HELL = lv_color_hex(0xFFFFFF);
-static const lv_color_t COL_TEXT_DUNKEL = lv_color_hex(0xE8ECF1);
+static const lv_color_t COL_TEXT_DUNKEL = lv_color_hex(0xECECEC);
 // Not pure black: the dark theme's background serves well as the light theme's
 // text, and it is easier on the eyes at night without costing any contrast.
-static const lv_color_t COL_TEXT_HELL = lv_color_hex(0x101418);
+static const lv_color_t COL_TEXT_HELL = lv_color_hex(0x141414);
 static bool s_hell = false; // from NVS, read before the first colour is used
 // Which flow-diagram layout is on the wall, as the four facts it depends on.
 // 0xFF is not a key any device can produce, so a page that has just been built
 // always applies its layout once. See flowCapsKey() further down.
 static uint8_t s_flowKey = 0xFF;
-static const lv_color_t COL_CARD = lv_color_hex(0x1C222A);
-static const lv_color_t COL_BAR = lv_color_hex(0x3A4550); // top / bottom bars (clearly brighter than cards)
+static const lv_color_t COL_CARD = lv_color_hex(0x232323);
+static const lv_color_t COL_BAR = lv_color_hex(0x454545); // top / bottom bars (clearly brighter than cards)
 static const lv_color_t COL_ACCENT = lv_color_hex(0x2E93E5);
-static const lv_color_t COL_MUTED = lv_color_hex(0x8A94A0);
+static const lv_color_t COL_MUTED = lv_color_hex(0x959595);
 // Green for "on" and "no faults". Ready to follow the theme like the two
 // colours above - the walk compares and swaps it like them - but deliberately
 // the same value in both modes for now: #3EC97A on white is the one weak spot
@@ -125,7 +134,7 @@ static const lv_color_t COL_MUTED = lv_color_hex(0x8A94A0);
 static const lv_color_t COL_OK = lv_color_hex(0x3EC97A);
 static const lv_color_t COL_ERR = lv_color_hex(0xE5484D);
 static const lv_color_t COL_WARN = lv_color_hex(0xEBD300); // waiting, not broken
-static const lv_color_t COL_BORDER = lv_color_hex(0x2A3038); // stat card ring
+static const lv_color_t COL_BORDER = lv_color_hex(0x313131); // stat card ring
 
 // The three states a button under the diagram can be in, and the colours that
 // say so. Green is the project's own green, grey is the colour the other rows on
@@ -1042,7 +1051,7 @@ void guiEnergyPeriod(int period, float wh[5], float *autarky,
 // theme was when the pages were built and disagree with the rest of the page
 // after a switch. Dark on the blue is also the better of the two (about 5.4:1
 // against white on it).
-static const lv_color_t COL_ON_ACCENT = lv_color_hex(0x101418);
+static const lv_color_t COL_ON_ACCENT = lv_color_hex(0x141414);
 
 static void energySelectStyle() {
   for (int i = 0; i < ENERGY_PERIODS; i++) {
