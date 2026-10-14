@@ -208,6 +208,32 @@ struct UiBars {
   int valW;     // the value label's width
 };
 
+// The energy page's period selector: the four tabs Tag | Monat | Jahr | Gesamt above
+// the bars. Geometry like the bars' - the panel's numbers, not literals in the page.
+// The 800 px board ran the 480's 108 px tabs at a 114 px pitch, which left 340 px of
+// that row empty on a panel that has 760 px of bar underneath it.
+struct UiPeriods {
+  int x;   // left edge of the first tab
+  int y;   // top edge, below the page heading
+  int w;   // tab width
+  int h;   // tab height
+  int gap; // between two tabs; the pitch is w + gap
+};
+
+// The Service page's two columns: the read-outs on the left, the actions on the
+// right. On the 480 they fill the width (20 and 300, buttons 160 px). On the 800
+// the same numbers leave a third of the screen empty, so there the right column
+// sits at the right margin instead. Which column a widget belongs to is content and
+// stays in the page; where the two columns are is geometry and belongs here.
+struct UiService {
+  int x0;    // left margin, and the left column's x
+  int col1W; // width of the left column's long labels (status, SD)
+  int webW;  // width of the IP line
+  int faultW;// the fault list, narrower so it can never run under the right column
+  int col2X; // the right column's x
+  int col2W; // the right column's width: every button and row on that side
+};
+
 
 struct UiLayout {
   // --- the screen ---
@@ -238,6 +264,8 @@ struct UiLayout {
   UiInfoRows rows;
   UiChartPlot chart;
   UiBars bars;
+  UiPeriods periods;
+  UiService service;
 };
 
 // How wide a card is in a row with this many columns and this gap. Derived, because

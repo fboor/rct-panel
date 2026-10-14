@@ -140,6 +140,22 @@ const UiLayout kGuition4848S040 = {
         /* row0Y */ 82, /* rowH */ 58,
         /* valX */ 340, /* valW */ 120,
     },
+    // PERIODS: the 480's own numbers, and they stay its own - 12 + 3 * 114 + 108 = 462,
+    // two px past the 460 the bars end on. This was 108/114/x 12 as literals in
+    // GuiApp.cpp until now. A 34 px tab against a 16 px bar: the bar is the data, the
+    // tab is the instrument, and the taller one should not read as the louder.
+    /* periods */
+    {
+        /* x */ 12, /* y */ 40, /* w */ 108, /* h */ 34, /* gap */ 6,
+    },
+    // SERVICE: the two columns as they have always been on this board - 20 and 300,
+    // buttons 160 px wide, so the right column ends at 460 and the page margin is the
+    // same 20 on both sides. Every one of these was a literal in the page.
+    /* service */
+    {
+        /* x0 */ 20, /* col1W */ 440, /* webW */ 200, /* faultW */ 280,
+        /* col2X */ 300, /* col2W */ 160,
+    },
 };
 
 // --- a second size, as the plan asks: a hand-set 800 x 480 profile ------------
@@ -258,6 +274,29 @@ const UiLayout kBreit800x480 = [] {
   // 20 + 440 was doing on the 480: 660 + 120 = 780 = 20 + 760.
   l.bars.w = 760;
   l.bars.valX = 660;
+  // PERIODS: across the same 760 px the bar uses, 20..780. Four tabs of 184 with an 8 px
+  // gap: 4 * 184 + 3 * 8 = 760. MEASURED before: the 480's 108 px tabs at a 114 px
+  // pitch, so the row ended at x = 456 and 324 px of an 800 px screen stood empty -
+  // while the bar underneath it ran out to 780. The tab row and the bar row now start
+  // and end on the same two pixels, which is the whole difference. 184 px is three
+  // times the text: the widest word is "Gesamt", 53 px at the 14 px font.
+  l.periods.x = 20;
+  l.periods.w = 184;
+  l.periods.gap = 8;
+  // SERVICE: the left column keeps the 480's place, and the right column moves to the
+  // right margin: 800 - 20 - 200 = 580, with the buttons 40 px wider than on the 480.
+  // MEASURED before: both columns at the 480's 20 and 300 with 160 px buttons, so
+  // everything ended at 460 and 320 px of an 800 px screen stood empty - 324 px of it
+  // right above the bars, which run to 780. Now the page is framed by both margins and
+  // the gap in the middle is 120 px, between the longest status line (290 px) and the
+  // buttons. The buttons grow because the widest of them grows room for: "Test: 5 s an,
+  // 5 s aus" needs 176 px at the 16 px font, which 160 leaves to chance.
+  l.service.x0 = 20;
+  l.service.col1W = 440;
+  l.service.webW = 260;
+  l.service.faultW = 320;
+  l.service.col2X = 580;
+  l.service.col2W = 200;
   return l;
 }();
 

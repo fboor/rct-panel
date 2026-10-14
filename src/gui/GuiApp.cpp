@@ -705,6 +705,12 @@ static lv_obj_t *makeLabel(lv_obj_t *parent, const char *text,
 static lv_obj_t *makeButton(lv_obj_t *parent, const char *symbol,
                             lv_event_cb_t cb, void *userData) {
   lv_obj_t *btn = lv_button_create(parent);
+  // No shadow, like every other button in this UI. LVGL's own button style
+  // carries one - 3 px wide, half opaque, 4 px down - and where our code forgets
+  // to switch it off, that one button looks like it came from somewhere else.
+  // The language of the interface is flat panels with a 1 px border; a drop
+  // shadow is not part of it.
+  lv_obj_set_style_shadow_width(btn, 0, 0);
   lv_obj_set_style_bg_color(btn, COL_BAR, 0);
   lv_obj_set_style_bg_color(btn, COL_ACCENT, LV_STATE_PRESSED);
   lv_obj_set_style_radius(btn, ROW_RADIUS, 0);
@@ -1625,11 +1631,17 @@ static void pageBuildEnergy(AppPage *p) {
   lv_obj_t *root = p->root;
 
   // Period selector: Tag | Monat | Jahr | Gesamt. Sits just below the page
-  // heading (8..28), which took the top row this page used before.
+  // heading (8..28), which took the top row this page used before. Where the four
+  // sit and how wide they are is the board's business (UiPeriods), like the bars
+  // below them: 12 / 108 / 114 as literals is what left a third of the 800 px
+  // board's row empty.
+  const UiPeriods &tabs = ui().periods;
   for (int i = 0; i < ENERGY_PERIODS; i++) {
     lv_obj_t *btn = lv_button_create(root);
-    lv_obj_set_size(btn, 108, 34);
-    lv_obj_set_pos(btn, 12 + i * 114, 40);
+    // The same shadow story as makeButton(), here on the period tabs.
+    lv_obj_set_style_shadow_width(btn, 0, 0);
+    lv_obj_set_size(btn, tabs.w, tabs.h);
+    lv_obj_set_pos(btn, tabs.x + i * (tabs.w + tabs.gap), tabs.y);
     lv_obj_set_style_bg_color(btn, COL_CARD, 0);
     lv_obj_set_style_bg_color(btn, COL_ACCENT, LV_STATE_PRESSED);
     lv_obj_set_style_radius(btn, 8, 0);
@@ -2303,21 +2315,28 @@ bool guiThemeHell() { return s_hell; }
 
 static void pageBuildService(AppPage *p) {
   lv_obj_t *root = p->root;
+  // The two columns, from the board's profile: the 480 puts them at 20 and 300 and
+  // fills its width, the 800 puts the right one at the right margin. Every position
+  // on this page used to be a literal, which is why the wider board ran out of room
+  // on the left and left a third of the screen empty on the right.
+  const UiService &sv = ui().service;
 
-  auto sectionHead = [&](const char *text, lv_coord_t y, lv_coord_t x = 20) {
+  // x = -1 means the left column. A default argument cannot name sv: a lambda's
+  // parameter list is outside what it captures.
+  auto sectionHead = [&](const char *text, lv_coord_t y, lv_coord_t x = -1) {
     // Same size as the page heading: on this page the section titles carry the
     // information ("was steht hier"), the values are the small print. The
     // column is a parameter because the right one is used as well - see the web
     // block further down.
     lv_obj_t *h = makeLabel(root, text, &lv_font_montserrat_16_uml, COL_MUTED);
-    lv_obj_set_pos(h, x, y);
+    lv_obj_set_pos(h, x < 0 ? sv.x0 : x, y);
     return h;
   };
 
   // --- Back to the provisioning portal: compact button, top right ---
   lv_obj_t *btn = lv_button_create(root);
-  lv_obj_set_pos(btn, 300, 8); // 20 px gap to the right/top edge of the page
-  lv_obj_set_size(btn, 160, 34);
+  lv_obj_set_pos(btn, sv.col2X, 8);
+  lv_obj_set_size(btn, sv.col2W, 34);
   lv_obj_set_style_bg_color(btn, COL_ACCENT, 0);
   lv_obj_set_style_bg_color(btn, lv_color_darken(COL_ACCENT, 40),
                             LV_STATE_PRESSED);
@@ -2347,15 +2366,15 @@ static void pageBuildService(AppPage *p) {
   // (40 characters, ~290 px) and a wrap would push everything below down.
   p->labels[SV_BAT_STATUS] =
       makeLabel(root, "--", &lv_font_montserrat_14_uml, uiText());
-  lv_obj_set_pos(p->labels[SV_BAT_STATUS], 20, 58);
-  lv_obj_set_width(p->labels[SV_BAT_STATUS], 440);
+  lv_obj_set_pos(p->labels[SV_BAT_STATUS], sv.x0, 58);
+  lv_obj_set_width(p->labels[SV_BAT_STATUS], sv.col1W);
   // The panel's own address on the second line: it is the one thing needed to
   // open the web interface, and the top left is where the eye starts. Without a
   // network it says so - a bare dash looks like an idle reading.
   p->labels[SV_WEB] =
       makeLabel(root, "-", &lv_font_montserrat_14_uml, uiText());
-  lv_obj_set_pos(p->labels[SV_WEB], 20, 88);
-  lv_obj_set_width(p->labels[SV_WEB], 200);
+  lv_obj_set_pos(p->labels[SV_WEB], sv.x0, 88);
+  lv_obj_set_width(p->labels[SV_WEB], sv.webW);
 
   // --- SD history log (status only; the writer lives in storage/sdlog.cpp) ---
   // Above the faults, not below them: SD-Log is a single line, the fault list
@@ -2365,19 +2384,19 @@ static void pageBuildService(AppPage *p) {
   (void)sectionHead(tr(T_D_SV_HEAD_SD), 116);
   p->labels[SV_SD] =
       makeLabel(root, sdStatusText(), &lv_font_montserrat_16_uml, uiText());
-  lv_obj_set_pos(p->labels[SV_SD], 20, 138);
-  lv_obj_set_width(p->labels[SV_SD], 440);
+  lv_obj_set_pos(p->labels[SV_SD], sv.x0, 138);
+  lv_obj_set_width(p->labels[SV_SD], sv.col1W);
 
   // --- Faults (decoded, multi-line; several can be active at once) ---
   sectionHead(tr(T_D_SV_HEAD_FAULTS), 184);
   p->labels[SV_FLT_LIST] =
       makeLabel(root, "--", &lv_font_montserrat_14_uml, uiText());
-  lv_obj_set_pos(p->labels[SV_FLT_LIST], 20, 208);
+  lv_obj_set_pos(p->labels[SV_FLT_LIST], sv.x0, 208);
   // 280 px, not the full 440: the right column carries the web and output
   // blocks down to the bottom, and a fault text running under them is worse than
   // one that wraps. The list is capped in characters accordingly
   // (serviceFaultText).
-  lv_obj_set_width(p->labels[SV_FLT_LIST], 280);
+  lv_obj_set_width(p->labels[SV_FLT_LIST], sv.faultW);
   p->labelCount = SV_LABEL_COUNT;
 
   // --- Screenshot to the card ---
@@ -2391,8 +2410,8 @@ static void pageBuildService(AppPage *p) {
   // instead of a button that hides among the read-outs. The capture itself runs
   // SHOT_DELAY_MS later so the target page can be selected after pressing.
   lv_obj_t *shot = lv_button_create(root);
-  lv_obj_set_pos(shot, 300, 48);
-  lv_obj_set_size(shot, 160, 34);
+  lv_obj_set_pos(shot, sv.col2X, 48);
+  lv_obj_set_size(shot, sv.col2W, 34);
   lv_obj_set_style_bg_color(shot, COL_ACCENT, 0);
   lv_obj_set_style_bg_color(shot, lv_color_darken(COL_ACCENT, 40),
                             LV_STATE_PRESSED);
@@ -2416,7 +2435,7 @@ static void pageBuildService(AppPage *p) {
   p->labels[SV_SHOT] =
       makeLabel(root, "", &lv_font_montserrat_14_uml, COL_MUTED);
   lv_obj_set_pos(p->labels[SV_SHOT], 300, 86);
-  lv_obj_set_width(p->labels[SV_SHOT], 160);
+  lv_obj_set_width(p->labels[SV_SHOT], sv.col2W);
 
   // --- Web interface: the code that guards its write actions ---
   // In the right column, under the two buttons. The address itself sits at the
@@ -2437,7 +2456,7 @@ static void pageBuildService(AppPage *p) {
   // white, so the code was there and could not be read. The pressed colour is
   // there for the same reason: a tap that changes nothing visible reads as a
   // field that does not work.
-  (void)sectionHead(tr(T_D_SV_HEAD_WEB), 118, 300);
+  (void)sectionHead(tr(T_D_SV_HEAD_WEB), 118, sv.col2X);
   // White, not uiText(). This row has a background of its own, and that
   // background is COL_BAR in both themes - it does not follow the theme, so
   // neither may its text. uiText() put the theme's text colour here, and the
@@ -2448,8 +2467,8 @@ static void pageBuildService(AppPage *p) {
   // and now say so in the same way.
   p->labels[SV_CODE] = makeLabel(root, tr(T_D_CODE_EMPTY),
                                  &lv_font_montserrat_14_uml, FLOW_WHITE);
-  lv_obj_set_pos(p->labels[SV_CODE], 300, 140);
-  lv_obj_set_width(p->labels[SV_CODE], 160);
+  lv_obj_set_pos(p->labels[SV_CODE], sv.col2X, 140);
+  lv_obj_set_width(p->labels[SV_CODE], sv.col2W);
   lv_obj_set_style_text_align(p->labels[SV_CODE], LV_TEXT_ALIGN_CENTER, 0);
   // Vertical padding instead of a fixed height: the box grows with the text and
   // is 26 px tall either way.
@@ -2463,7 +2482,7 @@ static void pageBuildService(AppPage *p) {
                       nullptr);
   lv_obj_t *hint = makeLabel(root, tr(T_D_CODE_HINT),
                              &lv_font_montserrat_14_uml, COL_MUTED);
-  lv_obj_set_pos(hint, 300, 172);
+  lv_obj_set_pos(hint, sv.col2X, 172);
 
   // --- Switched output ("Ausgang") ---
   // The function it follows is a setting, but the setting that is changed most
@@ -2476,15 +2495,15 @@ static void pageBuildService(AppPage *p) {
   // row that runs down into the navigation bar. Function and threshold share one
   // tappable row for the same reason they sit side by side on the web page:
   // the threshold belongs to the function.
-  (void)sectionHead(tr(T_D_SV_HEAD_OUTPUT), 198, 300);
+  (void)sectionHead(tr(T_D_SV_HEAD_OUTPUT), 198, sv.col2X);
   // "Aus" ist nur, was die Zeile vor dem ersten Durchlauf zeigt, in dem die
   // gespeicherte Funktion gelesen wurde; danach traegt sie die Funktion selbst.
   // Weisse Schrift aus demselben Grund wie die Code-Zeile darüber: die Zeile hat
   // COL_BAR als eigene Flaeche und die ist in beiden Themes dunkel.
   p->labels[SV_RELAY] = makeLabel(root, relayModeName(RelayMode::Off),
                                    &lv_font_montserrat_14_uml, FLOW_WHITE);
-  lv_obj_set_pos(p->labels[SV_RELAY], 300, 220);
-  lv_obj_set_width(p->labels[SV_RELAY], 160);
+  lv_obj_set_pos(p->labels[SV_RELAY], sv.col2X, 220);
+  lv_obj_set_width(p->labels[SV_RELAY], sv.col2W);
   lv_obj_set_style_text_align(p->labels[SV_RELAY], LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_style_pad_ver(p->labels[SV_RELAY], 4, 0);
   lv_obj_set_style_bg_color(p->labels[SV_RELAY], COL_BAR, 0);
@@ -2498,8 +2517,8 @@ static void pageBuildService(AppPage *p) {
   // without that number a threshold in watts is a number nobody can set sensibly.
   p->labels[SV_RELAY_ST] =
       makeLabel(root, "", &lv_font_montserrat_14_uml, COL_MUTED);
-  lv_obj_set_pos(p->labels[SV_RELAY_ST], 300, 257);
-  lv_obj_set_width(p->labels[SV_RELAY_ST], 160);
+  lv_obj_set_pos(p->labels[SV_RELAY_ST], sv.col2X, 257);
+  lv_obj_set_width(p->labels[SV_RELAY_ST], sv.col2W);
 
   // Test button, on its own line under the state it overrules. 5 s on, 5 s off,
   // twice: long enough to hear or see, short enough not to leave a load running
@@ -2513,8 +2532,8 @@ static void pageBuildService(AppPage *p) {
   // still ends 4 px above it.
   s_testBtn = lv_button_create(root);
   lv_obj_t *test = s_testBtn;
-  lv_obj_set_pos(test, 300, 278);
-  lv_obj_set_size(test, 160, 26);
+  lv_obj_set_pos(test, sv.col2X, 278);
+  lv_obj_set_size(test, sv.col2W, 26);
   lv_obj_set_style_bg_color(test, COL_BAR, 0);
   lv_obj_set_style_bg_color(test, COL_ACCENT, LV_STATE_PRESSED);
   lv_obj_set_style_radius(test, ROW_RADIUS, 0);
@@ -2540,8 +2559,8 @@ static void pageBuildService(AppPage *p) {
   s_themeBtn =
       makeLabel(root, tr(s_hell ? T_D_BTN_THEME_DARK : T_D_BTN_THEME_LIGHT),
                 &lv_font_montserrat_14_uml, FLOW_WHITE);
-  lv_obj_set_pos(s_themeBtn, 300, 326);
-  lv_obj_set_width(s_themeBtn, 160);
+  lv_obj_set_pos(s_themeBtn, sv.col2X, 326);
+  lv_obj_set_width(s_themeBtn, sv.col2W);
   lv_obj_set_style_text_align(s_themeBtn, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_style_pad_ver(s_themeBtn, 4, 0);
   lv_obj_set_style_bg_color(s_themeBtn, COL_BAR, 0);
