@@ -188,7 +188,7 @@ struct UiChartPlot {
   int legendTextDx;       // text offset from the dot's left edge
   int legendTextDy;
   int legendGap;          // space between two legend entries
-    int gapDy;              // the gap summary below the card, from its bottom edge
+    int gapDy;              // gap summary below the card
 };
 
 // The energy page's bars: one row per series, a label line (name left, value right)

@@ -103,14 +103,8 @@ static inline const UiLayout &ui() { return uiLayout(); }
 // theme; everything else is one fixed value. Which two depends on s_hell, and
 // that is the whole mechanism of the switch - see uiBg() and themeWechseln().
 //
-// Every neutral below is neutral, which the portal's own values were not: taken
-// over from a browser on a monitor, they carry 3 to 10 percent more blue than
-// red - the "white" text by 3.2, the bars by 9.7 - and a panel that already
-// tints blue shows a picture whose cast is ours and not its. So the greys here
-// are the same luminance with the blue taken out, computed in RGB888 rather
-// than guessed: #101418 -> #141414, #E8ECF1 -> #ECECEC, and so on down the
-// list. What stays coloured is what means something: the accent, the three
-// states, the flow red.
+// The greys are the portal's luminance without its blue, which ran 3 to 10 %
+// too high (in RGB888). MEASURED on both panels.
 static const lv_color_t COL_BG_DUNKEL = lv_color_hex(0x141414);
 static const lv_color_t COL_BG_HELL = lv_color_hex(0xFFFFFF);
 static const lv_color_t COL_TEXT_DUNKEL = lv_color_hex(0xECECEC);
@@ -2712,9 +2706,8 @@ static void pageBuildGraph(AppPage *p) {
   // until real 5-minute samples arrive (no fake zero history after boot).
   s_chart = lv_chart_create(root);
   lv_obj_set_pos(s_chart, ui().chart.x, ui().chart.y);
-  // ui().chart.y + ui().chart.h = 332, and the gap summary sits directly under
-  // the chart at 336..~354 so it stays inside ui().contentH() (364) - no scrolling
-  // to read it.
+  // Card at 106..386 on screen (44 px page head + chart.y 62 + h 280), the gap
+  // summary at 390 + the profile's gapDy, inside contentH().
   lv_obj_set_size(s_chart, ui().chart.w, ui().chart.h);
   lv_obj_set_style_bg_color(s_chart, COL_CARD, 0);
   lv_obj_set_style_radius(s_chart, 10, 0);
