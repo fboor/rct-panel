@@ -508,7 +508,13 @@ bool displayInit() {
   panel_cfg.timings.flags.pclk_active_neg = BOARD_LCD_PCLK_ACTIVE_NEG;
   panel_cfg.timings.flags.pclk_idle_high = 0;
 
-  panel_cfg.data_width = 16; // RGB565 on 16 data lines
+  // The pixel format follows from the data width: 16 lines is RGB565, and the esp_lcd
+  // this core links has no separate field for it (bits_per_pixel arrived with the
+  // newer driver, together with the bounce buffer and the second frame buffer). So
+  // there is no colour depth here that could be set wrong - 16 lines is RGB565 by
+  // construction. What the format does not cover is the channel order, which is the
+  // pin table's business and sits above.
+  panel_cfg.data_width = 16;
   // Initialize the whole GPIO table to -1, then fill the 16 used pins; the
   // driver's array is sized SOC_LCD_RGB_DATA_WIDTH which may exceed 16.
   for (size_t i = 0; i < SOC_LCD_RGB_DATA_WIDTH; i++) {
@@ -609,12 +615,22 @@ bool displayInit() {
                 imSram ? "im SRAM" : "im PSRAM");
 
   Serial.println("LCD: display ready");
-  // Whether the driver reports frame ends decides if the flush writes behind the
-  // scan or straight into it, and nothing else on the panel says so. Short line
-  // on purpose: the boot log loses long ones.
   delay(1500);
   Serial.printf("LCD: frames %lu, line %lu us\n", (unsigned long)s_scanFrames,
                 (unsigned long)s_lineUs);
+  // The memory the chip found decides the pixel clock the panel can be driven at:
+  // Espressif's FAQ allows about 22 MHz for octal PSRAM at 80 MHz and about 11 MHz
+  // for quad, and the board file asks for octal. A PSRAM that is found at all is
+  // also the proof that it is octal, because a quad-mode driver cannot read an
+  // octal chip.
+  //
+  // Its own line, and late, for two reasons that cost the same build: the USB
+  // output drops the end of a long line - it cut this value off the end of a
+  // 40-character line, where the 20-character one arrives whole - and the first
+  // half second of the boot log is lost every time, because resetting the chip
+  // re-enumerates the USB port and the earlier lines go with the old handle.
+  Serial.printf("PSRAM %u MB\n",
+                (unsigned)(ESP.getPsramSize() / (1024 * 1024)));
   return true;
 }
 
