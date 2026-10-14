@@ -74,6 +74,18 @@ nur im Nachrichtentext steht. Notieren statt beheben.
 | Der RCT-Abruf blockiert die Hauptschleife, weil das **Gerät** auf manche OIDs nicht antwortet und der Treiber die volle Ruhepause wartet (`RCT_QUIET_MS` 300 ms). Gemessen am 14.10.2026 am 7-Zoll-Panel: 470 ms, und 2947 ms / 3266 ms in den Zyklen, in denen das Gerät gar nicht antwortete. Die Oberfläche friert dabei sichtbar ein — Werte, Uhr und Navigation stehen still | `src/rct/RctDriver.cpp` |
 | Release-Images tragen kein `RCT_SIM_HOST` (am 14.10.2026 im Artefakt geprüft, nicht im Build-Log). Das Gerät selbst wird über die Oberfläche eingestellt und steht deshalb in keinem Image | `platformio.ini`, `tools/pack_web_install.sh` |
 
+## Release
+
+Ein Release ist veröffentlicht, wenn das Binary im Ordner `docs/install/v<Version>/`
+liegt, der Ordner committed ist und der Tag gesetzt ist. Ab dann bleibt es: **ein
+Release wird nicht neu gebaut.** Was danach im Baum passiert, gehört in die nächste
+Version — `RCT_FW_VERSION` wird erst beim nächsten Release erhöht, nicht rückwirkend.
+
+Vor dem Tag darf derselbe Ordner beliebig oft neu gebaut werden (das war die
+Arbeitsfassung von 1.0-rc3, zweimal neu gebaut). Nach dem Tag sind `docs/install/
+v1.0-rc3/*` Bytes, die jemand aus dem Browser installiert hat, und ein Panel, das
+darüber gebaut wurde.
+
 ## Sprache
 
 - Commit-Nachrichten: englisch
