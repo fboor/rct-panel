@@ -2785,7 +2785,7 @@ static void pageBuildGraph(AppPage *p) {
   p->labels[GH_GAPS] =
       makeLabel(root, "", &lv_font_montserrat_14_uml, COL_MUTED);
   lv_obj_set_pos(p->labels[GH_GAPS], 20,
-                   ui().chart.y + ui().chart.h + 4); // 4 px under the chart
+                   ui().chart.y + ui().chart.h + ui().chart.gapDy);
   lv_obj_set_width(p->labels[GH_GAPS], 440);
 
   p->labelCount = GH_LABEL_COUNT;

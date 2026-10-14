@@ -128,6 +128,7 @@ const UiLayout kGuition4848S040 = {
         /* legendY */ 42, /* legendDot */ 10,
         /* legendTextDx */ 14, /* legendTextDy */ -3,
         /* legendGap */ 24,
+        /* gapDy */ 4,
     },
     // The energy bars: 480 px content, 20 px margin, so the track is 440 px and the
     // value's right edge lands exactly on the track's right edge (340 + 120 = 460 =
@@ -279,6 +280,11 @@ const UiLayout kBreit800x480 = [] {
   // not taller than the one that gets 280.
   l.chart.w = 778;
   l.chart.legendGap = 32;
+  // The gap summary sits two pixels closer to the card on this board, which is where
+  // the eye wants it against the 280 px tall card. MEASURED on the panel: at the
+  // 480er's 4 px it hung a pixel too low. The 480 keeps its 4 - that profile is the
+  // one that was measured first and must not move.
+  l.chart.gapDy = 2;
   // BARS: the same 20 px margin and the same heights, and the track takes the width
   // that is left over - 800 - 2*20 = 760. MEASURED before: the track ran x=20..460,
   // 440 px, and the right third of an 800 px screen stayed empty. The value label
