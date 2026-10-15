@@ -1889,7 +1889,7 @@ static void serviceBatteryDecode(uint32_t v, float batPower, char *out,
 // derived from the space the block actually has - 142 to 236 px at 18 px per
 // line - so the list can never reach the "SD-Log" heading below it.
 static int serviceFaultText(const uint32_t *bits, char *out, size_t n) {
-  const size_t kCharsPerLine = 38;
+  const size_t kCharsPerLine = (size_t)ui().service.faultChars;
   const size_t kMaxLines = 5;
   const size_t budget = kCharsPerLine * kMaxLines;
   out[0] = '\0';
@@ -2395,10 +2395,7 @@ static void pageBuildService(AppPage *p) {
   p->labels[SV_FLT_LIST] =
       makeLabel(root, "--", &lv_font_montserrat_14_uml, uiText());
   lv_obj_set_pos(p->labels[SV_FLT_LIST], sv.x0, 208);
-  // 280 px, not the full 440: the right column carries the web and output
-  // blocks down to the bottom, and a fault text running under them is worse than
-  // one that wraps. The list is capped in characters accordingly
-  // (serviceFaultText).
+  // faultW, and the character cap follows it (serviceFaultText).
   lv_obj_set_width(p->labels[SV_FLT_LIST], sv.faultW);
   p->labelCount = SV_LABEL_COUNT;
 

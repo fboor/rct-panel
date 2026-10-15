@@ -231,6 +231,7 @@ struct UiService {
   int col1W; // width of the left column's long labels (status, SD)
   int webW;  // width of the IP line
   int faultW;// the fault list, narrower so it can never run under the right column
+  int faultChars; // characters per line, follows faultW
   int col2X; // the right column's x
   int col2W; // the right column's width: every button and row on that side
 };

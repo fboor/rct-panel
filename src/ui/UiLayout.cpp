@@ -163,6 +163,7 @@ const UiLayout kGuition4848S040 = {
     {
         /* x0 */ 20, /* col1W */ 440, /* webW */ 200, /* faultW */ 280,
         /* col2X */ 300, /* col2W */ 160,
+        /* faultChars */ 38,
     },
 };
 
@@ -305,9 +306,15 @@ const UiLayout kBreit800x480 = [] {
   // buttons. The buttons grow because the widest of them grows room for: "Test: 5 s an,
   // 5 s aus" needs 176 px at the 16 px font, which 160 leaves to chance.
   l.service.x0 = 20;
-  l.service.col1W = 440;
+  // Die linke Spalte bis zur Mitte des Spalts: 20 + 500 = 520, der Spalt ist
+  // 460..580. MEASURED am Panel.
+  l.service.col1W = 500;
   l.service.webW = 260;
-  l.service.faultW = 320;
+  l.service.faultW = 500;
+  // 58 Zeichen: der laengste Stoerungstext ist 52, mit Nummer 56, und 58 * 8.4
+  // = 487 px passen in faultW. Vorher 38 - die Grenze hat umgebrochen, nicht
+  // faultW.
+  l.service.faultChars = 58;
   l.service.col2X = 580;
   l.service.col2W = 200;
   return l;
