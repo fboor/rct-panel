@@ -79,8 +79,9 @@
 #define BOARD_LCD_DATA_ORDER_BGR 1
 // Pixel clock: the vendor's 16 MHz, with its inverted edge, and that is also the
 // panel's floor - at 12 MHz, with the porches below, the picture came on with
-// colours that wander. The porches are 4/8/8 horizontally and 4/16/16 vertically;
-// the vertical ones were 8/8 until the panel's own colours said so.
+// colours that wander. The porches are the vendor's 4/8/8 on both axes; ours were
+// 4/16/16 vertically against the picture jumping, and MEASURED on the panel they
+// cost colour: the blue cast was clearly stronger with them.
 //
 // What is left at 16 MHz is the scan's share of the PSRAM: 800 * 480 * 2 * 37.8 =
 // 29 MB/s of continuous read, out of the same PSRAM LVGL renders into and the
