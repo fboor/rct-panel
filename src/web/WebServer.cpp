@@ -7,6 +7,8 @@
 //   /                      overview
 //   /api/energie.json      the energy figures of one period, as numbers
 //   /api/verlauf.json      the 24 h ring, as numbers
+//   /api/px.json           what our own code put on the bus (see handleApiPixel)
+//   /.well-known/security.txt  security contact, RFC 9116
 //   /daten                 the logged CSV files, tail or whole
 //   /bilder                the screenshots taken on the panel
 //   /update                firmware upload (OTA)
@@ -49,6 +51,7 @@
 #include <ESPmDNS.h>
 #include <math.h>
 #include <string.h>
+#include <time.h>
 #include <Update.h>
 #include <WebServer.h>
 #include <WiFi.h>
@@ -1895,6 +1898,66 @@ void handleAction() {
   sendMsg(400, tr(T_ERR_ACTION));
 }
 
+// GET /.well-known/security.txt
+//
+// RFC 9116 (IETF, April 2022) says where such a file belongs, which media type it
+// must have and which fields are mandatory. Two fields are MUST: Contact (2.5.3)
+// and Expires (2.5.5). Everything else - Encryption, Policy, Canonical, Hiring,
+// Acknowledgments - is optional and stays out: a field with a value nobody
+// maintains is worse than a missing one, and 5.3 counts staleness against the
+// whole file.
+//
+// The path is the one from 3 and RFC 8615, /.well-known/. The top-level
+// /security.txt is legacy compatibility, and where both exist the .well-known one
+// is the one that counts - so only that one is served here.
+//
+// Expires is the one moving part: one year from the moment of the request. A
+// date baked into the source stops being current the day nobody ships a release,
+// and 5.3 says a stale file is worse than none at all. Before SNTP has delivered
+// a time there is nothing to add a year to - the check is the project's own, the
+// same one monthKey() uses - and then the date from the source answers; move it
+// with the release.
+//
+// Plain HTTP, because the panel has no TLS port, and RFC 9116 5.7 asks for HTTPS.
+// Without a name and a key there is nothing a reader could verify anyway, so this
+// file points at a contact and proves nothing - 5.1, and the comment in the body
+// says so for the reader instead of leaving it to be found out.
+static void handleWellKnownSecurity() {
+  // 365 days, which is at most one calendar year and never more - that is what 2.5.5
+  // asks for. The sum goes into its own variable: "&jetzt + 365 * 86400" parses as a
+  // pointer plus a number, and gmtime_r then segfaults on it - which the simulator
+  // showed with a core dump, and a green build did not.
+  char expires[24];
+  const time_t jetzt = time(nullptr);
+  const time_t inEinemJahr = jetzt + 365 * 86400;
+  struct tm tmv;
+  if (jetzt > 1000000000 && gmtime_r(&inEinemJahr, &tmv)) {
+    strftime(expires, sizeof(expires), "%Y-%m-%dT%H:%M:%SZ", &tmv); // RFC 3339, UTC
+  } else {
+    strlcpy(expires, "2027-10-16T00:00:00Z", sizeof(expires));
+  }
+
+  String s;
+  s.reserve(512);
+  // The comments are for the person who fetches the file. They are ignored by every
+  // parser (2.1) and cost nothing; the language is English, because the reader of
+  // this file is not the person who set the panel up.
+  s += F("# Security contact for this panel - RFC 9116 (IETF, April 2022).\n"
+         "# It applies to the host this file was fetched from, not to the project's\n"
+         "# domain (3.1).\n"
+         "Contact: https://github.com/fboor\n"
+         "\n"
+         "# The panel has German and English; without this line the RFC assumes English.\n"
+         "Preferred-Languages: de, en\n"
+         "\n"
+         "# Served over plain HTTP, because the panel has no TLS port: this file is a\n"
+         "# pointer to a contact and not a proof (5.7, 5.1).\n"
+         "Expires: ");
+  s += expires;
+  s += F("\n");
+  s_server.send(200, "text/plain; charset=utf-8", s);
+}
+
 void handleNotFound() { sendMsg(404, tr(T_ERR_PAGE)); }
 
 // A fresh code per boot: a code that survives a restart could be replayed from
@@ -1933,6 +1996,7 @@ void webStart() {
   s_server.on(Uri("/bilder"), HTTP_GET, handleShots);
   s_server.on(UriBraces("/daten/{}"), HTTP_GET, handleCsvFile);
   s_server.on(UriBraces("/bilder/{}"), HTTP_GET, handleShotFile);
+  s_server.on(Uri("/.well-known/security.txt"), HTTP_GET, handleWellKnownSecurity);
   s_server.on(Uri("/update"), HTTP_GET, handleUpdatePage);
   s_server.on(Uri("/update"), HTTP_POST, handleUpdateDone, handleUpdateUpload);
   s_server.on(Uri("/einstellungen"), HTTP_GET, handleSettingsPage);

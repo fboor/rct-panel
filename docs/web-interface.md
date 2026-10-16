@@ -36,6 +36,7 @@ port 80 and the radio, never at the same time.
 | `/bilder/<name>`   | GET            | one screenshot (BMP)                                  |
 | `/update`          | GET / POST     | Firmware update                                       |
 | `/aktion`          | POST           | `was=neustart`, `was=setup`, `was=ausgang`, `was=test`, `was=bild` (all with the code) |
+| `/.well-known/security.txt` | GET  | security contact per RFC 9116; `Expires` is one year from the request |
 
 Everything else: 404 page.
 
