@@ -94,14 +94,51 @@ struct FlowValue {
 // into the meter does not make the household a source. The value on the page already
 // ignores anything under the floor; the word next to it said otherwise, and the page
 // showed "Export" while the PV was exporting.
-enum FlowHausPille { FLOW_HAUS_EXPORT, FLOW_HAUS_NICHTS, FLOW_HAUS_NETZ, FLOW_HAUS_SELBST };
+enum FlowHausPille {
+  FLOW_HAUS_EXPORT,      // the export spoke is drawn
+  FLOW_HAUS_OHNE_QUELLE, // consumption is measured, no line reaches the house
+  FLOW_HAUS_NICHTS,      // nothing is consumed
+  FLOW_HAUS_NETZ,        // the import spoke is drawn
+  FLOW_HAUS_SELBST       // PV or battery supplies the house, no grid line
+};
 
-constexpr FlowHausPille flowHausPille(float hausW, float netzW, float floorW,
-                                       float netzFloorW) {
-  return hausW < -floorW   ? FLOW_HAUS_EXPORT
-         : hausW < floorW  ? FLOW_HAUS_NICHTS
-         : netzW >= netzFloorW ? FLOW_HAUS_NETZ
-                              : FLOW_HAUS_SELBST;
+// What the three buttons under the diagram say.
+//
+// One rule, and it is the only one: a button never names a flow that no line carries.
+// So the words come out of the booleans that light the lines, and the thresholds are not
+// restated here - they are inherited. The buttons read the meters themselves before, and
+// that produced two pictures that were wrong at the same time, both MEASURED on the panel
+// on 2026-10-19:
+//   - a household meter 15 W under zero said "Export", while the export line needs the
+//     meter's sign AND 30 W: the page said Export and drew no line at all.
+//   - a meter importing 40 W said "Bezug", while the panels covered the house and the
+//     import line was not drawn (it needs the grid's share of the house, which was 0).
+struct FlowButtons {
+  bool erzeugungSagt;  // the PV node carries something: the production button is named
+  bool erzeugungDeckt; // ... and the panels cover what the house needs (green, not orange)
+  FlowHausPille haus;
+  bool akkuLaedt;     // a charging line is drawn
+  bool akkuEntlaedt;  // the battery's line to the house is drawn
+};
+
+constexpr FlowButtons flowButtons(bool pvTraegt, bool pvDeckt, bool hausTraegt,
+                                  bool bezugLinie, bool exportLinie, bool pvOderAkku,
+                                  bool akkuLaedtLinie, bool akkuEntlaedtLinie) {
+  // One return statement, because the firmware's own code is compiled as C++11 (the
+  // Arduino-ESP32 core's default) and a constexpr function may only be a single
+  // return there. The host tests compile as C++17, which is how a multi-statement
+  // version can pass there and fail in the firmware.
+  return FlowButtons{
+      pvTraegt,
+      pvDeckt,
+      !hausTraegt   ? FLOW_HAUS_OHNE_QUELLE
+      : exportLinie ? FLOW_HAUS_EXPORT
+      : bezugLinie  ? FLOW_HAUS_NETZ
+      : pvOderAkku  ? FLOW_HAUS_SELBST
+                    : FLOW_HAUS_OHNE_QUELLE,
+      akkuLaedtLinie,
+      !akkuLaedtLinie && akkuEntlaedtLinie,
+  };
 }
 
 // What may be drawn at the grid node, and it is one direction per state.

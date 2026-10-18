@@ -3038,6 +3038,25 @@ static void refreshCb(lv_timer_t *t) {
       const bool pvAnsAkku = !ohneDaten && fs.pvToBattery >= kFlowActiveW;
       const bool akkuAnNetz = netzPfeile.akkuInsNetz && !ohneDaten && fs.battToGrid >= kFlowGridActiveW;
       const bool netzAnAkku = netzPfeile.netzInsAkku && !ohneDaten && fs.gridToBattery >= kFlowGridActiveW;
+      // The two directions of the grid spoke, decided HERE rather than inside the block
+      // that draws it: the buttons under the diagram need the same answers, and a second
+      // decision from the same meters is how the page came to say "Export" with no line
+      // (see flowButtons() in FlowLayout.h). The battery's line follows the same reason.
+      const bool netzInsHaus = netzPfeile.netzInsHaus && !ohneDaten &&
+                               fs.gridToHouse >= kFlowGridActiveW;
+      const bool hausInsNetz = netzPfeile.hausInsNetz && !ohneDaten &&
+                               fs.houseToGrid >= kFlowGridActiveW;
+      const bool akkuInsHaus = !ohneDaten &&
+                               (fs.battToHouse >= kFlowActiveW ||
+                                fs.houseToBattery >= kFlowActiveW);
+      // Which way the battery's line runs. The spoke itself is one line, lit for both
+      // directions, and the arrow is swapped by houseToBattery - so the button has to use
+      // the same rule. Lumping both directions into "the line carries something" is what
+      // made a battery that was CHARGING from the household say "Entladen"
+      // (MEASURED on the panel on 2026-10-19, house with generation, battery at -45 W).
+      const bool akkuLaedtGezeichnet = pvAnsAkku || netzAnAkku ||
+                                       (akkuInsHaus && fs.houseToBattery > 0.0f);
+      const bool akkuEntlaedtGezeichnet = akkuInsHaus && !akkuLaedtGezeichnet;
 
     // --- Grid ---
     // Island mode (grid outage): warning triangle on the connector. The flag
@@ -3063,9 +3082,10 @@ static void refreshCb(lv_timer_t *t) {
     if (has) {
       // The spoke takes the direction the meter reports: while the meter says import it
       // is the only thing drawn at the node, and while it says export the household's
-      // export is what the spoke carries (houseToGrid), not the import.
-      const bool fliesst = netzPfeile.netzInsHaus && fs.gridToHouse >= kFlowGridActiveW;
-      const bool exportGrid = netzPfeile.hausInsNetz && fs.houseToGrid >= kFlowGridActiveW;
+      // export is what the spoke carries (houseToGrid), not the import. Both directions
+      // are decided above, beside the ring's sectors.
+      const bool fliesst = netzInsHaus;
+      const bool exportGrid = hausInsNetz;
       // The node's own number, and nothing else: the METER, both directions. The lines
       // beside it carry the model's split of the same measurement, so they can differ
       // from it by what the plant loses on the way - that is the measurement, not a
@@ -3173,8 +3193,7 @@ static void refreshCb(lv_timer_t *t) {
       // and it is red, because a battery taking 1.2 kW is doing something.
       if (s.haveBattery) {
         setText(ov.labels[OV_BAT_SOC], "%.0f %%", s.socPct);
-        const bool fliesstBatt =
-            has && (fs.battToHouse >= kFlowActiveW || fs.houseToBattery >= kFlowActiveW);
+        const bool fliesstBatt = akkuInsHaus;
         const bool akkuTraegt = fliesstBatt || pvAnsAkku || netzAnAkku;
         if (fabsf(pBat) >= kFlowActiveW && akkuTraegt) {
           setPower(ov.labels[OV_BAT_VAL], pBat);
@@ -3243,6 +3262,13 @@ static void refreshCb(lv_timer_t *t) {
     const bool hausTraegt = pvFliesst || fs.battToHouse >= kFlowActiveW ||
                             fs.houseToBattery >= kFlowActiveW ||
                             fs.gridToHouse >= kFlowGridActiveW;
+    // What the three buttons say, decided once from the booleans the drawing just used.
+    // They are the same answers, so the page cannot say "Export" with no line or "Bezug"
+    // while the panels cover the house - MEASURED on the panel on 2026-10-19.
+    const FlowButtons knoepfe =
+        flowButtons(pvTraegt, house <= pvTotal, hausTraegt && house >= kFlowActiveW,
+                    netzInsHaus, hausInsNetz, pvFliesst || akkuInsHaus,
+                    akkuLaedtGezeichnet, akkuEntlaedtGezeichnet);
     if (has && house >= kFlowActiveW && hausTraegt) {
       setPower(ov.labels[OV_HOUSE_VAL], house);
       lv_obj_set_style_text_color(ov.labels[OV_HOUSE_VAL], FLOW_RED, 0);
@@ -3282,38 +3308,37 @@ static void refreshCb(lv_timer_t *t) {
     // Colour per state, word per state. Grey is always "nothing to say", so it is
     // also what a button that has no value from the device yet shows - the same
     // dash the values above use.
+    //
+    // The words come out of `knoepfe`, which is built from the booleans the drawing
+    // used above. Nothing here decides anything on its own: a button that read the
+    // meters itself is how the page came to say "Export" with no line at all, and
+    // "Bezug" while the panels covered the house (MEASURED on 2026-10-19).
     if (has) {
-      // Erzeugung: is there any, and does it cover what the house uses? The house
-      // value here is the one the diagram is drawn with, so the S0 generator is in
-      // it - without that, a house running on S0 would read as "Erzeugung" in
-      // orange while its own production covered it.
-      //
-      // Below the floor the word, not the dash: the dash says "the device has not
-      // reported a value yet", and at that point it has - the panels are simply
-      // below it. The dash stays for the case where no value has arrived at all.
-      if (pvTotal < kFlowActiveW) {
+      // Erzeugung: the word appears when the PV node carries something, and it is
+      // orange when the house needs more than the panels make - the house value here
+      // is the one the diagram is drawn with, so the S0 generator is in it.
+      if (!knoepfe.erzeugungSagt) {
         ovSetState(0, ST_GRAU, tr(T_D_TEND_INACTIVE));
-      } else if (house > pvTotal) {
-        ovSetState(0, ST_ORANGE, tr(T_D_ROW_PRODUCTION));
-      } else {
+      } else if (knoepfe.erzeugungDeckt) {
         ovSetState(0, ST_GRUEN, tr(T_D_ROW_PRODUCTION));
+      } else {
+        ovSetState(0, ST_ORANGE, tr(T_D_ROW_PRODUCTION));
       }
 
-      // Verbrauch: nothing at all, or where the power comes from. The grid counts
-      // as "importing" from its own floor on: below that the device regulates
-      // around zero and the sign is noise, so a house that is only drawing its last
-      // few watts from the grid is independent as far as this button is concerned.
-      // A household meter below the floor in the negative direction means the
-      // household is exporting - rare but possible, a BKW feeding back into the grid.
-      // The word follows flowHausPille(): a meter three watts under zero is the meter
-      // talking to itself, and "Export" appeared while the panels were the ones
-      // feeding the meter.
-      switch (flowHausPille(house, pTot, kFlowActiveW, kFlowGridActiveW)) {
+      // Verbrauch: the same four words as before, decided by the lines. "Export" needs
+      // the export spoke, "Bezug" the import spoke, and "unabhaengig" PV or battery
+      // filling the house without the grid. Consumption that no line reaches is the
+      // fifth state - the four readings do not close - and says "inaktiv" like the
+      // blank value beside it.
+      switch (knoepfe.haus) {
         case FLOW_HAUS_EXPORT:
           ovSetState(1, lv_color_hex(0xCA0C0F), tr(T_D_TEND_EXPORT));
           break;
         case FLOW_HAUS_NICHTS:
           ovSetState(1, ST_GRAU, tr(T_D_TEND_NOLOAD));
+          break;
+        case FLOW_HAUS_OHNE_QUELLE:
+          ovSetState(1, ST_GRAU, tr(T_D_TEND_INACTIVE));
           break;
         case FLOW_HAUS_NETZ:
           ovSetState(1, ST_ORANGE, tr(T_D_TEND_MAINS));
@@ -3323,16 +3348,17 @@ static void refreshCb(lv_timer_t *t) {
           break;
       }
 
-      // Batterie: charging (green) or discharging (orange), and "no current" below
-      // the floor rather than a direction that flips with the last rounding error.
+      // Batterie: charging (green) or discharging (orange), from the lines - a
+      // charging sector and a battery at +15 W that no line carries said "Entladen" with
+      // nothing drawn. "Standby" is the case where neither line is drawn.
       if (!s.haveBattery) {
         ovSetState(2, ST_GRAU, tr(T_D_TEND_NOBAT));
-      } else if (fabsf(pBat) < kFlowActiveW) {
-        ovSetState(2, ST_GRAU, tr(T_D_TEND_STANDBY));
-      } else if (pBat < 0.0f) {
+      } else if (knoepfe.akkuLaedt) {
         ovSetState(2, ST_GRUEN, tr(T_D_TEND_CHARGE));
-      } else {
+      } else if (knoepfe.akkuEntlaedt) {
         ovSetState(2, ST_ORANGE, tr(T_D_TEND_DISCHARGE));
+      } else {
+        ovSetState(2, ST_GRAU, tr(T_D_TEND_STANDBY));
       }
     } else {
       ovSetState(0, ST_GRAU, dash);

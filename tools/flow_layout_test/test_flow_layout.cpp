@@ -602,30 +602,77 @@ static void testNetzEinRichtung() {
   }
 }
 
-// What the household button says, around zero. The export state needs the meter below
-// the floor: three watts under zero is the meter talking to itself, and the panels
-// feeding the meter do not make the household a source.
-static void testHausPille() {
-  // The page's floors, not numbers of their own: a test that writes them down can
-  // keep passing after the threshold it checks has moved.
-  const float f = kFlowActiveW, nf = kFlowGridActiveW;
-  check(flowHausPille(-90.0f, 0.0f, f, nf) == FLOW_HAUS_EXPORT,
-        "Pille: -90 W ist Export");
-  check(flowHausPille(-3.0f, -2000.0f, f, nf) == FLOW_HAUS_NICHTS,
-        "Pille: -3 W ist Rundung, kein Export");
-  check(flowHausPille(-1.0f, 0.0f, f, nf) == FLOW_HAUS_NICHTS,
-        "Pille: -1 W ist nichts");
-  check(flowHausPille(0.0f, 0.0f, f, nf) == FLOW_HAUS_NICHTS, "Pille: 0 W ist nichts");
-  check(flowHausPille(2.0f, 0.0f, f, nf) == FLOW_HAUS_NICHTS,
-        "Pille: 2 W ist unter der Schwelle");
-  check(flowHausPille(162.0f, 0.0f, f, nf) == FLOW_HAUS_SELBST,
-        "Pille: 162 W ohne Netzbezug ist unabhaengig");
-  check(flowHausPille(162.0f, 41.0f, f, nf) == FLOW_HAUS_NETZ,
-        "Pille: 162 W mit 41 W Bezug ist Netzbezug");
-  check(flowHausPille(162.0f, 29.0f, f, nf) == FLOW_HAUS_SELBST,
-        "Pille: 29 W Bezug ist unter der Netzschwelle");
-  check(flowHausPille(162.0f, 31.0f, f, nf) == FLOW_HAUS_NETZ,
-        "Pille: 31 W Bezug ist ueber der Netzschwelle");
+// What the three buttons say, from what is DRAWN.
+//
+// The old rule read the meters itself and was wrong twice, both MEASURED on the panel on
+// 2026-10-19: a household meter 15 W under zero said "Export" with no line drawn, and a
+// meter importing 40 W said "Bezug" while the panels covered the house. So every case
+// here is phrased as a question about the page - which line is lit - and not about a
+// meter value, because that is the only form in which the two can be compared.
+static void testDieKnoepfe() {
+  // Nichts gezeichnet, nichts gesagt. Der Haushalt verbraucht, aber keine der vier
+  // Zufuhrlinien traegt: das ist der Fall, in dem die vier Messungen nicht aufgehen, und
+  // die Zahl am Hausknoten ist in dem Moment leer.
+  {
+    const FlowButtons b = flowButtons(false, false, false, false, false, false, false, false);
+    check(!b.erzeugungSagt, "Knopf: ohne PV-Linie keine Erzeugung");
+    check(b.haus == FLOW_HAUS_OHNE_QUELLE, "Knopf: Verbrauch ohne Linie hat keine Quelle");
+    check(!b.akkuLaedt && !b.akkuEntlaedt, "Knopf: ohne Akkulinie kein Laden und kein Entladen");
+  }
+  // Der gemeldete Fall: der Haushaltszaehler 15 W unter null. Die Exportlinie braucht
+  // 30 W und die Vorzeichen des Netzzaehlers, also ist sie nicht gezeichnet - und der
+  // Knopf sagt jetzt auch nicht "Export".
+  {
+    const FlowButtons b = flowButtons(true, true, false, false, false, true, false, true);
+    check(b.haus == FLOW_HAUS_OHNE_QUELLE,
+          "Knopf: -15 W am Haushalt ohne Exportlinie ist kein Export");
+  }
+  // Dieselbe Lage mit gezeichneter Exportlinie: dann Export, und die beiden stimmen.
+  {
+    const FlowButtons b = flowButtons(true, true, true, false, true, false, false, true);
+    check(b.haus == FLOW_HAUS_EXPORT, "Knopf: gezeichnete Exportlinie ist Export");
+    check(b.akkuEntlaedt, "Knopf: die Akkuspur traegt, also Entladen");
+  }
+  // Bezug: der Zaehler zeigt 40 W Import, die Panels decken das Haus - also ist die
+  // Bezugslinie nicht gezeichnet (sie traegt den Anteil des Netzes am Haus, und der ist
+  // null), und der Knopf sagt nicht "Bezug", sondern "unabhaengig".
+  {
+    const FlowButtons b = flowButtons(true, true, true, false, false, true, false, true);
+    check(b.haus == FLOW_HAUS_SELBST, "Knopf: ohne Bezugslinie unabhaengig, nicht Bezug");
+  }
+  {
+    const FlowButtons b = flowButtons(true, false, true, true, false, false, false, false);
+    check(b.haus == FLOW_HAUS_NETZ, "Knopf: gezeichnete Bezugslinie ist Bezug");
+  }
+  // Laden hat Vorrang vor Entladen: ein Akku, der aus den Panels laedt und ins Haus
+  // entlaedt, wird als ladend gezeigt - so auch das Diagramm.
+  {
+    const FlowButtons b = flowButtons(true, true, true, true, false, true, true, true);
+    check(b.akkuLaedt && !b.akkuEntlaedt, "Knopf: laden schlaegt entladen");
+    check(b.haus == FLOW_HAUS_NETZ, "Knopf: mit Bezugslinie ist die Versorgung vom Netz");
+  }
+  // Der gemeldete Fall vom 2026-10-19: Haus mit Erzeugung, Akku laedt mit 45 W. Die
+  // Speiche zwischen Haus und Akku ist eine Linie, aber zwei Richtungen - sie leuchtet,
+  // weil der Haushalt in den Akku speist, und der Pfeil zeigt zum Akku. Ein Knopf, der
+  // beides als "die Linie traegt" zusammenfasste, sagte "Entladen". Die Richtung ist
+  // hier also schon entschieden, bevor der Knopf etwas aus ihr macht.
+  {
+    const FlowButtons b = flowButtons(true, true, false, false, false, false, true, false);
+    check(b.akkuLaedt && !b.akkuEntlaedt, "Knopf: der Haushalt laedt den Akku");
+  }
+  // Und dieselbe Speiche in der anderen Richtung: der Akku versorgt das Haus.
+  {
+    const FlowButtons b = flowButtons(true, true, true, false, false, true, false, true);
+    check(b.akkuEntlaedt && !b.akkuLaedt, "Knopf: der Akku versorgt das Haus");
+  }
+  // Erzeugung: das Wort erscheint mit der PV-Linie, und orange, wenn das Haus mehr
+  // braucht als die Panels machen.
+  {
+    const FlowButtons b = flowButtons(true, true, true, true, false, true, true, false);
+    check(b.erzeugungSagt && b.erzeugungDeckt, "Knopf: Panels decken das Haus");
+    const FlowButtons c = flowButtons(true, false, true, true, false, false, false, false);
+    check(c.erzeugungSagt && !c.erzeugungDeckt, "Knopf: Panels decken das Haus nicht");
+  }
 }
 
 int main() {
@@ -639,7 +686,7 @@ int main() {
   testPillGeometry();
   testWideProfile();
   testNetzEinRichtung();
-  testHausPille();
+  testDieKnoepfe();
 
   printf("%s: %d Prüfungen, %d fehlgeschlagen\n",
          g_failed == 0 ? "OK" : "FEHLER", g_checks, g_failed);
