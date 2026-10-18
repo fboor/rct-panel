@@ -70,6 +70,19 @@ Ohne die Datei startet der Simulator also **emuliert**, nie gegen ein fremdes Ge
 Ein Entwickler, der immer mit einem echten Wechselrichter testet, stellt ihn einmal
 im Browser ein — und der nächste Start kommt so hoch.
 
+## Was die Anlage im Treiber verliert
+
+`simVerlustW` in der Mock-Datei ist der Verlust der Anlage, und er geht **vor** der
+Entscheidung des Akkus ab: er sitzt zwischen den Quellen und dem Haus. Vorgabe ist 0,
+also verhält sich der Tagesgang ohne ihn wie bisher.
+
+Der Wert steht nicht aus Bequemlichkeit dort. Das Modell hielt die Bilanz
+zwangsläufig geschlossen — was der Akku nicht deckte, ging über den Zähler — und konnte
+damit den Zustand gar nicht erzeugen, in dem die Quellen mehr hergeben, als das Haus
+nimmt. Genau diese Annahme steckt in der Regel, die einen Bogen Akku → Netz für eine
+Einspeisung zeichnete, die kein Zähler gemessen hatte: `simVerlustW` macht den Fall
+überhaupt erst darstellbar, `data/mock_verlust_akku_ueber_haus.json` zeigt ihn.
+
 Datei löschen = zurück auf der Vorgabe.
 
 ## Neustart
@@ -126,3 +139,33 @@ sagt es. Ein Programm, das sich selbst neu startet, kann das endlos tun.
 | `stubs/` | `Arduino.h`, `WiFi.h` mit `WiFiClient`, `WebServer.h`, NVS, Update, mDNS |
 | `sim_board.cpp` | `uiLayout()` des Simulators: das gewünschte Profil statt der Firmware |
 | `data/rct_mock.json` | Mittag im Juli, alle vier Werte, einer negativ |
+
+## Die Zustände zur Einspeisung
+
+Festwerte (`"fixed": 1`), mit denen sich die Frage prüfen lässt, was der Ring zwischen
+Akku und Netz zeigt. Jeder hat seinen Testfall in `tools/device_test`, und die
+Bilddateien sind nicht im Repository — `run.sh --shot` schreibt sie, `--data` liest den
+Zustand:
+
+```sh
+run.sh --shot a.png --data data/mock_verlust_akku_ueber_haus.json
+```
+
+**Die Regel:** Einspeisung wird zuerst und bis zur Erzeugung von den Panels gedeckt — sie
+können nichts lagern, der Akku schon. Der Akku ist der letzte Baustein, und im
+Normalfall speist er gar nicht: nur eine Sonderlage wie die Kalibrierung lässt das zu, und
+die Firmware liest diesen Zustand noch nicht (OID `0x70A2AF4F` liegt im Treiber und wird
+nicht ausgewertet). Deshalb ist der Bogen unten rechts in **allen** vier Zuständen grau.
+
+| Datei | Die vier Werte (PV / Haus / Akku / Zähler) | Was das Bild zeigen muss |
+|---|---|---|
+| `mock_einspeisung_gegemessen.json` | 300 / 400 / +200 / −100 | **Oberer Ring rot** (die 100 W sind Panels, sie erzeugen dreimal so viel), Speiche Akku → Haus rot, **Bogen unten rechts grau** |
+| `mock_einspeisung_ueber_pv.json` | 200 / 500 / +900 / −1100 | **Oberer Ring rot** (die Panels decken 200 der 1100 W), Akku versorgt das Haus, **Bogen grau** — die Einspeisung ist höher als die Erzeugung, und der Akku speist trotzdem nicht |
+| `mock_verlust_akku_ueber_haus.json` | 0 / 500 / +700 / 0 | **Bogen grau.** Der Akku gibt mehr her, als das Haus nimmt, und der Zähler misst nichts: die 200 W Differenz sind Verlust, kein Weg ins Netz |
+| `mock_verlust_beim_export.json` | 0 / −400 / +700 / −420 | **Bogen grau**, Strebe Haus → Netz rot bei −420 W. Der Export des Haushalts ist die Messung des Hauszählers und bleibt, was er sagte |
+
+Drei dieser vier Anlagen gehen nicht auf, und das ist der Punkt: die vier Messungen
+kommen nicht gleichzeitig herein, ein verlustbehaftetes System verliert einige Prozent,
+und was der Akku abgibt, ohne dass es eine Quelle im Bild bekommt, bleibt eine Lücke.
+Wer in einer dieser Dateien eine Zahl ändert, um die Bilanz zu retten, baut eine Anlage,
+die es nicht gibt. Siehe `ruleFlowSplit()` in `src/device/Rules.h`.

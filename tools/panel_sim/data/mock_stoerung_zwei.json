@@ -1,0 +1,18 @@
+{
+  "_comment": "Der Zustand mit aktiven Stoerungen: Bit n setzt Stoerung n, in der Reihenfolge des Geraets. Die Mock-Datei kann das erst, seit sim_device.cpp die Schluessel faultBits0..3 liest - vorher sagte jede Aufnahme der Service-Seite \"Keine Stoerungen\", und die Liste stand damit nie auf dem Bild.",
+  "fixed": 1,
+  "hasHouseMeter": 1,
+  "hasGridMeter": 1,
+  "hasBattery": 1,
+  "genW0": 0,
+  "genW1": 0,
+  "extW": 0,
+  "houseW0": 500,
+  "houseW1": 0,
+  "houseW2": 0,
+  "gridExchangeW": 0,
+  "batW": 0,
+  "socPct": 62,
+  "batV": 392,
+  "faultBits0": 65
+}

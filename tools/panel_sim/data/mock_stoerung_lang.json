@@ -1,0 +1,19 @@
+{
+  "_comment": "Der laengste Stoerungstext der Liste neben zwei kurzen: F104 \"Netzspannungsdifferenz intern/extern zu gross Phase 3\" ist 57 Zeichen breit. Auf dem480 ist die Box 280 px, auf dem 7-Zoll 500 px - dieser Zustand zeigt, ob der Text in die Box passt.",
+  "faultBits0": 513,
+  "faultBits3": 256,
+  "fixed": 1,
+  "hasHouseMeter": 1,
+  "hasGridMeter": 1,
+  "hasBattery": 1,
+  "genW0": 0,
+  "genW1": 0,
+  "extW": 0,
+  "houseW0": 500,
+  "houseW1": 0,
+  "houseW2": 0,
+  "gridExchangeW": 0,
+  "batW": 0,
+  "socPct": 62,
+  "batV": 392
+}

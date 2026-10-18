@@ -205,9 +205,16 @@ class SimDriver : public DeviceDriver {
     // nothing is given, no grid meter means nothing is exchanged. Both are the honest
     // zero of a device that cannot measure it, and both keep the production out of a
     // branch that does not exist - which is what the one-node page shows.
-    const float bilanz = erzeugung - last;   // + = surplus
-    float akku = 0.0f;                       // negative = charging
-    float rest = bilanz;                     // what the battery did not take
+    // The loss is subtracted BEFORE the battery decides, because that is where it sits:
+    // between the sources and the house. It is the one thing that makes the four
+    // readings add up to less than the sources deliver - and it is why a plant can hand
+    // more to the house's sources than the house takes without the meter seeing a
+    // feed-in. Without it this model could not produce that state at all, which is why
+    // ruleFlowSplit() got it wrong for as long as it did and the simulator never showed
+    // it (see testVerlusteSindKeineEinspeisung() in tools/device_test).
+    const float bilanz = erzeugung - last - m_verlustW;   // + = surplus
+    float akku = 0.0f;                                    // negative = charging
+    float rest = bilanz;                                  // what the battery did not take
     if (bilanz > 0.0f) {
       const float nimm = (bilanz < m_akkuW) ? bilanz : m_akkuW;
       akku = -nimm;         // charging: current flows into the battery
@@ -260,6 +267,7 @@ class SimDriver : public DeviceDriver {
   float m_lastBasisW = 210.0f;
   float m_lastSpitzeW = 380.0f;
   float m_akkuW = 2500.0f;        // what the battery will take or give
+  float m_verlustW = 0.0f;        // what the plant loses between battery, inverter and house
   float m_kapazitahtAh = 100.0f;  // enough to make the state of charge move visibly
   float m_simBatV = 392.0f;
   bool m_fixed = false;
@@ -338,6 +346,14 @@ class SimDriver : public DeviceDriver {
         *ziel = (float)d;
       }
     };
+    // The same for a word of bits. A float would round a bit pattern, and the
+    // difference between fault 31 and fault 32 is exactly what the word is for.
+    auto wort = [&](const char *k, uint32_t *ziel) {
+      double d = 0.0;
+      if (getNumber(j, n, k, &d) && d >= 0.0) {
+        *ziel = (uint32_t)d;
+      }
+    };
     for (int i = 0; i < 3; i++) {
       const std::string kv = std::string("gridV") + std::to_string(i);
       const std::string kh = std::string("gridHz") + std::to_string(i);
@@ -350,6 +366,15 @@ class SimDriver : public DeviceDriver {
     zahl("genW1", &s.genW[1]);
     zahl("extW", &s.extW);
     zahl("gridExchangeW", &s.gridExchangeW);
+    // The fault bits, so the Service page's fault list can be looked at at all. The
+    // list is the one block on that page whose size depends on the TEXT and not on a
+    // number of the layout - and the emulator could not set it, so every picture of
+    // the Service page said "Keine Stoerungen" and the block's height was never on
+    // screen. Bit n is fault n, the same order the firmware's T_FAULT_0 + n uses.
+    for (int i = 0; i < 4; i++) {
+      const std::string kf = std::string("faultBits") + std::to_string(i);
+      wort(kf.c_str(), &s.faultBits[i]);
+    }
     zahl("socPct", &s.socPct);
     zahl("batV", &s.batV);
     zahl("batW", &s.batW);
@@ -398,6 +423,7 @@ class SimDriver : public DeviceDriver {
     zahl("simLastBasisW", &m_lastBasisW);
     zahl("simLastSpitzeW", &m_lastSpitzeW);
     zahl("simAkkuW", &m_akkuW);
+    zahl("simVerlustW", &m_verlustW);
     zahl("simKapazitahtAh", &m_kapazitahtAh);
     m_simBatV = s.batV;
   }

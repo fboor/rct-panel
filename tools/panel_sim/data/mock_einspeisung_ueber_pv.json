@@ -1,0 +1,17 @@
+{
+  "_comment": "Der Fall, in dem die Einspeisung groesser waere als die Panels und der Akku damit der letzte Baustein waere - im Normalfall speist er trotzdem nicht, das Bild laesst die Luecke. Bis die Firmware die Sonderlage liest (OID 0x70A2AF4F, die Kalibrierung), bleibt der Bogen unten rechts grau, auch wenn der Zaehler eine Einspeisung ueber der PV-Erzeugung meldet.",
+  "fixed": 1,
+  "hasHouseMeter": 1,
+  "hasGridMeter": 1,
+  "hasBattery": 1,
+  "genW0": 200,
+  "genW1": 0,
+  "extW": 0,
+  "houseW0": 500,
+  "houseW1": 0,
+  "houseW2": 0,
+  "gridExchangeW": -1100,
+  "batW": 900,
+  "socPct": 62,
+  "batV": 392
+}

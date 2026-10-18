@@ -1,0 +1,17 @@
+{
+  "_comment": "Der gemeldete Fall vom 2026-10-18: 300 W Panels, Haus 400 W, 200 W aus dem Akku, und der Zaehler misst 100 W Einspeisung. Die Panels erzeugen dreimal so viel wie die Einspeisung, also speisen die Panels ein und der Akku nicht - er versorgt das Haus. Der untere rechte Bogen muss GRAU bleiben; oben der Ring leuchtet. Vor der Regel kam dort ein Bogen fuer 100 W aus dem Akku heraus, den kein Zaehler dem Akku zugeschrieben hatte. Testfall: testVerlusteSindKeineEinspeisung in tools/device_test.",
+  "fixed": 1,
+  "hasHouseMeter": 1,
+  "hasGridMeter": 1,
+  "hasBattery": 1,
+  "genW0": 300,
+  "genW1": 0,
+  "extW": 0,
+  "houseW0": 400,
+  "houseW1": 0,
+  "houseW2": 0,
+  "gridExchangeW": -100,
+  "batW": 200,
+  "socPct": 62,
+  "batV": 392
+}
