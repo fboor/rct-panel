@@ -226,6 +226,36 @@ int main() {
   ok(u.flow.pillY >= 0 && u.flow.pillY + u.flow.pillH <= u.contentH(),
      "Pillen passen nicht in die Seite", buf);
 
+  // ---- the Service page's two columns --------------------------------------
+  // 11afe57 inserted faultChars into UiService in the middle and appended its value
+  // at the END of the Guition's initializer, so the seven values read as
+  // col2X = 160, col2W = 38, faultChars = 300: the right column sat at x=160 with a
+  // third of its width, in the middle of the left one, and the fault list was allowed
+  // 300 characters per line. The 7-inch profile assigns by name and never saw it, and
+  // the board test had no statement about this page at all - which is why the change
+  // was green here and broken on the 480, which had not been flashed since rc3.
+  //
+  // Two statements catch it, and both are about the page rather than about the commit:
+  //
+  //   - the character budget has to fit the box it is counted against. 7.9 px per
+  //     character is the mean advance of the 14 px font over the 128 fault texts,
+  //     computed from the font's own glyph table (adv_w in 1/16 px, rounded up at
+  //     runtime, lv_font_fmt_txt.c) - 236 px over 29.9 characters.
+  //   - the right column has to be a column: 140 px is the narrowest that still holds
+  //     a button with its icon and a two-word label, and neither board is narrower than
+  //     its own 160 px.
+  const UiService &sv = u.service;
+  const double kZeichenPx = 7.9;
+  snprintf(buf, sizeof(buf), "rechte Spalte x=%d w=%d, Bild %d px", sv.col2X, sv.col2W,
+           u.screenW);
+  ok(sv.col2X > sv.x0 && sv.col2X + sv.col2W <= u.screenW - sv.x0,
+     "rechte Spalte liegt nicht neben der linken", buf);
+  ok(sv.col2W >= 140, "rechte Spalte zu schmal fuer ihre Knoepfe", buf);
+  snprintf(buf, sizeof(buf), "%d Zeichen x %.1f px = %.0f px in faultW %d",
+           sv.faultChars, kZeichenPx, sv.faultChars * kZeichenPx, sv.faultW);
+  ok(sv.faultChars * kZeichenPx <= sv.faultW,
+     "Zeichengrenze der Stoerungsliste passt nicht in ihre Box", buf);
+
   // ---- what the board can and cannot do -------------------------------------
   // Not a style question: a backlight behind an IO expander has one bit and no
   // PWM, so a slider on it would be a control that does nothing.

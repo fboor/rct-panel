@@ -159,11 +159,23 @@ const UiLayout kGuition4848S040 = {
     // SERVICE: the two columns as they have always been on this board - 20 and 300,
     // buttons 160 px wide, so the right column ends at 460 and the page margin is the
     // same 20 on both sides. Every one of these was a literal in the page.
+    //
+    // The values are in the order of the struct, and they have to stay in it: a field
+    // inserted into UiService in the middle moves every value after it. faultChars was
+    // added after the last line here, and the seven values then read as
+    // col2X = 160, col2W = 38, faultChars = 300 - the right column sat in the middle
+    // of the left one at a third of its width, and the fault list was allowed 300
+    // characters per line. The 7-inch profile assigns by name and never saw it.
+    //
+    // 35 characters, not the 38 this line carried for years: the field counts what
+    // fits into faultW, and 280 px hold 35 characters of the 14 px font (7.9 px each,
+    // measured over the 128 fault texts). 38 were ~300 px - 20 px too many, so every
+    // fault line wrapped and the budget was counting characters against a box that
+    // could not hold them. The 7-inch has 58 for 500 px and fits.
     /* service */
     {
         /* x0 */ 20, /* col1W */ 440, /* webW */ 200, /* faultW */ 280,
-        /* col2X */ 300, /* col2W */ 160,
-        /* faultChars */ 38,
+        /* faultChars */ 35, /* col2X */ 300, /* col2W */ 160,
     },
 };
 
