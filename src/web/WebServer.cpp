@@ -8,6 +8,7 @@
 //   /api/energie.json      the energy figures of one period, as numbers
 //   /api/verlauf.json      the 24 h ring, as numbers
 //   /api/px.json           what our own code put on the bus (see handleApiPixel)
+//   /api/lcd.json          the panel's sync idle levels, changeable at runtime
 //   /.well-known/security.txt  security contact, RFC 9116
 //   /daten                 the logged CSV files, tail or whole
 //   /bilder                the screenshots taken on the panel
@@ -630,6 +631,47 @@ static void handleApiPixel() {
   }
   j += F("]}");
   s_server.send(200, "application/json; charset=utf-8", j);
+}
+
+// GET /api/lcd.json?hs=0|1&vs=0|1
+//
+// The panel's HSYNC/VSYNC idle level, and the one place it can be changed while
+// the panel runs. It belongs next to /api/px.json because the two are the halves
+// of the same question: px.json says what went into the frame buffer, this one
+// changes a setting of the scan and says what it is now.
+//
+// Both parameters are optional; without them nothing is changed and the answer
+// is the state as it stands. "1" means idle low. The panel decides with the edge
+// of its sync where a pixel's bits start, so this is a timing knob and not a
+// cosmetic one - on the 7-inch panel it changes the colour cast, which is why it
+// is on the web server instead of behind a build flag: four combinations, one
+// image.
+void handleApiLcd() {
+  int hs = 1, vs = 1;
+  bool ok = displaySyncPolarity(&hs, &vs);
+  const bool set = s_server.hasArg("hs") || s_server.hasArg("vs");
+  if (set && ok) {
+    if (s_server.hasArg("hs")) {
+      hs = atoi(s_server.arg("hs").c_str()) ? 1 : 0;
+    }
+    if (s_server.hasArg("vs")) {
+      vs = atoi(s_server.arg("vs").c_str()) ? 1 : 0;
+    }
+    ok = displaySetSyncPolarity(hs, vs);
+    displaySyncPolarity(&hs, &vs); // read back: the register is the truth
+  }
+  // snprintf and not "j += hs": the simulator's String stub has no operator+=
+  // for a number, and int then converts to char - so the digit becomes a NUL byte
+  // and the answer reads as an empty number. That is the simulator's stub, not the
+  // panel, but a JSON answer that differs between the two is worth two lines.
+  //
+  // "changed" says whether anything was really changed, so it is 0 when there is no
+  // panel behind the request even though parameters came in - an answer that claims
+  // a change that did not happen is worse than no answer.
+  char b[96];
+  snprintf(b, sizeof(b), "{\"ok\":%d,\"hs\":%d,\"vs\":%d,\"changed\":%d}",
+           ok ? 1 : 0, hs, vs, (set && ok) ? 1 : 0);
+  s_server.send(200, "application/json; charset=utf-8", b);
 }
 
 void handleApiEnergy() {
@@ -1991,6 +2033,7 @@ void webStart() {
   s_server.on(Uri("/verlauf"), HTTP_GET, handleVerlauf);
   s_server.on(Uri("/api/energie.json"), HTTP_GET, handleApiEnergy);
     s_server.on(Uri("/api/px.json"), HTTP_GET, handleApiPixel);
+    s_server.on(Uri("/api/lcd.json"), HTTP_GET, handleApiLcd);
   s_server.on(Uri("/api/verlauf.json"), HTTP_GET, handleApiHistory);
   s_server.on(Uri("/daten"), HTTP_GET, handleData);
   s_server.on(Uri("/bilder"), HTTP_GET, handleShots);

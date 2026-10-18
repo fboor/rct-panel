@@ -47,19 +47,25 @@
 #define PIN_LCD_DE 5
 #define PIN_LCD_PCLK 7
 
-// RGB565 data lines in esp_lcd data_gpio_nums order (B0..B4, G0..G5, R0..R4).
-#define PIN_LCD_B0 14
+// The sixteen data lines, in the order esp_lcd drives them (index 0 = bit 0 of the
+// RGB565 word), each with the panel pin it carries. The names come from Waveshare's
+// own schematic (ESP32-S3-Touch-LCD-7-Sch.pdf, sheet 1, pin table "LCD"): the panel
+// has 8 bits per colour and this board wires the upper five of blue and red and the
+// upper six of green, so electrically this is RGB565 and not RGB888. The demo's
+// config calls these same wires B0..B4, G0..G5, R0..R4 - those are array positions,
+// not panel bits, and reading them as panel bits is how the two orders get mixed up.
+#define PIN_LCD_B0 14  // B0..B4 -> panel B3, B4, B5, B6, B7
 #define PIN_LCD_B1 38
 #define PIN_LCD_B2 18
 #define PIN_LCD_B3 17
 #define PIN_LCD_B4 10
-#define PIN_LCD_G0 39
+#define PIN_LCD_G0 39  // G0..G5 -> panel G2, G3, G4, G5, G6, G7
 #define PIN_LCD_G1 0
 #define PIN_LCD_G2 45
 #define PIN_LCD_G3 48
 #define PIN_LCD_G4 47
 #define PIN_LCD_G5 21
-#define PIN_LCD_R0 1
+#define PIN_LCD_R0 1   // R0..R4 -> panel R3, R4, R5, R6, R7
 #define PIN_LCD_R1 2
 #define PIN_LCD_R2 42
 #define PIN_LCD_R3 41
@@ -98,6 +104,17 @@
 #define BOARD_LCD_VSYNC_PULSE_WIDTH 4
 #define BOARD_LCD_VSYNC_BACK_PORCH 8
 #define BOARD_LCD_VSYNC_FRONT_PORCH 8
+// The idle levels of HSYNC and VSYNC: 1 = idle low. The vendor's demo sets neither,
+// so both stay at 0 here - which is what the committed build did. MEASURED on the
+// panel: these two bits are the only setting that changes the colour cast (idle
+// high = blue, idle low = green), and which of the four combinations is the right
+// one is open. /api/lcd.json switches them at runtime; whatever wins goes here.
+#ifndef BOARD_LCD_HSYNC_IDLE_LOW
+#define BOARD_LCD_HSYNC_IDLE_LOW 0
+#endif
+#ifndef BOARD_LCD_VSYNC_IDLE_LOW
+#define BOARD_LCD_VSYNC_IDLE_LOW 0
+#endif
 // LVGL's draw buffer, in lines of the panel. 24 lines are 38 kB on this board at
 // RGB565, and that buffer is the one piece of the redraw that does not have to
 // live in the PSRAM: the driver copies every strip into the frame buffer itself,

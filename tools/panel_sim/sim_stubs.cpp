@@ -135,6 +135,22 @@ lv_display_t *dispGetHandle() { return lv_display_get_default(); }
 
 uint16_t dispCorrectPixel(uint16_t v) { return v; }
 
+// The sync idle levels are two bits of a register in the RGB peripheral, and a
+// window has no such register. Saying "no panel" is the honest answer here: it
+// leaves /api/lcd.json reporting ok:0 rather than a state that means nothing, and
+// nothing in the simulator can learn from those two numbers.
+bool displaySetSyncPolarity(int, int) { return false; }
+
+bool displaySyncPolarity(int *hs, int *vs) {
+  if (hs != nullptr) {
+    *hs = 1;
+  }
+  if (vs != nullptr) {
+    *vs = 1;
+  }
+  return false;
+}
+
 bool touchInit() { return true; }
 
 // The panel reads the controller into an LVGL input device. Here the mouse is an

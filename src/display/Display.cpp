@@ -23,6 +23,11 @@
 // -libs package can and this one cannot.
 #include <esp_lcd_panel_rgb.h>
 #include <hal/lcd_types.h>
+#if SOC_LCD_RGB_SUPPORTED
+// The two idle levels live here, and nowhere else in the headers this project
+// uses: LCD_CAM_LCD_CTRL2_REG, bit 23 = HSYNC, bit 7 = VSYNC.
+#include <soc/lcd_cam_reg.h>
+#endif
 
 #include <math.h>
 
@@ -502,8 +507,14 @@ bool displayInit() {
   panel_cfg.timings.vsync_pulse_width = BOARD_LCD_VSYNC_PULSE_WIDTH;
   panel_cfg.timings.vsync_back_porch = BOARD_LCD_VSYNC_BACK_PORCH;
   panel_cfg.timings.vsync_front_porch = BOARD_LCD_VSYNC_FRONT_PORCH;
-  panel_cfg.timings.flags.hsync_idle_low = 0; // active-low HSYNC (vendor demo)
-  panel_cfg.timings.flags.vsync_idle_low = 0; // active-low VSYNC (vendor demo)
+  // Die Ruhepegel sind Boardeigenschaften und stehen im Boardprofil, nicht hier.
+  // Sie sind der einzige Wert, der die Farbe mitbestimmt: dieselbe Firmware zeigt
+  // am 7-Zoll-Panel mit Ruhepegel high einen Blau-, mit Ruhepegel low einen
+  // Grünstich, und der Hersteller-Demo lässt beide auf 0. Die vier Kombinationen
+  // sind zur Laufzeit umschaltbar (displaySetSyncPolarity, /api/lcd.json), weil
+  // vier Builds vier Images sind und zwei Registerbits vier Anfragen.
+  panel_cfg.timings.flags.hsync_idle_low = BOARD_LCD_HSYNC_IDLE_LOW;
+  panel_cfg.timings.flags.vsync_idle_low = BOARD_LCD_VSYNC_IDLE_LOW;
   panel_cfg.timings.flags.de_idle_high = 0;
   panel_cfg.timings.flags.pclk_active_neg = BOARD_LCD_PCLK_ACTIVE_NEG;
   panel_cfg.timings.flags.pclk_idle_high = 0;
@@ -571,6 +582,23 @@ bool displayInit() {
     Serial.println("LCD: rgb panel init failed");
     return false;
   }
+
+  // Which wire carries which panel bit, printed so that the board and this log
+  // can be compared line by line. index = bit of the RGB565 word, 0 = bit 0.
+  {
+    static const char *panelBit[16] = {
+        "B3", "B4", "B5", "B6", "B7", "G2", "G3", "G4",
+        "G5", "G6", "G7", "R3", "R4", "R5", "R6", "R7"};
+    Serial.print("LCD: RGB565-Bits -> Panel-Pins:");
+    for (int i = 0; i < 16; i++) {
+      static const int gpio[16] = {
+          PIN_LCD_B0, PIN_LCD_B1, PIN_LCD_B2, PIN_LCD_B3, PIN_LCD_B4,
+          PIN_LCD_G0, PIN_LCD_G1, PIN_LCD_G2, PIN_LCD_G3, PIN_LCD_G4, PIN_LCD_G5,
+          PIN_LCD_R0, PIN_LCD_R1, PIN_LCD_R2, PIN_LCD_R3, PIN_LCD_R4};
+      Serial.printf(" %s=GPIO%d", panelBit[i], gpio[i]);
+    }
+    Serial.println();
+  }
   delay(20);
 
   // 4) LVGL display bound to the panel.
@@ -633,6 +661,58 @@ bool displayInit() {
                 (unsigned)(ESP.getPsramSize() / (1024 * 1024)));
   return true;
 }
+
+// ---------------------------------------------------------------------------
+// The two idle levels, changed while the scan runs
+// ---------------------------------------------------------------------------
+//
+// Both are bits in one register of the RGB peripheral, and the driver wrote them
+// once in esp_lcd_panel_init(). Nothing else in that register is touched: the
+// read-modify-write below keeps every other bit, including the pulse widths and
+// the DE level.
+//
+// IDLE_POL is the *inverted* value, which is the one thing about it that is easy
+// to get wrong: the bit holds "idle is high", so idle LOW means the bit is 0.
+// Espressif's own driver says the same in one line -
+// lcd_ll_set_idle_level(dev, !hsync_idle_low, !vsync_idle_low, de_idle_high) -
+// and that is where the number below comes from. Writing it the other way round
+// would have made this sweep test the complement of what it claims to test.
+#if SOC_LCD_RGB_SUPPORTED
+bool displaySetSyncPolarity(int hsIdleLow, int vsIdleLow) {
+  if (s_lcd_panel == nullptr) {
+    return false;
+  }
+  uint32_t v = REG_READ(LCD_CAM_LCD_CTRL2_REG);
+  v &= ~(uint32_t)(LCD_CAM_LCD_HSYNC_IDLE_POL | LCD_CAM_LCD_VSYNC_IDLE_POL);
+  if (!hsIdleLow) {
+    v |= LCD_CAM_LCD_HSYNC_IDLE_POL;
+  }
+  if (!vsIdleLow) {
+    v |= LCD_CAM_LCD_VSYNC_IDLE_POL;
+  }
+  REG_WRITE(LCD_CAM_LCD_CTRL2_REG, v);
+  Serial.printf("LCD: HSYNC-Ruhepegel %s, VSYNC-Ruhepegel %s\n",
+                hsIdleLow ? "low" : "high", vsIdleLow ? "low" : "high");
+  return true;
+}
+
+bool displaySyncPolarity(int *hsIdleLow, int *vsIdleLow) {
+  if (s_lcd_panel == nullptr) {
+    return false;
+  }
+  const uint32_t v = REG_READ(LCD_CAM_LCD_CTRL2_REG);
+  if (hsIdleLow != nullptr) {
+    *hsIdleLow = (v & LCD_CAM_LCD_HSYNC_IDLE_POL) ? 0 : 1;
+  }
+  if (vsIdleLow != nullptr) {
+    *vsIdleLow = (v & LCD_CAM_LCD_VSYNC_IDLE_POL) ? 0 : 1;
+  }
+  return true;
+}
+#else  // no RGB peripheral: nothing to set, and saying so beats a wrong answer
+bool displaySetSyncPolarity(int, int) { return false; }
+bool displaySyncPolarity(int *, int *) { return false; }
+#endif
 
 // Marked on both sides on purpose. A hang *inside* lv_timer_handler() that does
 // not reach the flush callback - LVGL's own draw code, between one callback and

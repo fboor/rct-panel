@@ -57,6 +57,16 @@
 #define BOARD_LCD_VSYNC_PULSE_WIDTH 8
 #define BOARD_LCD_VSYNC_BACK_PORCH 20
 #define BOARD_LCD_VSYNC_FRONT_PORCH 10
+// HSYNC/VSYNC idle level, 1 = idle low. 0 = idle high, which is what this panel
+// has always run with and what the init sequence above (active-low HSYNC and
+// VSYNC) is written for. On this board the level has never changed the colour -
+// see the 7-inch profile, where it does.
+#ifndef BOARD_LCD_HSYNC_IDLE_LOW
+#define BOARD_LCD_HSYNC_IDLE_LOW 0
+#endif
+#ifndef BOARD_LCD_VSYNC_IDLE_LOW
+#define BOARD_LCD_VSYNC_IDLE_LOW 0
+#endif
 // No bounce buffer here either - see the Waveshare profile, which says why the
 // field is not there to set.
 
