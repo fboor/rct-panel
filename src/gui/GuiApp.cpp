@@ -274,16 +274,17 @@ static void themeSpeichern() {
 
   // Energiefluss palette (reference values)
   static const lv_color_t FLOW_RED = lv_color_hex(0xCA0C0F);   // active flow / value
-  static const lv_color_t FLOW_GRAY = lv_color_hex(0x555658);  // icon inside nodes
+  static const lv_color_t FLOW_GRAY = lv_color_hex(0x565656);  // icon inside nodes
   // The greys are a ladder, lightest to darkest, and they are meant to be read as one:
   // the node's own fill, then a line that carries nothing, then the node's ring, then
   // the icon inside it. Both idle greys came down together - 0xCBCBCD was so light that
   // an idle connector read as a scratch on the page rather than as a connection, and
   // 0x6E6F72 beside it left a jump from 203 straight to 110 with nothing in between.
-  // It is 244 / 147 / 100 / 85 now, in even steps. FLOW_WHITE is the first rung and has
+  // It is 244 / 150 / 103 / 86 now, in even steps, and neutral: the portal's values
+    // ran 2 to 6 percent too blue. FLOW_WHITE is the first rung and has
   // the story below.
-  static const lv_color_t FLOW_BORDER = lv_color_hex(0x64666A); // node ring
-  static const lv_color_t FLOW_LINE = lv_color_hex(0x93959A);   // idle connector, idle arc
+  static const lv_color_t FLOW_BORDER = lv_color_hex(0x676767); // node ring
+  static const lv_color_t FLOW_LINE = lv_color_hex(0x969696);   // idle connector, idle arc
 // The node fill, and deliberately not pure white.
 //
 // It was 0xFFFFFF, which is exactly COL_BG_HELL - the light theme's page
@@ -298,7 +299,7 @@ static void themeSpeichern() {
 // are meant to be in both: a light disc with a grey ring. On the dark page it
 // reads as before; on the light one it is a faint raised disc, which is the
 // point of a node rather than a hole.
-static const lv_color_t FLOW_WHITE = lv_color_hex(0xF2F4F7); // node fill
+static const lv_color_t FLOW_WHITE = lv_color_hex(0xF4F4F4); // node fill
 
 // The two flow-diagram icons, from Material Design Icons (Community),
 // Apache-2.0, https://github.com/pictogrammers/material-design-icons - see
