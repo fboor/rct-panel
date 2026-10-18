@@ -89,6 +89,11 @@ inline float ruleBatteryW(const DeviceState &s) { return s.batW; }
 //   pvToGrid      panels into the grid, over the top of the ring
 //   gridToBattery / battToGrid   across the lower right, the only two-way one
 //
+// What goes over the meter is what the meter measured. pvToGrid and battToGrid are
+// never a leftover: in a system with losses the sources add up to more than the house
+// and the meter together, and that difference is not a path - see the branch in
+// ruleFlowSplit() below and testVerlusteSindKeineEinspeisung() in the host test.
+//
 // pvToHouse is on the hub spoke to the panels and gridToHouse on the hub spoke to the
 // grid, so they are not repeated here.
 //
@@ -139,9 +144,47 @@ inline FlowSplit ruleFlowSplit(const DeviceState &s) {
   const float bat = s.batW;           // + = discharge
 
   if (house >= 0.0f) {
-    // Normal case: the house consumes
-    f.pvToHouse = pv > 0.0f ? (pv < house ? pv : house) : 0.0f;
-    float panelsRest = pv - f.pvToHouse; // still to be placed
+    // Normal case: the house consumes.
+
+    // WHAT GOES OVER THE METER IS WHAT THE METER MEASURED - never what is left over,
+    // and it is the PANELS that are credited for it.
+    //
+    // Two things, both measured on the plant on 2026-10-18:
+    //
+    //   - A system with losses loses a few percent between the battery, the inverter
+    //     and the house wiring, and the four values do not arrive at the same instant.
+    //     "The battery gives up more than the house takes" is therefore the normal case
+    //     in a system that works, not evidence of a second path. That difference was
+    //     drawn as feed-in: the lower right sector lit up with an arrowhead on a meter
+    //     that measured nothing at all.
+    //   - The panels are credited up to their PRODUCTION, not only up to their surplus
+    //     after the house: 300 W of panels into a house of 400 W, 200 W out of the
+    //     battery and 100 W of feed-in that the meter measured. The panels went into the
+    //     house, so their surplus was zero, and the 100 W were drawn as the battery's -
+    //     while the panels were producing three times as much as the feed-in needed. They
+    //     cannot store what they make and the battery can, so a feed-in smaller than the
+    //     production is the panels'.
+    //
+    // AND THE BATTERY IS THE LAST ELEMENT THAT FEEDS IN, which in the normal case means
+    // it does not. Only a special situation lets it - the battery calibration, where the
+    // inverter discharges the battery on purpose to measure it. The device reports that
+    // in OID 0x70A2AF4F, which RctDriver reads and does not evaluate; until that is
+    // done the rule below is hard-wired, and a battery that does feed in leaves a GAP in
+    // the picture instead of an arrow nobody measured. That gap is the honest answer:
+    // what the meter says at its node is its own reading, and the ring shows where the
+    // rest is known to come from.
+    //
+    // What the meter does not see stays undrawn too - it is the loss, and naming a
+    // destination for it would be a claim nobody measured. So a lossy state is a state
+    // in which the split deliberately does not balance; the balanced cases are the ones
+    // where the four readings close.
+    const float gemessen = grid < 0.0f ? -grid : 0.0f; // export over the meter
+    f.pvToGrid = pv < gemessen ? pv : gemessen;         // never more than the production
+    f.battToGrid = 0.0f;                                // see above
+    float panelsRest = pv - f.pvToGrid;                 // still to be placed
+
+    f.pvToHouse = panelsRest < house ? panelsRest : house;
+    panelsRest -= f.pvToHouse;
     if (panelsRest < 0.0f) {
       panelsRest = 0.0f;
     }
@@ -166,25 +209,14 @@ inline FlowSplit ruleFlowSplit(const DeviceState &s) {
       const float ausDemNetz = willHaben - f.pvToBattery;
       f.gridToBattery = uebrig < ausDemNetz ? uebrig : ausDemNetz;
     } else {
-      // Discharging: the meter first, the battery with what the house has not taken,
-      // and what the battery gives up beyond that across the meter. It feeds the grid
-      // only with what it releases beyond what the house takes after the panels - the
-      // panels' surplus goes to the meter first, so the battery is left with the
-      // difference or with nothing.
+      // Discharging: the meter first, the battery with what the house has not taken.
       f.gridToHouse = grid > 0.0f ? (grid < bedarf ? grid : bedarf) : 0.0f;
       const float uebrig = bedarf - f.gridToHouse;
       f.battToHouse = bat < uebrig ? bat : uebrig;
       if (f.battToHouse < 0.0f) {
         f.battToHouse = 0.0f;
       }
-      f.battToGrid = bat - f.battToHouse;
-      if (f.battToGrid < 0.0f) {
-        f.battToGrid = 0.0f;
-      }
     }
-    // The panels' surplus is what goes over the meter, and it goes there first: what
-    // they do not place in the house is feed-in from them, not from the battery.
-    f.pvToGrid = panelsRest;
   } else {
     // The household is exporting energy - the meter reads negative. Rare but
     // possible: a BKW feeds back into the grid, and the household meter reads
@@ -208,14 +240,32 @@ inline FlowSplit ruleFlowSplit(const DeviceState &s) {
       f.pvToBattery = pv < rest ? pv : rest;
     }
     // PV generation: what the panels did not put into the battery goes to the grid
-    // (the house is not consuming).
+    // (the house is not consuming), and never more than the meter sees.
     f.pvToGrid = pv - f.pvToBattery;
     f.pvToHouse = 0.0f;
-    // Battery: if discharging, the whole discharge goes to the grid
+    // Battery: a discharging battery is not named as a source here either - the same
+    // rule as in the branch above, and the same missing signal (the calibration state
+    // the device reports in OID 0x70A2AF4F). What it discharges has no place in the
+    // picture.
     f.battToHouse = 0.0f;
-    f.battToGrid = bat > 0.0f ? bat : 0.0f;
+    f.battToGrid = 0.0f;
     f.gridToHouse = 0.0f;
     f.gridToBattery = 0.0f;
+    // And here the meter rule reaches the panels: what they add on top of the house's
+    // export is a remainder, and a remainder is bounded by what the meter for grid draw
+    // sees - the same reason as in the branch above.
+    //
+    // The HOUSE's export is not bounded that way, and the asymmetry is the point: a
+    // negative household reading has exactly one possible destination, out over the
+    // meter, because the household is by definition not consuming. Capping the house's
+    // export by the grid meter would rewrite the capture of 2026-10-11, where the
+    // household exports 90 W, the battery takes 70 and the grid meter sits at +1 W: the
+    // house's 20 W are the house meter's own reading and stay what it said.
+    float uebrig = grid < 0.0f ? -grid - f.houseToGrid : 0.0f;
+    if (uebrig < 0.0f) {
+      uebrig = 0.0f;
+    }
+    f.pvToGrid = f.pvToGrid < uebrig ? f.pvToGrid : uebrig;
   }
   return f;
 }

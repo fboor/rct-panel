@@ -377,16 +377,22 @@ static void testFlowSplit() {
     checkNear(f.battToGrid, 0.0f, "Dach: nichts in den Ueberschuss");
     checkFlowBalanced(s, "PV und Akku decken das Haus");
   }
-  // Both direct ways out of the battery and the panels at once. This is the case an
-  // earlier version counted twice: it returned houseToGrid == pvToGrid, so the grid
-  // spoke and the top wedge would each have shown 4 kW.
+  // 5000 W of panels, 1000 W of house, 2000 W out of the battery and 6000 W that the
+  // meter sees going the other way. The panels are credited with all 5000 of it - their
+  // production is the cap - and the battery's share is zero, because the battery is the
+  // last element that feeds in and in the normal case it does not. Its 2000 W serve the
+  // house's 1000, and the other 1000 have no place: the picture leaves a gap instead of
+  // drawing an arrow nobody measured. Not balanced on purpose, and that is the rule.
+  //
+  // It is also the case an earlier version counted twice: it returned houseToGrid ==
+  // pvToGrid, so the grid spoke and the top wedge would each have shown 4 kW.
   {
     DeviceState s = flowState(5000.0f, 1000.0f, 2000.0f, -6000.0f);
     const FlowSplit f = ruleFlowSplit(s);
-    checkNear(f.pvToGrid, 4000.0f, "beide Wege: 4 kW ueber den Ring ins Netz");
-    checkNear(f.battToGrid, 2000.0f, "beide Wege: 2 kW aus dem Akku ins Netz");
+    checkNear(f.pvToGrid, 5000.0f, "beide Wege: 5 kW ueber den Ring ins Netz");
+    checkNear(f.battToGrid, 0.0f, "beide Wege: der Akku speist nicht mit ein");
+    checkNear(f.battToHouse, 1000.0f, "beide Wege: der Akku versorgt das Haus");
     checkNear(f.gridToHouse, 0.0f, "beide Wege: der Netzspeer hat nichts Fuenftes");
-    checkFlowBalanced(s, "Panels und Akku speisen ein");
   }
   // The meter pays for the charging, which is the lower right of the ring running
   // upwards.
@@ -451,15 +457,15 @@ static void testFlowSplit() {
     checkNear(f.pvToGrid, 1000.0f, "Export kleiner als die Ladung: der Rest der Panels ins Netz");
     checkFlowBalanced(s, "Export kleiner als die Ladung, PV da");
   }
-  // Negative house consumption with discharging battery: the battery discharge
-  // and the house export both go to the grid.
+  // Negative house consumption with discharging battery: the house export goes to the
+  // grid, and the battery's 200 W are not named as a source there either - the same
+  // rule, and the same gap. Not balanced on purpose.
   {
     DeviceState s = flowState(0.0f, -400.0f, 200.0f, -600.0f);
     const FlowSplit f = ruleFlowSplit(s);
     checkNear(f.houseToGrid, 400.0f, "Haus exportiert: 400 W ins Netz");
-    checkNear(f.battToGrid, 200.0f, "Haus exportiert: Akku entlädt 200 W ins Netz");
+    checkNear(f.battToGrid, 0.0f, "Haus exportiert: der Akku speist nicht mit ein");
     checkNear(f.pvToGrid, 0.0f, "Haus exportiert: keine PV");
-    checkFlowBalanced(s, "Haus exportiert, Akku entlädt");
   }
   // Negative house consumption with PV: PV goes to the grid, house export
   // also goes to the grid.
@@ -475,42 +481,58 @@ static void testFlowSplit() {
 
 // Where feed-in comes from, as two rules the split has to keep:
 //
-//   1. The panels' surplus is what goes over the meter, and it goes first: with the
-//      panels' surplus covering the feed-in, the battery contributes nothing.
-//   2. The battery feeds the meter only with what it gives up beyond what the house
-//      takes after the panels have paid their share.
+//   1. The panels' surplus goes over the meter first: with the panels' surplus
+//   1. The feed-in is the panels' PRODUCTION first: as long as the feed-in is not
+//   2. Feed-in is what the meter measured, never a leftover. What is left above the
+//      panels' production may be the battery's - and at most what it actually gives
+//      up beyond what the house takes.
 //
-// Rule 1 says "surplus", not "production": with production instead, a plant with
-// 2000 W of panels, 500 W of house, 300 W of battery discharge and 1800 W of feed-in
-// would have to send 0 W from the battery, and its 300 W would arrive nowhere - the
-// panel would show 300 W less than the device has.
+// Rule 1 is the panels' PRODUCTION, not their surplus: the panels cannot store what
+// they make, the battery can, so a feed-in smaller than the production is the panels'
+// - 300 W of panels into a house of 400 W with 100 W of feed-in are 100 W from the
+// panels and not one from the battery, MEASURED on the plant on 2026-10-18. The house
+// then takes what the panels have left, and the battery serves it.
+//
+// Rule 2 is what is left of the measured feed-in above that production, capped by
+// what the battery releases beyond the house - about the meter's reading, not about a
+// remainder. testVerlusteSindKeineEinspeisung() has the cases where the readings do
+// not close and nothing is drawn for them.
 static void testEinspeisung() {
   struct Fall {
     float pv, house, bat, grid;
     float pvHaus, akkuHaus, pvNetz, akkuNetz, netzHaus, netzAkku;
+    // Does the split place everything? It does not where the battery would have to
+    // feed in: the battery is the last element that feeds in and in the normal case it
+    // does not, so what it discharges has no place in the picture and the state leaves
+    // a gap. Those cases are checked for the split, not for the balance - and the gap
+    // is the point, not an oversight.
+    bool gehtAuf;
   };
   const Fall faelle[] = {
-      // pv 2000 | house 500 | bat 800 | grid -2300: the panels pay the house and
-      // 1500 W of the meter; the battery covers the 800 W the panels cannot.
-      {2000, 500, 800, -2300, 500, 0, 1500, 800, 0, 0},
-      // No house at all: everything the panels make and everything the battery gives
-      // up goes to the meter.
-      {1000, 0, 500, -1500, 0, 0, 1000, 500, 0, 0},
-      {2000, 0, 0, -2000, 0, 0, 2000, 0, 0, 0},
+      // pv 2000 | house 500 | bat 800 | grid -2300: the panels cover 2000 of the
+      // 2300 W the meter sees and the battery serves the house. Its other 300 W would
+      // have to go over the meter, and the battery is not named as a source - so this
+      // state leaves a gap of 300 W on the battery and 300 W on the meter.
+      {2000, 500, 800, -2300, 0, 500, 2000, 0, 0, 0, false},
+      // No house at all: everything the panels make goes to the meter, and the battery's
+      // 500 W have no place - the case that used to draw the lower right sector red.
+      {1000, 0, 500, -1500, 0, 0, 1000, 0, 0, 0, false},
+      {2000, 0, 0, -2000, 0, 0, 2000, 0, 0, 0, true},
       // The battery covers the house, the meter covers the rest of it.
-      {0, 500, 200, 300, 0, 200, 0, 0, 300, 0},
-      // The panels do not reach the house alone: 300 W from them, 100 W from the
-      // battery, and the battery's remaining 100 W to the meter.
-      {300, 400, 200, -100, 300, 100, 0, 100, 0, 0},
+      {0, 500, 200, 300, 0, 200, 0, 0, 300, 0, true},
+      // The measured case of 2026-10-18: 300 W of panels, a house of 400 W, 200 W out
+      // of the battery and 100 W of feed-in. The panels cover all 100 W of it - they
+      // produce three times as much - and the battery serves the house. Balanced.
+      {300, 400, 200, -100, 200, 200, 100, 0, 0, 0, true},
       // Charging: the panels' surplus fills the battery before it reaches the meter.
-      {2500, 600, -900, -1000, 600, 0, 1000, 0, 0, 0},
+      {2500, 600, -900, -1000, 600, 0, 1000, 0, 0, 0, true},
       // The household exports and the battery is charging with it: 500 W from the
       // house, 200 W of it into the battery, 1000 W from the panels - and the meter
       // takes the remaining 1300 W.
-      {1000, -500, -200, -1300, 0, 0, 1000, 0, 0, 0},
+      {1000, -500, -200, -1300, 0, 0, 1000, 0, 0, 0, true},
       // Bezug with the battery charging: the meter's 600 W pay the 400 W the house
       // still needs, and the remaining 200 W charge the battery.
-      {100, 500, -200, 600, 100, 0, 0, 0, 400, 200},
+      {100, 500, -200, 600, 100, 0, 0, 0, 400, 200, true},
   };
   for (const Fall &c : faelle) {
     DeviceState s = flowState(c.pv, c.house, c.bat, c.grid);
@@ -521,15 +543,17 @@ static void testEinspeisung() {
     checkNear(f.battToGrid, c.akkuNetz, "Einspeisung: Akku ins Netz");
     checkNear(f.gridToHouse, c.netzHaus, "Einspeisung: Netz ins Haus");
     checkNear(f.gridToBattery, c.netzAkku, "Einspeisung: Netz in den Akku");
-    checkFlowBalanced(s, "Einspeisung");
+    if (c.gehtAuf) {
+      checkFlowBalanced(s, "Einspeisung");
+    }
     // Nothing feeds the house beyond what it has left to take. A meter reporting more
     // import than that - 1000 W into a house of 500 W, as this plant reported - used to
     // put its whole reading on the house.
 
-    // The two rules as statements about any case, not only the ones above: what the
-    // panels do not place in the house is what goes over the meter, and the battery
-    // only adds what the house did not need. Both are about the house consuming; when
-    // the household exports, it is the source and the meter takes its share.
+    // The two rules as statements about any case, not only the ones above: the panels
+    // are credited with the feed-in up to their PRODUCTION, and the battery contributes
+    // nothing. Both are about the house consuming; when the household exports, it is the
+    // source and the meter takes its share.
     if (c.house < 0.0f) {
       checkNear(f.houseToGrid + f.houseToBattery, -c.house,
                 "Export: der Haushalt ist die Quelle");
@@ -538,12 +562,15 @@ static void testEinspeisung() {
     checkNear(f.pvToHouse + f.battToHouse + f.gridToHouse, c.house,
               "Bezug: das Haus bekommt genau seinen Bedarf, nicht mehr");
     const float einspeisung = c.grid < 0.0f ? -c.grid : 0.0f;
-    const float ueberschuss = c.pv - f.pvToHouse;
-    const float bedarf = c.house > f.pvToHouse ? c.house - f.pvToHouse : 0.0f;
-    checkNear(f.pvToGrid, ueberschuss > einspeisung ? einspeisung : ueberschuss,
-              "Regel 1: der Ueberschuss der Panels geht zuerst ins Netz");
-    checkNear(f.battToGrid, c.bat > bedarf ? c.bat - bedarf : 0.0f,
-              "Regel 2: der Akku speist nur den Rest");
+    const float erzeugung = c.pv < einspeisung ? c.pv : einspeisung;
+    checkNear(f.pvToGrid, erzeugung,
+              "Regel 1: die Panels speisen ein, solange sie so viel erzeugen");
+    // Regel 2 als Aussage über jeden Fall: der Akku speist nie ein. Nur eine
+    // Sonderlage - die Kalibrierung, in der der Wechselrichter den Akku absichtlich
+    // entlaedt - darf das, und die Firmware liest diesen Zustand noch nicht (OID
+    // 0x70A2AF4F liegt im Treiber, wird aber nicht ausgewertet). Bis dahin bleibt die
+    // Luecke, statt einen Pfeil zu zeichnen, den niemand gemessen hat.
+    checkNear(f.battToGrid, 0.0f, "Regel 2: der Akku speist nicht ein");
   }
 
   // The two rules that only show up when there is not enough to go round, which is what
@@ -631,6 +658,107 @@ static void testPanelExportNacht() {
   }
 }
 
+// Der Akku gibt mehr her, als das Haus nimmt, und der Zaehler sieht nichts. Das ist der
+// Fall, der auf dem Panel als "Einspeisung aus dem Akku" ankam: der untere rechte
+// Bogen leuchtete samt Pfeilspitze, obwohl kein Zaehler eine Einspeisung gemessen hatte.
+//
+// Warum ein Ueberschuss keine Einspeisung ist: ein verlustbehaftetes System verliert
+// zwischen Akku, Wechselrichter und Hausleitung einige Prozent, und die vier Werte
+// kommen nicht gleichzeitig herein. Der Ueberschuss des Akkus ueber das Haus ist
+// deshalb der Normalfall eines Systems, das arbeitet. Einspeisung liegt vor, wenn der
+// Zaehler sie misst - und der Zaehler bestimmt auch ihre Groesse.
+//
+// Die Faelle hier bilanzieren deshalb absichtlich nicht (die 200 W Verlust haben keine
+// Entsprechung in einem anderen Feld): sie zu zeichnen waere die Behauptung, sie
+// gingen ins Netz.
+static void testVerlusteSindKeineEinspeisung() {
+  // 700 W aus dem Akku, 500 W ins Haus, der Zaehler bei 0: 200 W Verlust.
+  {
+    DeviceState s = flowState(0.0f, 500.0f, 700.0f, 0.0f);
+    const FlowSplit f = ruleFlowSplit(s);
+    checkNear(f.battToHouse, 500.0f, "Verlust: 500 W des Akkus ins Haus");
+    checkNear(f.battToGrid, 0.0f, "Verlust: der Zaehler misst keine Einspeisung");
+    checkNear(f.pvToGrid, 0.0f, "Verlust: die Panels erzeugen nichts");
+  }
+  // Der gemeldete Fall vom 18.10.2026, 1:1 die Zahlen: 300 W Panels, Haus 400 W,
+  // Akku +200 W, der Zaehler sieht 100 W Einspeisung. Die Panels erzeugen dreimal so
+  // viel wie die Einspeisung, also speisen die Panels ein und der Akku nicht; er
+  // versorgt das Haus. Das war der Zustand, in dem der untere rechte Bogen fuer
+  // 100 W leuchtete, die kein Zaehler dem Akku zugeschrieben hatte.
+  {
+    DeviceState s = flowState(300.0f, 400.0f, 200.0f, -100.0f);
+    const FlowSplit f = ruleFlowSplit(s);
+    checkNear(f.pvToGrid, 100.0f, "gemeldet: die Panels speisen die 100 W ein");
+    checkNear(f.battToGrid, 0.0f, "gemeldet: der Akku speist nicht ein");
+    checkNear(f.pvToHouse, 200.0f, "gemeldet: 200 W der Panels ins Haus");
+    checkNear(f.battToHouse, 200.0f, "gemeldet: der Akku deckt die restlichen 200 W");
+    checkFlowBalanced(s, "gemeldeter Fall");
+  }
+  // Der Fall, in dem die Messungen aufgehen und der Akku trotzdem speisen wuerde:
+  // 700 W aus dem Akku, 500 W ins Haus, 200 W gemessene Einspeisung und keine Panels.
+  // Der Akku ist damit der letzte Baustein, und im Normalfall speist er nicht - also
+  // bleibt die Einspeisung ohne Quelle im Bild, statt einen Bogen zu zeichnen.
+  {
+    DeviceState s = flowState(0.0f, 500.0f, 700.0f, -200.0f);
+    const FlowSplit f = ruleFlowSplit(s);
+    checkNear(f.battToGrid, 0.0f, "ohne Panels: der Akku speist nicht ein");
+    checkNear(f.pvToGrid, 0.0f, "ohne Panels: es gibt keine Panels");
+    checkNear(f.battToHouse, 500.0f, "ohne Panels: der Akku versorgt das Haus");
+  }
+}
+
+// The same rule in the other branch: the PANELS' addition to the household's export is
+// a remainder and is bounded by the meter for grid draw - same reason as in
+// testVerlusteSindKeineEinspeisung(). The household's own export is not bounded that way:
+// a negative household reading has exactly one possible destination, out over the
+// meter, because the household is by definition not consuming.
+//
+// The two guard cases below are what keeps that asymmetry from turning into a cap on the
+// house: both were measured numbers, and both would lose their export if the grid meter
+// were allowed to shrink it.
+//
+// Like the cases in the other family these do not balance on purpose.
+static void testExportverlust() {
+  // The battery discharges into the same export: 400 W from the house, 200 W from the
+  // battery, and the meter sees 500. The house's part is its own, and the battery is
+  // not named as a source for the rest either - so the picture shows the house's 400 W
+  // and leaves the rest undrawn.
+  {
+    DeviceState s = flowState(0.0f, -400.0f, 200.0f, -500.0f);
+    const FlowSplit f = ruleFlowSplit(s);
+    checkNear(f.houseToGrid, 400.0f, "Exportverlust mit Akku: 400 W aus dem Haus");
+    checkNear(f.battToGrid, 0.0f, "Exportverlust mit Akku: der Akku speist nicht ein");
+  }
+  // The guard: 500 W out of the house, the meter sees 400. The 100 W in between are the
+  // loss between the two meters, and the household's export is the household meter's own
+  // reading - it does not shrink to what another meter saw.
+  {
+    DeviceState s = flowState(0.0f, -500.0f, 0.0f, -400.0f);
+    const FlowSplit f = ruleFlowSplit(s);
+    checkNear(f.houseToGrid, 500.0f, "Schranke: der Export des Hauses bleibt beim Hauszaehler");
+    checkNear(f.pvToGrid, 0.0f, "Schranke: die Panels erzeugen nichts");
+    checkNear(f.battToGrid, 0.0f, "Schranke: der Akku gibt nichts ab");
+  }
+  // The same guard with the export charging the battery: 300 W go in, 200 W over the
+  // meter, and the meter sees 100. That is the shape of the capture from 2026-10-11,
+  // which must not change.
+  {
+    DeviceState s = flowState(0.0f, -500.0f, -300.0f, -100.0f);
+    const FlowSplit f = ruleFlowSplit(s);
+    checkNear(f.houseToBattery, 300.0f, "Schranke mit Ladung: 300 W in den Akku");
+    checkNear(f.houseToGrid, 200.0f, "Schranke mit Ladung: 200 W bleiben der Export des Hauses");
+  }
+  // The balanced export, which must keep working unchanged: 500 W from the house, 200 W
+  // of it charging the battery, 300 W over the meter.
+  {
+    DeviceState s = flowState(0.0f, -500.0f, -200.0f, -300.0f);
+    const FlowSplit f = ruleFlowSplit(s);
+    checkNear(f.houseToBattery, 200.0f, "bilanzierter Export: 200 W in den Akku");
+    checkNear(f.houseToGrid, 300.0f, "bilanzierter Export: 300 W ins Netz");
+    checkFlowBalanced(s, "bilanzierter Export aus dem Haus");
+  }
+}
+
 int main() {
   testMeasuredEvening();
   testHouseholdDependsOnTheDevice();
@@ -638,6 +766,8 @@ int main() {
   testFlowSplit();
   testPanelExportNacht();
   testEinspeisung();
+  testVerlusteSindKeineEinspeisung();
+  testExportverlust();
   testChartSeries();
   testPeriods();
   testSinglePhase();
