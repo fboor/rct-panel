@@ -18,12 +18,14 @@ const char *const kLang[T_COUNT] = {
     // --- web: navigation and page titles -----------------------------------
     "Home",                             // T_NAV_HOME
     "History",                          // T_NAV_VERLAUF
+    "Events",                           // T_NAV_EVENTS
     "Data",                             // T_NAV_DATA
     "Pictures",                         // T_NAV_SHOTS
     "Update",                           // T_NAV_UPDATE
     "Settings",                         // T_NAV_SETTINGS
     "RCT Power Panel",                  // T_PAGE_ROOT
     "History",                          // T_PAGE_VERLAUF
+    "Events",                           // T_PAGE_EVENTS
     "Data",                             // T_PAGE_DATA
     "Pictures",                         // T_PAGE_SHOTS
     "Update",                           // T_PAGE_UPDATE
@@ -112,6 +114,19 @@ const char *const kLang[T_COUNT] = {
     "The capture shows the current page. The image lands on the card as "
     "<code>shot...bmp</code>; the page reloads itself once afterwards.",
                                                        // T_NOTE_SHOT_IDLE
+
+    // --- web: the device's own event log ------------------------------------
+    "This is the device's own record. The panel never asks for it: the list "
+    "arrives when another client on the network fetches it (the app), and the "
+    "panel reads along. The two small numbers under an event are raw - what "
+    "they mean depends on the kind of event.",                  // T_EV_INTRO
+    "Nothing read yet. The list fills up while another device asks for it.",
+                                                                // T_EV_NONE
+    "Time",                                                     // T_EV_TIME
+    "Event",                                                    // T_EV_TYPE
+    "Duration",                                             // T_EV_DURATION
+    "Asked for up to %s, %d entries",                           // T_EV_ASKED
+    "Event 0x%02x",                                          // T_EV_UNKNOWN
 
     // --- web: the charts -------------------------------------------------
     "Could not load the data.",                                 // T_ERR_LOAD_FAILED

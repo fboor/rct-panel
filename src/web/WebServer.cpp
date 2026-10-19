@@ -42,6 +42,7 @@
 #include "../output/Relay.h"
 #include "../device/Device.h"
 #include "../device/DeviceDriver.h"
+#include "../device/EventTime.h"
 #include "../device/Rules.h"
 #include "../storage/CsvRow.h"
 #include "../storage/sdlog.h"
@@ -268,7 +269,7 @@ void sendMsg(int code, const char *msg) {
   s_server.send(code, "text/html; charset=utf-8", page);
 }
 
-// Navigation strip, shared by the six real pages.
+// Navigation strip, shared by the seven real pages.
 void addNav(String &page, const char *current) {
   page += F("<nav>");
   struct {
@@ -276,6 +277,7 @@ void addNav(String &page, const char *current) {
     LangId label;
   } items[] = {{"/", T_NAV_HOME},
                {"/verlauf", T_NAV_VERLAUF},
+               {"/ereignisse", T_NAV_EVENTS},
                {"/daten", T_NAV_DATA},
                {"/bilder", T_NAV_SHOTS},
                {"/update", T_NAV_UPDATE},
@@ -1045,6 +1047,112 @@ void renderList(const char *title, const char *nav, const char *dir, bool csv,
 }
 
 void handleData() { askListing(tr(T_PAGE_DATA), "/daten", "/hist", true); }
+
+// ---------------------------------------------------------------------------
+// /ereignisse  The device's own event log
+// ---------------------------------------------------------------------------
+//
+// Read-only, and empty for as long as nobody asks the device for it: the panel
+// never sends this query itself, it decodes the answer another client asked for
+// (see src/rct/RctEvents.h). So the page has to say where the list comes from -
+// an empty page that does not say would read as a broken feature.
+//
+// The columns are the entry as it stands, not an interpretation: the first
+// three words are a time, an end time and two numbers whose meaning depends on
+// the type (a parameter change puts an object id where the end time stands), and
+// naming those needs per-type knowledge this panel does not have. What it does
+// have is the name: the type is a fault bit number, so the 128 texts the
+// display already shows name every entry. The two raw numbers go under the name
+// in small print, so the table has three columns and fits a phone.
+void handleEvents() {
+  const DeviceState &s = deviceState();
+  String b;
+  b.reserve(1400 + (size_t)(s.eventCount < 0 ? 0 : s.eventCount) * 150);
+  b += F("<div class=\"note\">");
+  b += tr(T_EV_INTRO);
+  b += F("</div>");
+
+  // The date in this language's order (langDateFmt) plus the time, so a row
+  // reads like the calibration date on the panel.
+  char fmt[24];
+  snprintf(fmt, sizeof(fmt), "%s %%H:%%M:%%S", langDateFmt());
+
+  if (s.eventCount <= 0) {
+    b += F("<div class=\"note\">");
+    b += tr(T_EV_NONE);
+    b += F("</div>");
+  } else {
+    b += F("<table class=\"ev\"><tr><td class=\"h\">");
+    b += tr(T_EV_TIME);
+    b += F("</td><td class=\"h\">");
+    b += tr(T_EV_TYPE);
+    b += F("</td><td class=\"h v\">");
+    b += tr(T_EV_DURATION);
+    b += F("</td></tr>");
+    for (int i = 0; i < s.eventCount && i < (int)DeviceState::kEventMax; i++) {
+      const DeviceState::DeviceEvent &e = s.events[i];
+      char zeit[32];
+      if (!eventtime::formatUnix(e.startUnix, fmt, zeit, sizeof(zeit))) {
+        // The device's clock was not set when it wrote this. The number is
+        // more honest than "1970-01-01".
+        snprintf(zeit, sizeof(zeit), "%u", (unsigned)e.startUnix);
+      }
+      char dauer[16];
+      eventtime::formatDuration(e.startUnix, e.endUnix, dauer, sizeof(dauer));
+      char werte[24];
+      // The two raw words go under the name and not into a fourth column: at
+      // 360 px the four columns together are wider than the phone, and the
+      // numbers belong to the event above them anyway. Zero and zero is shown
+      // as nothing - most entries carry no value at all.
+      const bool hatWerte = !(e.value1 == 0 && e.value2 == 0);
+      if (hatWerte) {
+        snprintf(werte, sizeof(werte), "0x%08x 0x%08x", (unsigned)e.value1,
+                 (unsigned)e.value2);
+      }
+      char unbekannt[24];
+      char art[96];
+      if (e.type < 128) {
+        escape(tr((LangId)(T_FAULT_0 + e.type)), art, sizeof(art));
+      } else {
+        snprintf(unbekannt, sizeof(unbekannt), tr(T_EV_UNKNOWN),
+                 (unsigned)e.type);
+        escape(unbekannt, art, sizeof(art));
+      }
+      b += F("<tr><td>");
+      b += zeit;
+      b += F("</td><td>");
+      b += art;
+      if (hatWerte) {
+        b += F("<div class=\"r\">");
+        b += werte;
+        b += F("</div>");
+      }
+      b += F("</td><td class=\"v\">");
+      b += dauer;
+      b += F("</td></tr>");
+    }
+    b += F("</table>");
+
+    // Up to when the list was read, and how much of it there is. A device that
+    // has more to give pages backwards through it - the panel does not, so the
+    // window is where this page ends.
+    char fenster[32];
+    if (!eventtime::formatUnix(s.eventQueryUnix, fmt, fenster,
+                               sizeof(fenster))) {
+      snprintf(fenster, sizeof(fenster), "%u", (unsigned)s.eventQueryUnix);
+    }
+    char gefragt[200];
+    snprintf(gefragt, sizeof(gefragt), tr(T_EV_ASKED), fenster, s.eventCount);
+    b += F("<div class=\"note\">");
+    b += gefragt;
+    b += F("</div>");
+  }
+
+  b += F("<p><a class=\"btn gray\" href=\"/ereignisse\">");
+  b += tr(T_BTN_RELOAD);
+  b += F("</a></p>");
+  sendNavPage(tr(T_PAGE_EVENTS), "/ereignisse", b);
+}
 
 // The picture list, with the trigger button for a new screenshot.
 //
@@ -2031,6 +2139,7 @@ void webStart() {
   // brace form: "/daten/{}" takes the name as path argument 0.
   s_server.on(Uri("/"), HTTP_GET, handleRoot);
   s_server.on(Uri("/verlauf"), HTTP_GET, handleVerlauf);
+  s_server.on(Uri("/ereignisse"), HTTP_GET, handleEvents);
   s_server.on(Uri("/api/energie.json"), HTTP_GET, handleApiEnergy);
     s_server.on(Uri("/api/px.json"), HTTP_GET, handleApiPixel);
     s_server.on(Uri("/api/lcd.json"), HTTP_GET, handleApiLcd);

@@ -50,6 +50,7 @@ enum LangId : int {
   // --- web: navigation and page titles -------------------------------------
   T_NAV_HOME = 0,
   T_NAV_VERLAUF,
+  T_NAV_EVENTS,
   T_NAV_DATA,
   T_NAV_SHOTS,
   T_NAV_UPDATE,
@@ -59,6 +60,7 @@ enum LangId : int {
   // change it in.
   T_PAGE_ROOT,
   T_PAGE_VERLAUF,
+  T_PAGE_EVENTS,
   T_PAGE_DATA,
   T_PAGE_SHOTS,
   T_PAGE_UPDATE,
@@ -137,6 +139,17 @@ enum LangId : int {
   T_NOTE_TRUNC,     // with the route in <code>
   T_NOTE_SHOT_RUN,
   T_NOTE_SHOT_IDLE,
+
+  // --- web: the device's own event log (see handleEvents) ------------------
+  // It is the one page that can stay empty for days, so the first text says
+  // where the list comes from at all.
+  T_EV_INTRO,     // what the list is, and why the panel cannot fill it
+  T_EV_NONE,      // nothing read yet
+  T_EV_TIME,
+  T_EV_TYPE,
+  T_EV_DURATION,
+  T_EV_ASKED,     // "asked for %s" with the window and the entry count
+  T_EV_UNKNOWN,   // 0x%02x, a type the fault texts do not name
 
   // --- web: the charts -----------------------------------------------------
   T_ERR_LOAD_FAILED,   // a JSON answer did not arrive

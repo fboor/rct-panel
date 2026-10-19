@@ -16,8 +16,10 @@
 //     duration has to survive them unchanged.
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
+#include "device/EventTime.h"
 #include "rct/RctEvents.h"
 
 static int g_checks = 0;
@@ -290,6 +292,59 @@ static void testGleicheArtZweimal() {
   checkEq(t.at(1).value1, 0x41B00000, "gleiche Art: die zweite dahinter");
 }
 
+// --- die Zeitregeln des Eintrags (src/device/EventTime.h) --------------------
+//
+// Sie stehen in einem eigenen Kopf, weil zwei Stellen sie brauchen - der
+// Serienlog und die Seite /ereignisse - und sie sind die einzige Stelle, an der
+// aus einer Zahl des Eintrags etwas wird, das plausibel aussieht und falsch
+// ist: aus einem Objektbezeichner wird "00:12:34", aus einer Uhr, die noch
+// nicht gestellt war, wird "1970-01-01".
+static void testDauer() {
+  uint32_t d = 12345;
+  check(eventtime::durationSeconds(1700000000u, 1700000060u, d),
+        "Dauer: 60 s erkannt");
+  checkEq(d, 60, "Dauer: 60 s");
+  // Gleiche Zeit ist eine Dauer von null Sekunden und keine fehlende: das
+  // Geraet schreibt ein einmaliges Ereignis mit Ende 0, nicht mit Ende gleich
+  // Anfang.
+  check(eventtime::durationSeconds(1700000000u, 1700000000u, d),
+        "Dauer: gleiche Zeit ist 0 s");
+  checkEq(d, 0, "Dauer: gleiche Zeit ist 0 s lang");
+  check(!eventtime::durationSeconds(1700000000u, 1699999999u, d),
+        "Dauer: rueckwaerts ist keine");
+  check(!eventtime::durationSeconds(1700000000u, 0u, d),
+        "Dauer: Ende 0 ist keine");
+  check(eventtime::durationSeconds(1700000000u, 1700086399u, d),
+        "Dauer: 23:59:59 geht noch");
+  checkEq(d, 86399, "Dauer: 23:59:59");
+  check(!eventtime::durationSeconds(1700000000u, 1700086400u, d),
+        "Dauer: ein ganzer Tag ist keine");
+  // Ein Objektbezeichner, wie ihn die Parameteraenderung an dieser Stelle
+  // traegt: gross und positiv, die Differenz ist deshalb negativ.
+  check(!eventtime::durationSeconds(1700000000u, 939222474u, d),
+        "Dauer: Objektbezeichner ist keine");
+  // Und die ersten Sekunden nach einem Neustart, bevor die Uhr steht.
+  check(!eventtime::durationSeconds(3600u, 3660u, d),
+        "Dauer: ohne gestellte Uhr keine");
+}
+
+static void testZeit() {
+  char out[32];
+  check(!eventtime::formatUnix(0u, "%Y", out, sizeof(out)),
+        "Zeit: 0 ist keine Zeit");
+  check(!eventtime::formatUnix(3600u, "%Y", out, sizeof(out)),
+        "Zeit: Betriebssekunden sind keine Zeit");
+  check(eventtime::formatUnix(1700000000u, "%Y", out, sizeof(out)),
+        "Zeit: eine gestellte Uhr geht");
+  checkEq(strtoul(out, nullptr, 10), 2023, "Zeit: Jahr aus dem Zeitstempel");
+  check(!eventtime::formatUnix(1700000000u, "%Y", out, 0),
+        "Zeit: ohne Platz kein Text");
+  eventtime::formatDuration(1700000000u, 1700003661u, out, sizeof(out));
+  check(strcmp(out, "01:01:01") == 0, "Dauer als Text");
+  eventtime::formatDuration(1700000000u, 0u, out, sizeof(out));
+  check(strcmp(out, "-") == 0, "Dauer ohne Ende als Strich");
+}
+
 int main() {
   testEinBlatt();
   testDieselbeSeiteZweimal();
@@ -300,6 +355,8 @@ int main() {
   testUeberlauf();
   testUnbekannterTyp();
   testGleicheArtZweimal();
+  testDauer();
+  testZeit();
 
   printf("%s: %d Prüfungen, %d fehlgeschlagen\n", g_failed ? "FEHLER" : "OK",
          g_checks, g_failed);

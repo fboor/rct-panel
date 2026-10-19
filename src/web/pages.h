@@ -79,6 +79,13 @@ a.lnk{color:#2f6fb5}
 .btn{display:inline-block;padding:11px 18px;background:#2f6fb5;color:#fff;border:0;border-radius:8px;font-size:15px;text-decoration:none;cursor:pointer}
 .btn.gray{background:#6b7785}
 .note{background:#fff8e1;border:1px solid #f0dca0;border-radius:8px;padding:11px 13px;font-size:14px;margin:14px 0}
+/* The event log is the one table on this panel with a time beside a name:
+   a time, the event, its duration, and the two raw words of the entry in small
+   print under the name. Less padding than the key/value tables, so the three
+   columns still fit a phone. */
+table.ev td{padding:8px 9px;font-size:14px}
+table.ev td.h{font-weight:600;color:#5a6672;font-size:13px}
+table.ev td div.r{margin-top:2px;font-size:13px;color:#5a6672;font-variant-numeric:tabular-nums}
 .ok{color:#1d7a3c}
 .bad{color:#b3352c}
 ul.plain{list-style:none;padding:0;margin:0}

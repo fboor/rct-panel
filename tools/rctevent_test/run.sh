@@ -1,5 +1,6 @@
 #!/bin/sh
-# Host test for the event log decoder (src/rct/RctEvents.h).
+# Host test for the event log decoder (src/rct/RctEvents.h) and for the rules
+# that turn one entry into text (src/device/EventTime.h).
 #
 # The wire format was taken from the official app (decompiled) and the rctclient
 # documentation, which describe the same frame. What is tested here is what that

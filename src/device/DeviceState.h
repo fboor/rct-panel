@@ -127,6 +127,29 @@ struct DeviceState {
   uint32_t nextCalibTs;     // next battery calibration [unix s]
   uint32_t faultBits[4];    // fault words, 128 fault bits
 
+  // --- the device's own event log --------------------------------------------
+  // What the device wrote down itself. The panel never asks for this table: it
+  // arrives when another client on the bus asks (the app, on a phone) and is
+  // read along - see src/rct/RctEvents.h for why. So it is empty until somebody
+  // opens the log in the app, and it stays as it is afterwards: the panel does
+  // not page back through it.
+  //
+  // The type is the number of a fault bit, so an entry can be named with the
+  // texts the panel already has (T_FAULT_0 + type).
+  struct DeviceEvent {
+    uint8_t type;
+    uint32_t startUnix; // the device's clock
+    uint32_t endUnix;   // end of a ranged event, or something else - per type
+    uint32_t value1;    // raw; what it means depends on the type
+    uint32_t value2;
+  };
+  // How many entries are kept. The list is shown newest first; anything older
+  // would need another request, which the panel does not make.
+  enum { kEventMax = 40 };
+  DeviceEvent events[kEventMax]; // newest first, by start time
+  int eventCount;
+  uint32_t eventQueryUnix; // the window the last answer was for, 0 = none yet
+
   // --- state -----------------------------------------------------------------
   // prim_sm.island_flag is a bitfield; only bit 0 is the island flag. Measured
   // on the real device: 0x00000002 while running normally on the grid.

@@ -22,6 +22,7 @@
 
 #include "../Diag.h"
 #include "../device/Device.h"
+#include "../device/EventTime.h"
 #include "../device/RctDriver.h"
 #include "../device/Rules.h"
 #include "RctCrc.h"
@@ -215,37 +216,40 @@ static uint32_t rctDecodeInt(const uint8_t *p, size_t n) {
 }
 
 // ---------------------------------------------------------------------------
-// The event log in the serial log
+// The event log: into the snapshot, and into the serial log
 // ---------------------------------------------------------------------------
+
+// What the rest of the firmware reads. The web interface may not reach into a
+// driver (src/device/Device.h), so the decoded table is copied into the
+// snapshot - it changes only when another client asks the device, which is
+// rare, and forty entries are 800 bytes.
+//
+// Called where the frame is decoded, not in the publish block at the end of the
+// poll: the publish block is skipped while the device has not answered anything
+// else, and an event table that arrived anyway is still worth showing.
+static void rctPublishEvents() {
+  DeviceState &s = deviceStateMutable();
+  s.eventQueryUnix = rctEventLog.queryUnix();
+  const size_t n = rctEventLog.size();
+  s.eventCount = (int)n;
+  for (size_t i = 0; i < n; i++) {
+    const rctevents::Entry &e = rctEventLog.at(i);
+    DeviceState::DeviceEvent &d = s.events[i];
+    d.type = e.type;
+    d.startUnix = e.startUnix;
+    d.endUnix = e.endUnix;
+    d.value1 = e.value1;
+    d.value2 = e.value2;
+  }
+}
 
 // The device's own clock is the one these timestamps come from, so they are
 // printed as local time - the same way the calibration date and the log files
 // are (src/gui/GuiApp.cpp, src/storage/sdlog.cpp). A timestamp the panel cannot
 // turn into a date is printed as a number: something is better than a guess.
 static void rctFormatUnixTime(uint32_t unixSeconds, char *out, size_t cap) {
-  out[0] = '\0';
-  const time_t t = (time_t)unixSeconds;
-  struct tm tmv;
-  if (unixSeconds > 1000000000u && localtime_r(&t, &tmv)) {
-    strftime(out, cap, "%Y-%m-%d %H:%M:%S", &tmv);
-  }
-}
-
-// How long an event lasted, or "-" when the numbers cannot be one.
-//
-// Only for types where the second word really is an end time. For a parameter
-// change it is an object id, for an update a version, and end minus start would
-// print a plausible-looking number for both. The range check catches them
-// anyway: an object id is a positive 32-bit number, so the difference is
-// negative or far beyond a day.
-static void rctFormatDuration(uint32_t startUnix, uint32_t endUnix, char *out,
-                              size_t cap) {
-  const int32_t d = (int32_t)(endUnix - startUnix);
-  if (endUnix == 0 || d < 0 || d >= 86400) {
-    snprintf(out, cap, "-");
-  } else {
-    snprintf(out, cap, "%02u:%02u:%02u", (unsigned)(d / 3600),
-             (unsigned)((d / 60) % 60), (unsigned)(d % 60));
+  if (!eventtime::formatUnix(unixSeconds, "%Y-%m-%d %H:%M:%S", out, cap)) {
+    snprintf(out, cap, "%u", (unsigned)unixSeconds);
   }
 }
 
@@ -263,21 +267,16 @@ static void rctLogEvents(size_t added, size_t payloadLen) {
   }
   char fenster[24];
   rctFormatUnixTime(rctEventLog.queryUnix(), fenster, sizeof(fenster));
-  if (fenster[0] == '\0') {
-    Serial.printf("RCT:   Abgefragt bis %u\n",
-                  (unsigned)rctEventLog.queryUnix());
-  } else {
-    Serial.printf("RCT:   Abgefragt bis %s\n", fenster);
-  }
+  Serial.printf("RCT:   Abgefragt bis %s\n", fenster);
   for (size_t i = 0; i < rctEventLog.size(); i++) {
     const rctevents::Entry &e = rctEventLog.at(i);
     char zeit[24];
     char dauer[16];
     rctFormatUnixTime(e.startUnix, zeit, sizeof(zeit));
-    rctFormatDuration(e.startUnix, e.endUnix, dauer, sizeof(dauer));
+    eventtime::formatDuration(e.startUnix, e.endUnix, dauer, sizeof(dauer));
     Serial.printf("RCT:   %s Typ 0x%02x Dauer %s Wort2 0x%08x Wort3 0x%08x\n",
-                  zeit[0] ? zeit : "(ohne Zeit)", (unsigned)e.type, dauer,
-                  (unsigned)e.value1, (unsigned)e.value2);
+                  zeit, (unsigned)e.type, dauer, (unsigned)e.value1,
+                  (unsigned)e.value2);
   }
 }
 
@@ -700,6 +699,7 @@ static void rctPoll(uint32_t budgetMs) {
     if (command == rctframe::kCmdLongResponse &&
         respOid == rctevents::kTableOid) {
       const size_t neu = rctEventLog.decode(payload, payloadLen);
+      rctPublishEvents();
       rctLogEvents(neu, payloadLen);
     }
   }

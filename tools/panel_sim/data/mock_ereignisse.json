@@ -1,0 +1,22 @@
+{
+  "_comment": "Der Zustand mit einem gelesenen Ereignisprotokoll. Die Zeilen stehen wie auf der Seite /ereignisse: Typ,Start,Ende,Wert1,Wert2 - der Typ ist die Stoerungsnummer (T_FAULT_0 + n), das Ende ist nur bei manchen Arten eine Zeit, und der Rest ist roh. Die Mock-Datei kann das erst, seit sim_device.cpp die Schluessel event0.. liest; vorher blieb die Seite in jeder Aufnahme leer.",
+  "fixed": 1,
+  "hasHouseMeter": 1,
+  "hasGridMeter": 1,
+  "hasBattery": 1,
+  "genW0": 0,
+  "genW1": 0,
+  "extW": 0,
+  "houseW0": 500,
+  "houseW1": 0,
+  "houseW2": 0,
+  "gridExchangeW": 0,
+  "batW": 0,
+  "socPct": 62,
+  "batV": 392,
+  "eventQueryUnix": 1792433520,
+  "event0": "115,1792431720,939222474,1,2",
+  "event1": "126,1792428120,1792430520,0,0",
+  "event2": "25,1792347120,0,0,0",
+  "event3": "40,1792343520,1792343580,1132291686,0"
+}

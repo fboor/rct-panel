@@ -18,12 +18,14 @@ const char *const kLang[T_COUNT] = {
     // --- web: navigation and page titles -----------------------------------
     "Start",                            // T_NAV_HOME
     "Verlauf",                          // T_NAV_VERLAUF
+    "Ereignisse",                       // T_NAV_EVENTS
     "Daten",                            // T_NAV_DATA
     "Bilder",                           // T_NAV_SHOTS
     "Update",                           // T_NAV_UPDATE
     "Einstellungen",                    // T_NAV_SETTINGS
     "RCT Power Panel",                  // T_PAGE_ROOT
     "Verlauf",                          // T_PAGE_VERLAUF
+    "Ereignisse",                       // T_PAGE_EVENTS
     "Daten",                            // T_PAGE_DATA
     "Bilder",                           // T_PAGE_SHOTS
     "Update",                           // T_PAGE_UPDATE
@@ -115,6 +117,20 @@ const char *const kLang[T_COUNT] = {
     "Die Aufnahme zeigt die aktuelle Seite. Das Bild landet als "
     "<code>shot...bmp</code> auf der Karte; die Seite l&auml;dt sich "
     "danach einmal neu.",                                       // T_NOTE_SHOT_IDLE
+
+    // --- web: das Ereignisprotokoll des Ger&auml;ts -------------------------
+    "Das ist das eigene Protokoll des Ger&auml;ts. Das Panel fragt es nie ab: "
+    "die Liste kommt, wenn ein anderes Ger&auml;t im Netz sie holt (die App), "
+    "und das Panel liest mit. Die beiden kleinen Zahlen unter einem Ereignis "
+    "sind roh &ndash; was sie bedeuten, h&auml;ngt von der Art des Ereignisses "
+    "ab.",                                                      // T_EV_INTRO
+    "Noch nichts gelesen. Die Liste f&uuml;llt sich, w&auml;hrend ein anderes "
+    "Ger&auml;t sie abfragt.",                                   // T_EV_NONE
+    "Zeit",                                                     // T_EV_TIME
+    "Ereignis",                                                 // T_EV_TYPE
+    "Dauer",                                                    // T_EV_DURATION
+    "Abgefragt bis %s, %d Eintr&auml;ge",                       // T_EV_ASKED
+    "Ereignis 0x%02x",                                          // T_EV_UNKNOWN
 
     // --- web: die Diagramme --------------------------------------------
     "Daten konnten nicht geladen werden.",           // T_ERR_LOAD_FAILED

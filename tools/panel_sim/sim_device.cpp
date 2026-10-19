@@ -426,6 +426,41 @@ class SimDriver : public DeviceDriver {
     zahl("simVerlustW", &m_verlustW);
     zahl("simKapazitahtAh", &m_kapazitahtAh);
     m_simBatV = s.batV;
+
+    // The device's event log (src/device/DeviceState.h). One string per entry,
+    // "type,start,end,value1,value2" - the five words in the order the device
+    // sends them (src/rct/RctEvents.h) - and the newest entry first. One string
+    // and not five keys: a mock with six events would otherwise be thirty lines
+    // of JSON with the entries invisible between them.
+    //
+    // The emulated inverter has no log of its own; the page exists for a table
+    // an RCT hands out when the app asks for it, so this is the only way to get
+    // that page onto a picture at all.
+    int ev = 0;
+    for (int i = 0; i < (int)DeviceState::kEventMax; i++) {
+      const std::string key = std::string("event") + std::to_string(i);
+      char zeile[128];
+      if (!getString(j, n, key.c_str(), zeile, sizeof(zeile))) {
+        break; // the keys are consecutive; the first missing one ends the list
+      }
+      unsigned typ = 0, start = 0, ende = 0, w1 = 0, w2 = 0;
+      if (sscanf(zeile, "%u,%u,%u,%u,%u", &typ, &start, &ende, &w1, &w2) != 5) {
+        fprintf(stderr, "SIM-Daten: %s ist keine Ereigniszeile\n", key.c_str());
+        break;
+      }
+      DeviceState::DeviceEvent &d = s.events[ev];
+      d.type = (uint8_t)typ;
+      d.startUnix = start;
+      d.endUnix = ende;
+      d.value1 = w1;
+      d.value2 = w2;
+      ev++;
+    }
+    s.eventCount = ev;
+    double q = 0.0;
+    if (getNumber(j, n, "eventQueryUnix", &q) && q >= 0.0) {
+      s.eventQueryUnix = (uint32_t)q;
+    }
   }
 };
 
