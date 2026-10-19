@@ -498,6 +498,9 @@ const char *const kLang[T_COUNT] = {
     "Einphasenmodus aktiv, für Geräteklasse nicht erlaubt",  // T_FAULT_125
     "Inselbetrieb erkannt",                                  // T_FAULT_126
     "Neutralleiterfehler",                                   // T_FAULT_127
+    "Batteriekalibrierung fehlgeschlagen",                   // T_FAULT_128
+    "Relais der Relaisbox nicht bestätigt",                  // T_FAULT_129
+    "BMS für Doppelbatterie nicht unterstützt",              // T_FAULT_130
 
     // --- Anzeige: der Hintergrund -----------------------------
     "Helles Theme",      // T_D_BTN_THEME_LIGHT

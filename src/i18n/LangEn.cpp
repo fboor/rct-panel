@@ -496,6 +496,9 @@ const char *const kLang[T_COUNT] = {
     "class", // T_FAULT_125
     "Island mode detected",     // T_FAULT_126
     "Neutral conductor fault",  // T_FAULT_127
+    "Battery calibration failed",  // T_FAULT_128
+    "Power switch relay not confirmed",  // T_FAULT_129
+    "Unsupported BMS for double battery",  // T_FAULT_130
 
     // --- Display: the background -------------------------------
     "Light theme",  // T_D_BTN_THEME_LIGHT

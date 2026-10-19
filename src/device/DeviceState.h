@@ -134,8 +134,9 @@ struct DeviceState {
   // opens the log in the app, and it stays as it is afterwards: the panel does
   // not page back through it.
   //
-  // The type is the number of a fault bit, so an entry can be named with the
-  // texts the panel already has (T_FAULT_0 + type).
+  // The type is the number of a fault bit - except for the three types above
+  // the bits (0x80..0x82) - so an entry is named with the texts the panel
+  // already has (T_FAULT_0 + type).
   struct DeviceEvent {
     uint8_t type;
     uint32_t startUnix; // the device's clock

@@ -512,6 +512,13 @@ enum LangId : int {
   T_FAULT_126,
   T_FAULT_127,
 
+  // Drei Typen kennt nur die Ereignisliste, kein Fehler-Bit: die App-Tabelle
+  // (R.array/faults) hat 131 Namen, das Bitfeld nur 128. Sie kommen wie die
+  // Fehlertexte ueber T_FAULT_0 + type, aber nie ueber ein Bit.
+  T_FAULT_128,
+  T_FAULT_129,
+  T_FAULT_130,
+
   // --- Anzeige: der Wechsel zwischen dunklem und hellem Hintergrund --------
   // Beide sagen, was das Antippen bewirkt, nicht was gerade da ist - so wie
   // die Zeile mit dem Code darueber.

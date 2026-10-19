@@ -27,7 +27,10 @@
 // one that did not is the documentation's error, not the app's: it puts
 // PHASE_POS at 0x61, where the app's array holds PIC_SOFT - PHASE_POS is
 // 0x63. So the panel can name an entry with the fault texts it already has
-// (T_FAULT_0..127), and the type range of the event table ends at 0x7f.
+// (T_FAULT_0 + type). The app's table counts three names more than the bits
+// do - 0x80 BMS_CALIBRATION, 0x81 POWER_SW_RELAY, 0x82 BAT_COMPATIBILITY - so
+// the event table's type range ends at 0x82, not 0x7f, and those three are
+// texts of their own (T_FAULT_128..130, added from the app's array).
 //
 // SPDX-License-Identifier: Apache-2.0
 #ifndef RCT_RCTEVENTS_H

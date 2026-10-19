@@ -1111,7 +1111,9 @@ void handleEvents() {
       }
       char unbekannt[24];
       char art[96];
-      if (e.type < 128) {
+      // T_FAULT_0 + type covers the 128 fault bits and the three types only
+      // the event table has (0x80..0x82); anything above that gets the number.
+      if (e.type <= (uint8_t)(T_FAULT_130 - T_FAULT_0)) {
         escape(tr((LangId)(T_FAULT_0 + e.type)), art, sizeof(art));
       } else {
         snprintf(unbekannt, sizeof(unbekannt), tr(T_EV_UNKNOWN),
