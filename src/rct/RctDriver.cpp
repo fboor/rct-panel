@@ -18,12 +18,15 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 #include <WiFi.h>
+#include <time.h>
 
 #include "../Diag.h"
 #include "../device/Device.h"
 #include "../device/RctDriver.h"
 #include "../device/Rules.h"
 #include "RctCrc.h"
+#include "RctEvents.h"
+#include "RctFrame.h"
 
 #define RCT_RX_TIMEOUT_MS 2000 // per-frame receive window
 // How long a device that has already answered may stay silent before the cycle is
@@ -83,55 +86,22 @@ static bool rctSendRead(uint32_t oid) {
   return s_link->write(out, oi) == oi;
 }
 
-// Incremental receive state machine. De-escaped bytes accumulate in rctRxBuf
-// starting with the 0x2b start token. 128 bytes comfortably fit the largest
-// frames we request (device name / version strings) plus other clients'
-// chatter on the shared bus.
-#define RCT_RX_BUF_SIZE 128
+// Receive buffer and the state machine that fills it (src/rct/RctFrame.h).
+//
+// 128 bytes fitted the largest frames the panel asked for - the device name and
+// the version string - and the frames of other clients on the shared bus were
+// simply not looked at. That is no longer true: when a client on the bus asks
+// the device for its event log, the answer is a LONG_RESPONSE with a two-byte
+// length and a payload of up to a few kilobytes, and every client sees it. 4kB
+// take 204 entries, which is more than one answer holds in practice; a frame
+// that does not fit is dropped with a line in the log, because swallowing the
+// rest of it silently would look like a device that stopped answering.
+#define RCT_RX_BUF_SIZE 4096
 static uint8_t rctRxBuf[RCT_RX_BUF_SIZE];
-static size_t rctRxLen = 0;
-static bool rctRxEscaping = false;
-static bool rctRxComplete = false;
-static size_t rctRxTotal = 0;
+static rctframe::Receiver rctRx(rctRxBuf, RCT_RX_BUF_SIZE);
 
-static void rctProcessByte(uint8_t c) {
-  if (rctRxLen == 0) {
-    if (c == 0x2b) {
-      rctRxBuf[0] = c;
-      rctRxLen = 1;
-      rctRxEscaping = false;
-      rctRxComplete = false;
-      rctRxTotal = 0;
-    }
-    return;
-  }
-
-  if (rctRxEscaping) {
-    rctRxEscaping = false;
-  } else if (c == 0x2d) {
-    rctRxEscaping = true;
-    return;
-  }
-
-  rctRxBuf[rctRxLen++] = c;
-
-  if (rctRxLen == 3) {
-    // header complete: 2b <command> <length>; length counts OID + payload
-    rctRxTotal = 5 + rctRxBuf[2]; // 2b + cmd + len + oid + payload + crc
-  }
-
-  if (rctRxTotal > 0 && rctRxLen >= rctRxTotal) {
-    rctRxComplete = true;
-    return;
-  }
-
-  // Unexpectedly large frame (e.g. a string payload we never request):
-  // drop it and resync on the next start token.
-  if (rctRxLen >= RCT_RX_BUF_SIZE) {
-    rctRxLen = 0;
-    rctRxEscaping = false;
-  }
-}
+// The device's event log, read but never requested - see src/rct/RctEvents.h.
+static rctevents::Table rctEventLog;
 
 // Hook into the wait loop. Collecting a cycle means sitting in rctReceiveFrame()
 // while the device answers, and LVGL runs in the same FreeRTOS task as this file -
@@ -156,37 +126,43 @@ enum RCT_RX : int { RCT_RX_OK = 0, RCT_RX_TIMEOUT, RCT_RX_CRC };
 // for RCT_CYCLE_TIMEOUT_MS on every poll whose OID set came back incomplete
 // (a value the device does not know never arrives, and its silence was read as
 // "still coming").
-static int rctReceiveFrame(uint8_t &command, uint32_t &oid, uint8_t *payload,
-                           size_t payloadCapacity, size_t &payloadLen,
+static int rctReceiveFrame(uint8_t &command, uint32_t &oid,
+                           const uint8_t *&payload, size_t &payloadLen,
                            uint32_t quietMs) {
   unsigned long startMillisHere = millis();
   unsigned long lastByteMs = startMillisHere;
   bool gotAny = false;
+  // A frame the buffer cannot hold is worth one line - with its length, because
+  // "it did not fit" alone sends you looking for a size nobody wrote down. Once
+  // per drop, not once per byte: the status stays kTooLong until the next start
+  // token, and everything in between would report it again.
+  static bool dropReported = false;
   while (millis() - startMillisHere < RCT_RX_TIMEOUT_MS) {
     while (s_link->available()) {
-      rctProcessByte((uint8_t)s_link->read());
+      rctRx.feed((uint8_t)s_link->read());
       gotAny = true;
       lastByteMs = millis();
-      if (rctRxComplete) {
+      if (rctRx.status() == rctframe::kTooLong && !dropReported) {
+        dropReported = true;
+        Serial.printf("RCT: Rahmen zu lang fuer den Puffer (Befehl 0x%02x, "
+                      "%u Byte Inhalt) - verworfen\n",
+                      (unsigned)rctRx.droppedCommand(),
+                      (unsigned)rctRx.droppedLength());
+      }
+      if (rctRx.complete()) {
         break;
       }
     }
-    if (rctRxComplete) {
+    if (rctRx.complete()) {
       break;
     }
     if (!s_link->peerOpen()) {
-      rctRxLen = 0;
-      rctRxEscaping = false;
-      rctRxComplete = false;
-      rctRxTotal = 0;
+      rctRx.reset();
       return RCT_RX_TIMEOUT;
     }
     if (quietMs > 0 && gotAny &&
         (int32_t)(millis() - lastByteMs) >= (int32_t)quietMs) {
-      rctRxLen = 0;
-      rctRxEscaping = false;
-      rctRxComplete = false;
-      rctRxTotal = 0;
+      rctRx.reset();
       return RCT_RX_TIMEOUT;
     }
     if (rctYieldHook) {
@@ -196,41 +172,24 @@ static int rctReceiveFrame(uint8_t &command, uint32_t &oid, uint8_t *payload,
     }
   }
 
-  if (!rctRxComplete) {
-    rctRxLen = 0;
-    rctRxEscaping = false;
-    rctRxComplete = false;
-    rctRxTotal = 0;
+  if (!rctRx.complete()) {
+    rctRx.reset();
     return RCT_RX_TIMEOUT;
   }
 
-  // CRC covers everything after the start token, up to the checksum bytes
-  uint16_t calc = rctCrc16(&rctRxBuf[1], rctRxTotal - 3);
-  uint16_t recv = ((uint16_t)rctRxBuf[rctRxTotal - 2] << 8) | rctRxBuf[rctRxTotal - 1];
-  if (calc != recv) {
+  if (!rctRx.crcOk()) {
     Serial.println("RCT: CRC mismatch, skipping frame");
-    rctRxLen = 0;
-    rctRxEscaping = false;
-    rctRxComplete = false;
-    rctRxTotal = 0;
+    rctRx.reset();
     return RCT_RX_CRC;
   }
 
-  command = rctRxBuf[1];
-  oid = ((uint32_t)rctRxBuf[3] << 24) | ((uint32_t)rctRxBuf[4] << 16) |
-        ((uint32_t)rctRxBuf[5] << 8) | rctRxBuf[6];
-  payloadLen = rctRxBuf[2] - 4;
+  command = rctRx.command();
+  oid = rctRx.oid();
+  payload = rctRx.payload();
+  payloadLen = rctRx.payloadLen();
 
-  // Copy only what fits the caller's buffer; oversized frames are filtered
-  // out by the caller via payloadLen anyway.
-  if (payload != nullptr && payloadLen > 0 && payloadLen <= payloadCapacity) {
-    memcpy(payload, &rctRxBuf[7], payloadLen);
-  }
-
-  rctRxLen = 0;
-  rctRxEscaping = false;
-  rctRxComplete = false;
-  rctRxTotal = 0;
+  dropReported = false;
+  rctRx.reset();
 
   return RCT_RX_OK;
 }
@@ -253,6 +212,73 @@ static uint32_t rctDecodeInt(const uint8_t *p, size_t n) {
     v = (v << 8) | p[i];
   }
   return v;
+}
+
+// ---------------------------------------------------------------------------
+// The event log in the serial log
+// ---------------------------------------------------------------------------
+
+// The device's own clock is the one these timestamps come from, so they are
+// printed as local time - the same way the calibration date and the log files
+// are (src/gui/GuiApp.cpp, src/storage/sdlog.cpp). A timestamp the panel cannot
+// turn into a date is printed as a number: something is better than a guess.
+static void rctFormatUnixTime(uint32_t unixSeconds, char *out, size_t cap) {
+  out[0] = '\0';
+  const time_t t = (time_t)unixSeconds;
+  struct tm tmv;
+  if (unixSeconds > 1000000000u && localtime_r(&t, &tmv)) {
+    strftime(out, cap, "%Y-%m-%d %H:%M:%S", &tmv);
+  }
+}
+
+// How long an event lasted, or "-" when the numbers cannot be one.
+//
+// Only for types where the second word really is an end time. For a parameter
+// change it is an object id, for an update a version, and end minus start would
+// print a plausible-looking number for both. The range check catches them
+// anyway: an object id is a positive 32-bit number, so the difference is
+// negative or far beyond a day.
+static void rctFormatDuration(uint32_t startUnix, uint32_t endUnix, char *out,
+                              size_t cap) {
+  const int32_t d = (int32_t)(endUnix - startUnix);
+  if (endUnix == 0 || d < 0 || d >= 86400) {
+    snprintf(out, cap, "-");
+  } else {
+    snprintf(out, cap, "%02u:%02u:%02u", (unsigned)(d / 3600),
+             (unsigned)((d / 60) % 60), (unsigned)(d % 60));
+  }
+}
+
+// One line for the table, and the entries under it when the page brought
+// something new. A client that asks for the same day twice sends the same
+// entries again: the summary says so, and repeating forty lines that said the
+// same thing ten seconds ago would make the log unreadable.
+static void rctLogEvents(size_t added, size_t payloadLen) {
+  Serial.printf("RCT: Ereignislog - %u Eintraege (%u Byte Antwort, %u neu, "
+                "%u Seiten bisher)\n",
+                (unsigned)rctEventLog.size(), (unsigned)payloadLen,
+                (unsigned)added, (unsigned)rctEventLog.pages());
+  if (added == 0) {
+    return;
+  }
+  char fenster[24];
+  rctFormatUnixTime(rctEventLog.queryUnix(), fenster, sizeof(fenster));
+  if (fenster[0] == '\0') {
+    Serial.printf("RCT:   Abgefragt bis %u\n",
+                  (unsigned)rctEventLog.queryUnix());
+  } else {
+    Serial.printf("RCT:   Abgefragt bis %s\n", fenster);
+  }
+  for (size_t i = 0; i < rctEventLog.size(); i++) {
+    const rctevents::Entry &e = rctEventLog.at(i);
+    char zeit[24];
+    char dauer[16];
+    rctFormatUnixTime(e.startUnix, zeit, sizeof(zeit));
+    rctFormatDuration(e.startUnix, e.endUnix, dauer, sizeof(dauer));
+    Serial.printf("RCT:   %s Typ 0x%02x Dauer %s Wort2 0x%08x Wort3 0x%08x\n",
+                  zeit[0] ? zeit : "(ohne Zeit)", (unsigned)e.type, dauer,
+                  (unsigned)e.value1, (unsigned)e.value2);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -610,14 +636,18 @@ static void rctPoll(uint32_t budgetMs) {
   while (freshMask != allFast && !streamQuiet &&
          (int32_t)(millis() - deadline) < 0) {
     uint8_t command = 0;
-    uint8_t payload[128];
+    // Points into rctRxBuf and is only good until the next call, which is
+    // enough: the frame is consumed here. A copy into a buffer of the caller's
+    // would have to be as large as the largest frame - and the largest frame is
+    // the event log.
+    const uint8_t *payload = nullptr;
     size_t payloadLen = 0;
     uint32_t respOid = 0;
     // The first frame gets the full window: after a reconnect the device may need
     // a moment. Every frame after it is only waited for briefly, because a device
     // that has gone quiet has already said everything it knows.
-    int rc = rctReceiveFrame(command, respOid, payload, sizeof(payload),
-                             payloadLen, gotFrame ? RCT_QUIET_MS : 0);
+    int rc = rctReceiveFrame(command, respOid, payload, payloadLen,
+                             gotFrame ? RCT_QUIET_MS : 0);
     if (rc == RCT_RX_OK) {
       gotFrame = true;
     }
@@ -662,6 +692,15 @@ static void rctPoll(uint32_t budgetMs) {
           freshMask |= (1ull << slot);
         }
       }
+    }
+    // The event log is nobody's answer to a question the panel asked: it comes
+    // when another client on the bus asks, and it counts towards nothing here.
+    // Not a data source, a record of what the device thought was worth writing
+    // down.
+    if (command == rctframe::kCmdLongResponse &&
+        respOid == rctevents::kTableOid) {
+      const size_t neu = rctEventLog.decode(payload, payloadLen);
+      rctLogEvents(neu, payloadLen);
     }
   }
 

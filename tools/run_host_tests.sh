@@ -62,6 +62,15 @@
 #   crc_test       the frame checksum: check values computed independently of
 #                  the implementation, plus the padding rule for odd lengths
 #                  that the three-byte extension frame depends on
+#   rctframe_test  the receive state machine: where the length field of a frame
+#                  sits, one byte for a small answer and two for a long one, and
+#                  what happens to a frame that does not fit, that is addressed
+#                  to another component on the bus, that comes half, or that
+#                  the receiver started reading in the middle of
+#   rctevent_test  the device's event log: the twenty-byte entries, the zero
+#                  timestamp that ends the table, a payload cut in the middle of
+#                  an entry, the same page arriving again, and a list that has to
+#                  stay sorted when the device walks backwards through its log
 #   json_test      the numbers in the web interface's JSON answers: fixed-point
 #                  without an exponent, no trailing zeros, and null instead of
 #                  a NaN - the case a parser stops reading at
@@ -90,7 +99,7 @@ set -e
 cd "$(dirname "$0")/.."
 
 fail=0
-for t in device_test relay_test sd_queue_test numfmt_test i18n_test backlight_test badge_test crc_test json_test theme_test flow_layout_test json_scan_test ring_json_test chart_color_test oig_field_test board_test jstest; do
+for t in device_test relay_test sd_queue_test numfmt_test i18n_test backlight_test badge_test crc_test rctframe_test rctevent_test json_test theme_test flow_layout_test json_scan_test ring_json_test chart_color_test oig_field_test board_test jstest; do
   printf '\n=== %s ===\n' "$t"
   if [ "$t" = "jstest" ]; then
     if command -v node >/dev/null 2>&1; then
