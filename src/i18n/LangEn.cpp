@@ -128,8 +128,9 @@ const char *const kLang[T_COUNT] = {
     "Asked for up to %s, %d entries",                           // T_EV_ASKED
     "Event 0x%02x",                                          // T_EV_UNKNOWN
     "Fetch now",                                                // T_EV_ASK
-    "Request sent. The answer arrives with the next poll (up to 10 s); this "
-    "page reloads then.",                                    // T_EV_ASK_SENT
+    "Request sent. The device does not answer every ask, so the panel asks up "
+    "to three times (once per poll). This page reloads twice.",
+                                                       // T_EV_ASK_SENT
 
     // --- web: the charts -------------------------------------------------
     "Could not load the data.",                                 // T_ERR_LOAD_FAILED

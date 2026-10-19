@@ -132,9 +132,9 @@ const char *const kLang[T_COUNT] = {
     "Abgefragt bis %s, %d Eintr&auml;ge",                       // T_EV_ASKED
     "Ereignis 0x%02x",                                          // T_EV_UNKNOWN
     "Jetzt abrufen",                                            // T_EV_ASK
-    "Abruf angefordert. Die Antwort kommt mit dem n&auml;chsten "
-    "Ger&auml;teabruf (bis zu 10 s); diese Seite l&auml;dt dann neu.",
-                                                                // T_EV_ASK_SENT
+    "Abruf angefordert. Das Ger&auml;t antwortet nicht auf jede Frage, "
+    "deshalb fragt das Panel bis zu dreimal (einmal je Ger&auml;teabruf). "
+    "Diese Seite l&auml;dt zweimal neu.",                      // T_EV_ASK_SENT
 
     // --- web: die Diagramme --------------------------------------------
     "Daten konnten nicht geladen werden.",           // T_ERR_LOAD_FAILED

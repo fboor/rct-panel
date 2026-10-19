@@ -52,13 +52,27 @@
 // 2304 bytes for 115 rows - the write alone answered only after 2.5 s and not
 // reliably, so the two frames go out together (the order the app sends them).
 //
-// The windows are that measurement with room. RCT_EVENT_QUIET_MS is what keeps
-// RCT_QUIET_MS (300 ms) from calling the 0.36 s pause a silence and ending the
-// poll before the table arrives; the whole wait stays inside the poll budget
-// (4 s, Device.cpp), so the panel cannot freeze longer than any other poll.
+// Whether the device answers at all is a coin flip, and that is the reason this
+// is not a one-shot request. Measured on the same device, one pair per round,
+// read-only apart from the query timestamp: 13 single asks produced the table 5
+// times; re-asking after 4 s without an answer produced it in 4 of 5 rounds, on
+// the second or third ask, and 0.6 s after the ask that was finally answered.
+// The device does not answer slowly, it answers in phases. The app handles the
+// same fact by keeping the parameter pending and re-requesting it every 2-3 s
+// (ClientThread.k(): a pending parameter whose last request is older than
+// 2000/3000 ms is returned from the queue again).
+//
+// The panel cannot copy that cadence - one ask per poll, so 10 s apart, because
+// the poll is the only place frames go out and the wait has to stay inside its
+// budget (4 s, Device.cpp) or the panel freezes. RCT_EVENT_MAX_ASKS asks thus
+// span two polls; RCT_EVENT_WAIT_MS is only how long one poll holds the receive
+// window open for the answer. RCT_EVENT_QUIET_MS is what keeps RCT_QUIET_MS
+// (300 ms) from calling the 0.36 s pause a silence and ending the poll before
+// the table arrives.
 #define RCT_EVENT_WAIT_MS 2000     // give up on the table after this
 #define RCT_EVENT_QUIET_MS 1000    // per-frame wait while the table is expected
 #define RCT_EVENT_REQ_TTL_MS 60000 // a request older than this is dropped
+#define RCT_EVENT_MAX_ASKS 3       // asks per button press, then stop asking
 
 // The link, handed over by Device.cpp. Set in begin(); a poll without one would
 // be a wiring bug rather than a runtime condition.
@@ -163,6 +177,11 @@ static rctevents::Table rctEventLog;
 // waiting for the answer any more.
 static bool s_eventRequest = false;
 static uint32_t s_eventRequestAt = 0;
+// How many of this press's asks have gone out. Re-armed requests (the poll
+// below, when the device ignored one) share s_eventRequestAt - the age of the
+// press, not of the last ask - so the 60 s check ends the whole chain instead
+// of restarting it.
+static uint8_t s_eventAsks = 0;
 // True from the moment the pair went out until the table arrives or the window
 // is over; while it is true the receive loop keeps its wider window open.
 static bool s_eventPending = false;
@@ -679,6 +698,11 @@ static void rctPoll(uint32_t budgetMs) {
   // reliably, so both frames go out together, which is also the order the app
   // sends them (ClientThread.v then a plain read).
   //
+  // The same pair goes out again for the same press when the window closed
+  // without an answer - see the end of rctPoll() and RCT_EVENT_MAX_ASKS. Each
+  // ask carries a fresh timestamp, so a late answer to an earlier ask and the
+  // answer to this one cover overlapping windows rather than racing.
+  //
   // A request that cannot be sent is dropped, not kept: the device was
   // unreachable, and an answer to it would arrive when nobody is waiting for
   // it any more. The clock check matters - the device returns what is older
@@ -694,8 +718,10 @@ static void rctPoll(uint32_t budgetMs) {
         rctSendRead(rctevents::kTableOid);
         s_eventPending = true;
         s_eventWaitUntil = millis() + RCT_EVENT_WAIT_MS;
-        Serial.printf("RCT: Ereignislog angefordert bis %u\n",
-                      (unsigned)(uint32_t)jetzt);
+        s_eventAsks++;
+        Serial.printf("RCT: Ereignislog angefordert bis %u (Frage %u von %u)\n",
+                      (unsigned)(uint32_t)jetzt, (unsigned)s_eventAsks,
+                      (unsigned)RCT_EVENT_MAX_ASKS);
       } else {
         Serial.println(F("RCT: Ereignisabruf nicht gesendet, die Uhr des "
                          "Panels ist nicht gestellt"));
@@ -818,6 +844,20 @@ static void rctPoll(uint32_t budgetMs) {
 
   // End of the window, whatever came of it: a pending request that timed out
   // must not widen the next poll's window.
+  //
+  // Still pending here means the device ignored this ask, which it does in
+  // roughly half the cases (see RCT_EVENT_MAX_ASKS) - so the same press asks
+  // again, with the next poll and a fresh timestamp. s_eventAsks ends the
+  // chain after RCT_EVENT_MAX_ASKS tries, and the age check in the send block
+  // ends it earlier when the device has been unreachable the whole time. An
+  // answer that arrives later, from another client's request, is decoded
+  // anyway (it always was) and counts: it clears s_eventPending here too.
+  if (s_eventPending && s_eventAsks < RCT_EVENT_MAX_ASKS) {
+    s_eventRequest = true;
+    Serial.printf("RCT: Ereignislog ohne Antwort, frage erneut (naechste "
+                  "Frage %u von %u)\n",
+                  (unsigned)(s_eventAsks + 1), (unsigned)RCT_EVENT_MAX_ASKS);
+  }
   s_eventPending = false;
 
   if (!dev.haveData) {
@@ -1085,6 +1125,10 @@ void RctDriver::poll(uint32_t budgetMs) { rctPoll(budgetMs); }
 // the caller cannot know yet whether the device answers, and a request that
 // could not be sent is in the serial log rather than in a state field.
 void RctDriver::requestEventLog() {
+  // A new press starts a new chain: without this, pressing again while the
+  // previous press is still retrying would inherit its spent asks and stop
+  // after one.
+  s_eventAsks = 0;
   s_eventRequest = true;
   s_eventRequestAt = millis();
 }

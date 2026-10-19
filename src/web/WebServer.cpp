@@ -1060,8 +1060,8 @@ void handleData() { askListing(tr(T_PAGE_DATA), "/daten", "/hist", true); }
 //
 // The request is asynchronous: the panel's next poll sends it, up to 10 s later
 // (RCT_POLL_MS), so the page shown right after the press is the one *before*
-// the answer and carries one reload. "?hol=1" is that press; the reload goes to
-// plain "/ereignisse".
+// the answer and carries two reloads. "?hol=1" is that press; "?nach=1" is the
+// first reload's target and asks for nothing.
 //
 // The columns are the entry as it stands, not an interpretation: the first
 // three words are a time, an end time and two numbers whose meaning depends on
@@ -1078,6 +1078,9 @@ void handleEvents() {
   if (hol) {
     deviceRequestEventLog();
   }
+  // The second reload stage: "?hol=1" asks, "?nach=1" is the page that stage
+  // lands on and asks for nothing. Both are read-only routes.
+  const bool nach = s_server.hasArg("nach");
 
   const DeviceState &s = deviceState();
   String b;
@@ -1174,11 +1177,20 @@ void handleEvents() {
   b += F("</a> <a class=\"btn gray\" href=\"/ereignisse\">");
   b += tr(T_BTN_RELOAD);
   b += F("</a></p>");
-  // One reload, long enough for the next poll (10 s) plus the answer (~0.4 s).
-  // It goes to plain /ereignisse, so it cannot ask a second time.
+  // Two reloads, because the device does not answer every ask. The pair goes
+  // out with the next poll (up to 10 s, RCT_POLL_MS) and a press is asked for
+  // up to three times, one ask per poll (RCT_EVENT_MAX_ASKS); which ask is
+  // answered varies - measured on the device, the table came 0.6-0.9 s after
+  // the ask that was answered, and sometimes after none of them. 13 s catches
+  // the first and usually the second ask, the second stage 20 s later catches
+  // the third. Neither stage can ask again: "?nach=1" is a page that only
+  // reads, and the last one is plain /ereignisse.
   static const char kEventReload[] =
-      "<meta http-equiv=\"refresh\" content=\"13;url=/ereignisse\">";
-  sendNavPage(tr(T_PAGE_EVENTS), "/ereignisse", b, hol ? kEventReload : nullptr);
+      "<meta http-equiv=\"refresh\" content=\"13;url=/ereignisse?nach=1\">";
+  static const char kEventReloadLate[] =
+      "<meta http-equiv=\"refresh\" content=\"20;url=/ereignisse\">";
+  sendNavPage(tr(T_PAGE_EVENTS), "/ereignisse", b,
+              hol ? kEventReload : (nach ? kEventReloadLate : nullptr));
 }
 
 // The picture list, with the trigger button for a new screenshot.
