@@ -40,6 +40,10 @@ public:
 
   bool connected() const override;
 
+  // Ask the device for its event log: a WRITE that sets the query window and a
+  // READ of the same object id, both sent with the next poll (see rctPoll).
+  void requestEventLog() override;
+
   // "RCT" - the family, and the prefix of the log file names.
   const char *typeName() const override { return "RCT"; }
 };

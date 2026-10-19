@@ -116,17 +116,20 @@ const char *const kLang[T_COUNT] = {
                                                        // T_NOTE_SHOT_IDLE
 
     // --- web: the device's own event log ------------------------------------
-    "This is the device's own record. The panel never asks for it: the list "
-    "arrives when another client on the network fetches it (the app), and the "
+    "This is the device's own record. It fills up when you fetch it below, and "
+    "equally when another client on the network fetches it (the app) - the "
     "panel reads along. The two small numbers under an event are raw - what "
     "they mean depends on the kind of event.",                  // T_EV_INTRO
-    "Nothing read yet. The list fills up while another device asks for it.",
-                                                                // T_EV_NONE
+    "Nothing read yet. Press \"Fetch now\" below, or wait until another device "
+    "fetches the list.",                                         // T_EV_NONE
     "Time",                                                     // T_EV_TIME
     "Event",                                                    // T_EV_TYPE
     "Duration",                                             // T_EV_DURATION
     "Asked for up to %s, %d entries",                           // T_EV_ASKED
     "Event 0x%02x",                                          // T_EV_UNKNOWN
+    "Fetch now",                                                // T_EV_ASK
+    "Request sent. The answer arrives with the next poll (up to 10 s); this "
+    "page reloads then.",                                    // T_EV_ASK_SENT
 
     // --- web: the charts -------------------------------------------------
     "Could not load the data.",                                 // T_ERR_LOAD_FAILED

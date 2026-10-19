@@ -49,6 +49,13 @@ public:
   // Link up right now, for the status line and the reconnect decision.
   virtual bool connected() const = 0;
 
+  // Ask the device for its event log. Deliberately asynchronous: the request is
+  // queued and goes out with the next poll, because the answer is a frame of
+  // several kilobytes and only poll() is set up to receive it (the web task can
+  // not wait for it - see the timing contract above). A family without an event
+  // log does nothing here, which is what the default does.
+  virtual void requestEventLog() {}
+
   // The family as a short name. It ends up in the log file names and in the
   // settings page, so it stays short, upper case and free of spaces.
   virtual const char *typeName() const = 0;

@@ -1,6 +1,6 @@
 // The API every component uses to get at the device's data.
 //
-// Seven functions, and they are the whole contract the rest of the firmware is
+// Eight functions, and they are the whole contract the rest of the firmware is
 // allowed to know:
 //
 //   deviceState()          the values, read-only
@@ -8,6 +8,7 @@
 //   deviceStateMutable()   the same struct, for the driver's use only
 //   deviceBegin()          create the driver the settings ask for
 //   devicePoll()           one collection run
+//   deviceRequestEventLog()  ask the device for its event log, if it has one
 //   deviceTypeName()       the family, e.g. "RCT"
 //   deviceSetYieldHook()   installed once by main.cpp
 //
@@ -49,6 +50,13 @@ void deviceBegin(const DeviceConfig &cfg);
 // One collection run. Call it at a fixed rate (every 10 s); the driver decides
 // how long it may block and has to keep the display drawing meanwhile.
 void devicePoll();
+
+// Ask the device for its event log, if the family has one. Asynchronous on
+// purpose: the request is queued and goes out with the next poll, because the
+// answer is a frame of several kilobytes and only the poll is set up to receive
+// it. Nothing here waits; the caller reloads and reads deviceState() later. A
+// family without an event log ignores it.
+void deviceRequestEventLog();
 
 // The family of the device in use, e.g. "RCT". It is the prefix of the log file
 // names and appears in the settings page. "unbekannt" before deviceBegin().

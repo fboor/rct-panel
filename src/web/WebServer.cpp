@@ -1052,10 +1052,16 @@ void handleData() { askListing(tr(T_PAGE_DATA), "/daten", "/hist", true); }
 // /ereignisse  The device's own event log
 // ---------------------------------------------------------------------------
 //
-// Read-only, and empty for as long as nobody asks the device for it: the panel
-// never sends this query itself, it decodes the answer another client asked for
-// (see src/rct/RctEvents.h). So the page has to say where the list comes from -
-// an empty page that does not say would read as a broken feature.
+// The list comes from the device, and the panel now asks for it: the button
+// below writes the query window and reads the table back (see
+// RctDriver::requestEventLog). It fills from the side too - when another client
+// on the bus (the app) asks, the panel decodes that answer - so the page is not
+// empty just because nobody pressed the button.
+//
+// The request is asynchronous: the panel's next poll sends it, up to 10 s later
+// (RCT_POLL_MS), so the page shown right after the press is the one *before*
+// the answer and carries one reload. "?hol=1" is that press; the reload goes to
+// plain "/ereignisse".
 //
 // The columns are the entry as it stands, not an interpretation: the first
 // three words are a time, an end time and two numbers whose meaning depends on
@@ -1065,12 +1071,25 @@ void handleData() { askListing(tr(T_PAGE_DATA), "/daten", "/hist", true); }
 // display already shows name every entry. The two raw numbers go under the name
 // in small print, so the table has three columns and fits a phone.
 void handleEvents() {
+  // The press: ask, and show the list as it stands with one reload. No code
+  // needed - this reads the device, it does not change the panel, and the app
+  // may ask for the same table at any time.
+  const bool hol = s_server.hasArg("hol");
+  if (hol) {
+    deviceRequestEventLog();
+  }
+
   const DeviceState &s = deviceState();
   String b;
   b.reserve(1400 + (size_t)(s.eventCount < 0 ? 0 : s.eventCount) * 150);
   b += F("<div class=\"note\">");
   b += tr(T_EV_INTRO);
   b += F("</div>");
+  if (hol) {
+    b += F("<div class=\"note\">");
+    b += tr(T_EV_ASK_SENT);
+    b += F("</div>");
+  }
 
   // The date in this language's order (langDateFmt) plus the time, so a row
   // reads like the calibration date on the panel.
@@ -1150,10 +1169,16 @@ void handleEvents() {
     b += F("</div>");
   }
 
-  b += F("<p><a class=\"btn gray\" href=\"/ereignisse\">");
+  b += F("<p><a class=\"btn\" href=\"/ereignisse?hol=1\">");
+  b += tr(T_EV_ASK);
+  b += F("</a> <a class=\"btn gray\" href=\"/ereignisse\">");
   b += tr(T_BTN_RELOAD);
   b += F("</a></p>");
-  sendNavPage(tr(T_PAGE_EVENTS), "/ereignisse", b);
+  // One reload, long enough for the next poll (10 s) plus the answer (~0.4 s).
+  // It goes to plain /ereignisse, so it cannot ask a second time.
+  static const char kEventReload[] =
+      "<meta http-equiv=\"refresh\" content=\"13;url=/ereignisse\">";
+  sendNavPage(tr(T_PAGE_EVENTS), "/ereignisse", b, hol ? kEventReload : nullptr);
 }
 
 // The picture list, with the trigger button for a new screenshot.

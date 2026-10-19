@@ -99,6 +99,12 @@ void devicePoll() {
   s_driver->poll(kDevicePollBudgetMs);
 }
 
+void deviceRequestEventLog() {
+  if (s_driver != nullptr) {
+    s_driver->requestEventLog();
+  }
+}
+
 const char *deviceTypeName() {
   return s_driver != nullptr ? s_driver->typeName() : "unbekannt";
 }

@@ -46,6 +46,20 @@
 // across such a gap would credit the generator with energy nobody measured.
 #define RCT_S0_MAX_STEP_MS 30000
 
+// The event log, when the web page asks for it: the panel writes the query
+// timestamp to the object id and then reads it, and the device answers the read
+// with the table. Measured on the 7-inch panel's device: 0.36 s after the pair,
+// 2304 bytes for 115 rows - the write alone answered only after 2.5 s and not
+// reliably, so the two frames go out together (the order the app sends them).
+//
+// The windows are that measurement with room. RCT_EVENT_QUIET_MS is what keeps
+// RCT_QUIET_MS (300 ms) from calling the 0.36 s pause a silence and ending the
+// poll before the table arrives; the whole wait stays inside the poll budget
+// (4 s, Device.cpp), so the panel cannot freeze longer than any other poll.
+#define RCT_EVENT_WAIT_MS 2000     // give up on the table after this
+#define RCT_EVENT_QUIET_MS 1000    // per-frame wait while the table is expected
+#define RCT_EVENT_REQ_TTL_MS 60000 // a request older than this is dropped
+
 // The link, handed over by Device.cpp. Set in begin(); a poll without one would
 // be a wiring bug rather than a runtime condition.
 static DeviceTransport *s_link = nullptr;
@@ -87,6 +101,40 @@ static bool rctSendRead(uint32_t oid) {
   return s_link->write(out, oi) == oi;
 }
 
+// Build and send a WRITE frame: one object id and one four-byte value. This is
+// the frame the app sends to set the event log's window (ClientThread.v); the
+// panel wrote nothing to the device before, so this is the only place it does.
+// A WRITE is answered with the same shape as a READ (0x05 or 0x06 with the
+// value echoed back), which the poll ignores unless it is the table.
+static bool rctSendWrite(uint32_t oid, uint32_t value) {
+  uint8_t frame[12];
+  frame[0] = 0x02; // WRITE
+  frame[1] = 0x08; // length: 4 OID bytes + 4 value bytes
+  frame[2] = (uint8_t)(oid >> 24);
+  frame[3] = (uint8_t)(oid >> 16);
+  frame[4] = (uint8_t)(oid >> 8);
+  frame[5] = (uint8_t)(oid);
+  frame[6] = (uint8_t)(value >> 24);
+  frame[7] = (uint8_t)(value >> 16);
+  frame[8] = (uint8_t)(value >> 8);
+  frame[9] = (uint8_t)(value);
+
+  uint16_t crc = rctCrc16(frame, 10);
+  frame[10] = (uint8_t)(crc >> 8);
+  frame[11] = (uint8_t)(crc & 0xFF);
+
+  uint8_t out[26]; // 2b + 12 bytes, each possibly escaped by 0x2d
+  size_t oi = 0;
+  out[oi++] = 0x2b;
+  for (size_t i = 0; i < sizeof(frame); i++) {
+    if (frame[i] == 0x2b || frame[i] == 0x2d) {
+      out[oi++] = 0x2d;
+    }
+    out[oi++] = frame[i];
+  }
+  return s_link->write(out, oi) == oi;
+}
+
 // Receive buffer and the state machine that fills it (src/rct/RctFrame.h).
 //
 // 128 bytes fitted the largest frames the panel asked for - the device name and
@@ -101,8 +149,29 @@ static bool rctSendRead(uint32_t oid) {
 static uint8_t rctRxBuf[RCT_RX_BUF_SIZE];
 static rctframe::Receiver rctRx(rctRxBuf, RCT_RX_BUF_SIZE);
 
-// The device's event log, read but never requested - see src/rct/RctEvents.h.
+// The device's event log. It is mostly read from the bus: whenever another
+// client (the app) asks for it, every client sees the answer and this table
+// decodes it. Since the web page has a button, the panel also asks for it
+// itself - see rctPoll() and RctDriver::requestEventLog.
 static rctevents::Table rctEventLog;
+
+// A request for the event log, set in the web task and consumed by the poll.
+// The web handlers and the poll run in the same task (the loop task, which is
+// also LVGL's), so a plain flag pair is enough - no lock, no queue. The
+// timestamp is for the age check: a request that could not be sent because the
+// device was down is dropped rather than fired minutes later, when nobody is
+// waiting for the answer any more.
+static bool s_eventRequest = false;
+static uint32_t s_eventRequestAt = 0;
+// True from the moment the pair went out until the table arrives or the window
+// is over; while it is true the receive loop keeps its wider window open.
+static bool s_eventPending = false;
+static uint32_t s_eventWaitUntil = 0;
+
+// True while the answer to our own request is still worth waiting for.
+static bool rctEventWaiting() {
+  return s_eventPending && (int32_t)(millis() - s_eventWaitUntil) < 0;
+}
 
 // Hook into the wait loop. Collecting a cycle means sitting in rctReceiveFrame()
 // while the device answers, and LVGL runs in the same FreeRTOS task as this file -
@@ -603,6 +672,40 @@ static void rctPoll(uint32_t budgetMs) {
     lastInfoPoll = nowMs;
   }
 
+  // A request from the web page's button: write the query window, then read it
+  // back. The device answers the read with the table (a long response, several
+  // kB) - measured on the 7-inch panel's device: 0.36 s after the pair, 2304
+  // bytes for 115 rows. The write alone answered only after 2.5 s and not
+  // reliably, so both frames go out together, which is also the order the app
+  // sends them (ClientThread.v then a plain read).
+  //
+  // A request that cannot be sent is dropped, not kept: the device was
+  // unreachable, and an answer to it would arrive when nobody is waiting for
+  // it any more. The clock check matters - the device returns what is older
+  // than the timestamp it is given, so a panel without a set clock would ask
+  // for a window in 1970 and get an empty table, which reads as "no events".
+  if (s_eventRequest) {
+    s_eventRequest = false;
+    if ((int32_t)(millis() - s_eventRequestAt) <=
+        (int32_t)RCT_EVENT_REQ_TTL_MS) {
+      const time_t jetzt = time(nullptr);
+      if (jetzt > (time_t)eventtime::kPlausibleFrom) {
+        rctSendWrite(rctevents::kTableOid, (uint32_t)jetzt);
+        rctSendRead(rctevents::kTableOid);
+        s_eventPending = true;
+        s_eventWaitUntil = millis() + RCT_EVENT_WAIT_MS;
+        Serial.printf("RCT: Ereignislog angefordert bis %u\n",
+                      (unsigned)(uint32_t)jetzt);
+      } else {
+        Serial.println(F("RCT: Ereignisabruf nicht gesendet, die Uhr des "
+                         "Panels ist nicht gestellt"));
+      }
+    } else {
+      Serial.println(F("RCT: Ereignisabruf verfallen, das Geraet war zu lange "
+                       "nicht erreichbar"));
+    }
+  }
+
   // Consume the stream for this poll; keep last-good values per slot. The
   // fast group gates the receive window; info responses are consumed
   // opportunistically whenever they arrive during the same window.
@@ -632,7 +735,11 @@ static void rctPoll(uint32_t budgetMs) {
   unsigned long deadline = millis() + budgetMs;
   bool streamQuiet = false;
   bool gotFrame = false;
-  while (freshMask != allFast && !streamQuiet &&
+  // The fast group gates the window, but a pending event-table answer keeps it
+  // open past it: the table is not one of the fast slots and arrives ~0.36 s
+  // after the request, by which time a quick device may already have answered
+  // everything else.
+  while ((freshMask != allFast || rctEventWaiting()) && !streamQuiet &&
          (int32_t)(millis() - deadline) < 0) {
     uint8_t command = 0;
     // Points into rctRxBuf and is only good until the next call, which is
@@ -644,9 +751,12 @@ static void rctPoll(uint32_t budgetMs) {
     uint32_t respOid = 0;
     // The first frame gets the full window: after a reconnect the device may need
     // a moment. Every frame after it is only waited for briefly, because a device
-    // that has gone quiet has already said everything it knows.
+    // that has gone quiet has already said everything it knows - except while
+    // the event table is expected: its 0.36 s pause is longer than RCT_QUIET_MS.
+    const uint32_t quietMs =
+        rctEventWaiting() ? RCT_EVENT_QUIET_MS : RCT_QUIET_MS;
     int rc = rctReceiveFrame(command, respOid, payload, payloadLen,
-                             gotFrame ? RCT_QUIET_MS : 0);
+                             gotFrame ? quietMs : 0);
     if (rc == RCT_RX_OK) {
       gotFrame = true;
     }
@@ -692,17 +802,23 @@ static void rctPoll(uint32_t budgetMs) {
         }
       }
     }
-    // The event log is nobody's answer to a question the panel asked: it comes
-    // when another client on the bus asks, and it counts towards nothing here.
-    // Not a data source, a record of what the device thought was worth writing
-    // down.
+    // The event table is a record of what the device thought worth writing
+    // down, not one of the values the panel shows. It arrives either because
+    // the panel asked for it (the button) or because another client on the bus
+    // asked and every client sees the answer; both are decoded here, because
+    // the bytes are the same.
     if (command == rctframe::kCmdLongResponse &&
         respOid == rctevents::kTableOid) {
       const size_t neu = rctEventLog.decode(payload, payloadLen);
       rctPublishEvents();
       rctLogEvents(neu, payloadLen);
+      s_eventPending = false; // the answer to our request, or a passive one
     }
   }
+
+  // End of the window, whatever came of it: a pending request that timed out
+  // must not widen the next poll's window.
+  s_eventPending = false;
 
   if (!dev.haveData) {
     Serial.println(F("RCT: no data yet (device unresponsive or only answers "
@@ -963,5 +1079,14 @@ void RctDriver::begin(const DeviceConfig &cfg) {
 }
 
 void RctDriver::poll(uint32_t budgetMs) { rctPoll(budgetMs); }
+
+// Set from the web page's button. Consumed by the next poll, which may be up to
+// RCT_POLL_MS (10 s) later - the page says so. Deliberately no return value:
+// the caller cannot know yet whether the device answers, and a request that
+// could not be sent is in the serial log rather than in a state field.
+void RctDriver::requestEventLog() {
+  s_eventRequest = true;
+  s_eventRequestAt = millis();
+}
 
 bool RctDriver::connected() const { return dev.connected; }

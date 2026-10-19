@@ -119,18 +119,22 @@ const char *const kLang[T_COUNT] = {
     "danach einmal neu.",                                       // T_NOTE_SHOT_IDLE
 
     // --- web: das Ereignisprotokoll des Ger&auml;ts -------------------------
-    "Das ist das eigene Protokoll des Ger&auml;ts. Das Panel fragt es nie ab: "
-    "die Liste kommt, wenn ein anderes Ger&auml;t im Netz sie holt (die App), "
-    "und das Panel liest mit. Die beiden kleinen Zahlen unter einem Ereignis "
-    "sind roh &ndash; was sie bedeuten, h&auml;ngt von der Art des Ereignisses "
-    "ab.",                                                      // T_EV_INTRO
-    "Noch nichts gelesen. Die Liste f&uuml;llt sich, w&auml;hrend ein anderes "
-    "Ger&auml;t sie abfragt.",                                   // T_EV_NONE
+    "Das ist das eigene Protokoll des Ger&auml;ts. Es f&uuml;llt sich, wenn Sie "
+    "es unten abrufen, und ebenso, wenn ein anderes Ger&auml;t im Netz die "
+    "Liste holt (die App) &ndash; dann liest das Panel mit. Die beiden kleinen "
+    "Zahlen unter einem Ereignis sind roh &ndash; was sie bedeuten, h&auml;ngt "
+    "von der Art des Ereignisses ab.",                          // T_EV_INTRO
+    "Noch nichts gelesen. Den Knopf &bdquo;Jetzt abrufen&ldquo; dr&uuml;cken, "
+    "oder warten, bis ein anderes Ger&auml;t die Liste holt.",  // T_EV_NONE
     "Zeit",                                                     // T_EV_TIME
     "Ereignis",                                                 // T_EV_TYPE
     "Dauer",                                                    // T_EV_DURATION
     "Abgefragt bis %s, %d Eintr&auml;ge",                       // T_EV_ASKED
     "Ereignis 0x%02x",                                          // T_EV_UNKNOWN
+    "Jetzt abrufen",                                            // T_EV_ASK
+    "Abruf angefordert. Die Antwort kommt mit dem n&auml;chsten "
+    "Ger&auml;teabruf (bis zu 10 s); diese Seite l&auml;dt dann neu.",
+                                                                // T_EV_ASK_SENT
 
     // --- web: die Diagramme --------------------------------------------
     "Daten konnten nicht geladen werden.",           // T_ERR_LOAD_FAILED

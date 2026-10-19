@@ -1,10 +1,12 @@
 // The device's event log (logger.error_log_time_stamp, OID 0x6F3876BC), read
 // the way the official app reads it.
 //
-// The panel never asks for this table. It comes on its own whenever another
-// client - the app, on the phone - asks, because every client on the bus sees
-// every frame. So this file only decodes: writing the timestamp the device
-// wants a query with is deliberately not implemented.
+// The table is asked for, not overheard. The panel's web page has a button that
+// sends the app's own pair - a WRITE of a UNIX timestamp to this object id,
+// then a READ of it - and the device answers the read with the table (see
+// RctDriver::requestEventLog and rctSendWrite). The panel also decodes the
+// answer whenever another client asks, because every client on the bus sees
+// every frame; that is why the decoding here is independent of who asked.
 //
 // How the app gets it (decompiled, version 2.500, and the rctclient
 // documentation, which says the same about the wire format):
@@ -50,8 +52,9 @@ const size_t kQueryBytes = 4;
 const size_t kEntryBytes = 20;
 
 // How many entries the panel keeps. The page shows them newest first and the
-// device has to be asked again for anything older, which the panel does not do,
-// so a larger number would only hold entries the user can no longer get to.
+// panel asks for one window ("everything older than now"), so a larger number
+// would only hold entries the user can no longer get to - walking backwards
+// through the log, page by page, is what the app does and this panel does not.
 const size_t kMaxEntries = 40;
 
 struct Entry {

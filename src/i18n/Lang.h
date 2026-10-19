@@ -150,6 +150,8 @@ enum LangId : int {
   T_EV_DURATION,
   T_EV_ASKED,     // "asked for %s" with the window and the entry count
   T_EV_UNKNOWN,   // 0x%02x, a type the fault texts do not name
+  T_EV_ASK,       // button: ask the device for the log now
+  T_EV_ASK_SENT,  // the request is out; the answer comes with the next poll
 
   // --- web: the charts -----------------------------------------------------
   T_ERR_LOAD_FAILED,   // a JSON answer did not arrive
