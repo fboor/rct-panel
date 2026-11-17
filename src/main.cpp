@@ -210,4 +210,14 @@ void loop() {
     sdLogSample(deviceState());
   }
 
+  // Sleep, so this task does not spin for a panel that has nothing to do.
+  //
+  // Without this the loop ran as fast as the CPU allows, and every pass asked
+  // LVGL, the network state machine and the web server whether anything had
+  // happened. Five milliseconds is 200 passes a second, which is what the web
+  // interface and the captive portal need, and it bounds the extra wait a touch
+  // can pick up to one pass plus one LV_DEF_REFR_PERIOD: the touch read and the
+  // display refresh are LVGL timers inside lv_timer_handler() above, not
+  // something this loop polls.
+  delay(5);
 }
