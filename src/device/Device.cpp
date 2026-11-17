@@ -86,6 +86,9 @@ void deviceBegin(const DeviceConfig &cfg) {
   if (strcmp(s_driver != nullptr ? s_driver->typeName() : "", drv->typeName()) != 0) {
     s_device.deviceName[0] = '\0';
     s_device.firmwareVersion[0] = '\0';
+    // The transport is shared by every driver. A socket opened by the old
+    // driver still occupies the device's listener slot after the switch.
+    s_tcpLink.close();
   }
   drv->setTransport(&s_tcpLink);
   drv->begin(cfg);

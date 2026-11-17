@@ -54,8 +54,8 @@ static size_t appendEscaped(uint8_t *dst, size_t at, uint8_t b) {
 }
 
 // Build the wire form of a frame. longForm picks the two-byte length field
-// (command 0x03/0x04/0x06) over the one-byte one. badCrc flips the last
-// checksum byte, which is what a line error looks like.
+// (command 0x03/0x06 and their plant variants) over the one-byte one. badCrc
+// flips the last checksum byte, which is what a line error looks like.
 static size_t buildFrame(uint8_t *wire, uint8_t cmd, uint32_t oid,
                          const uint8_t *payload, size_t payloadLen,
                          bool longForm, bool badCrc) {
@@ -140,6 +140,25 @@ static void testEscaping() {
   checkEq(rx.payloadLen(), 3, "Escaping: Nutzlastlaenge");
   checkEq(rx.payload()[0], 0x2b, "Escaping: Starttoken in der Nutzlast");
   checkEq(rx.payload()[1], 0x2d, "Escaping: Escape in der Nutzlast");
+  rx.reset();
+}
+
+// READ_PERIODICALLY registers an OID and immediately answers with its value.
+// It is a SHORT frame in rctclient's table and in HA's rctclient 0.0.3. Reading
+// it as long would put the object id one byte too far into the buffer.
+static void testPeriodischKurz() {
+  uint8_t buf[128];
+  rctframe::Receiver rx(buf, sizeof(buf));
+  uint8_t wire[WIRE_MAX];
+  const uint8_t pl[4] = {0, 0, 0, 1};
+  const size_t n = buildFrame(wire, rctframe::kCmdReadPeriodically, 0x959930BF,
+                              pl, sizeof(pl), false, false);
+
+  checkEq(n, 13, "periodisch: 13 Byte auf der Leitung");
+  checkEq(feedAll(rx, wire, n), rctframe::kComplete, "periodisch: fertig");
+  checkEq(rx.oid(), 0x959930BF, "periodisch: Objekt-ID sitzt bei Byte 3");
+  checkEq(rx.payloadLen(), 4, "periodisch: Nutzlastlaenge");
+  check(rx.crcOk(), "periodisch: Pruefsumme");
   rx.reset();
 }
 
@@ -342,21 +361,26 @@ static void testLaengeZuKlein() {
 // Which commands carry the two-byte length. Getting this wrong is the whole
 // bug, so it is stated once and checked.
 static void testWelcheBefehleSindLang() {
+  checkEq(rctframe::kCmdReadPeriodically, 0x08,
+          "READ_PERIODICALLY ist 0x08, nicht 0x04");
   check(rctframe::Receiver::isLong(rctframe::kCmdLongWrite),
             "0x03 ist lang");
-  check(rctframe::Receiver::isLong(rctframe::kCmdReadPeriodically),
-            "0x04 ist lang");
   check(rctframe::Receiver::isLong(rctframe::kCmdLongResponse),
             "0x06 ist lang");
   check(!rctframe::Receiver::isLong(rctframe::kCmdRead), "0x01 ist kurz");
   check(!rctframe::Receiver::isLong(rctframe::kCmdWrite), "0x02 ist kurz");
   check(!rctframe::Receiver::isLong(rctframe::kCmdResponse),
             "0x05 ist kurz");
+  // rctclient lists 0x04 as reserved; it is not a length-shifting command.
+  check(!rctframe::Receiver::isLong(0x04), "0x04 ist reserviert und kurz");
+  check(!rctframe::Receiver::isLong(rctframe::kCmdReadPeriodically),
+            "0x08 ist kurz");
 }
 
 int main() {
   testKleineAntwort();
   testEscaping();
+  testPeriodischKurz();
   testLangeAntwort();
   testLangeAntwortUnvollstaendig();
   testZuLang();

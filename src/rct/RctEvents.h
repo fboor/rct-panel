@@ -23,6 +23,12 @@
 //     is possible (a duration is end - start, a float bit pattern is a
 //     measurement) and this keeps them raw, because the meaning is per type.
 //
+// The payload length is checked before a single entry is kept: 4 + n*20 bytes.
+// rctclient documents that shape and python-rctclient asserts it; rctclient
+// also warns that an interrupted answer can carry a VALID checksum with only
+// part of the payload. A CRC-ok table of the wrong length is therefore not a
+// short table - it is a damaged one, and decode() leaves the table untouched.
+//
 // The type is a number in the SAME numbering as the 128 fault bits: the app
 // looks it up in the same string array it uses for the bit field, and 18 of the
 // 19 entries the rctclient documentation names land on exactly that name. The
@@ -67,7 +73,17 @@ struct Entry {
 
 class Table {
 public:
-  Table() : mCount(0), mQueryUnix(0), mPages(0) {}
+  Table() : mCount(0), mQueryUnix(0), mPages(0), mValid(false) {}
+
+  // 4 + n*20 bytes, with n >= 0. Kept separate from decode() so the caller can
+  // log a rejected answer without having to repeat the arithmetic.
+  static bool validShape(size_t len) {
+    return len >= kQueryBytes && (len - kQueryBytes) % kEntryBytes == 0;
+  }
+
+  // True for the last decode() call. False before the first one and after a
+  // payload that was rejected; a rejected answer changes nothing in the table.
+  bool valid() const { return mValid; }
 
   // Decode one long response. Returns how many entries in it the panel had not
   // seen before - a client that asks the same window twice gets the same
@@ -76,11 +92,15 @@ public:
   // keeps counts all of them as new, and the oldest fall out at the back.
   //
   // A window of zero entries is not an error: the device answers an empty table
-  // when there is nothing older than the timestamp it was given.
+  // when there is nothing older than the timestamp it was given. A payload
+  // whose length is not 4 + n*20 is an error and leaves the table alone; the
+  // caller decides whether to ask again.
   size_t decode(const uint8_t *payload, size_t len) {
-    if (len < kQueryBytes) {
+    mValid = false;
+    if (!validShape(len)) {
       return 0;
     }
+    mValid = true;
     mQueryUnix = be32(payload);
     mPages++;
     size_t seen = 0;
@@ -119,6 +139,7 @@ public:
   void clear() {
     mCount = 0;
     mPages = 0;
+    mValid = false;
   }
 
 private:
@@ -170,6 +191,7 @@ private:
   size_t mCount;
   uint32_t mQueryUnix;
   uint32_t mPages;
+  bool mValid;
 };
 
 } // namespace rctevents

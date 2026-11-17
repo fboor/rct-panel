@@ -7,13 +7,18 @@
 // in a way the device will not complain about:
 //
 //   - an entry ends the table when its start timestamp is 0, so a payload whose
-//     FIRST entry is 0 is empty and not an error, and a trailing partial entry
-//     is not an entry;
+//     FIRST entry is 0 is empty and not an error, while a payload cut in the
+//     middle of an entry is rejected as a whole;
 //   - the same window arrives again every time a client asks for it, so the
 //     same entries must not pile up - a list that grows while nothing happened
 //     is a bug that looks like data;
 //   - the values are raw 32-bit words and a float bit pattern or a negative
 //     duration has to survive them unchanged.
+//
+// The length rule (4 + n*20 bytes) comes from the rctclient event-table page
+// and from python-rctclient's _decode_event_table(), which asserts it. rctclient
+// also warns that an interrupted large answer can carry a valid checksum with
+// only part of the payload, so a CRC match is not enough to trust the length.
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -102,6 +107,7 @@ static void testEinBlatt() {
 
   const size_t len = buildPayload(pl, 1789030000, e, 3, true);
   checkEq(t.decode(pl, len), 3, "ein Blatt: drei Eintraege");
+  check(t.valid(), "ein Blatt: gueltige Nutzlast");
   checkEq(t.size(), 3, "ein Blatt: Groesse");
   checkEq(t.queryUnix(), 1789030000, "ein Blatt: Abfragezeitstempel");
   checkEq(t.pages(), 1, "ein Blatt: eine Seite");
@@ -188,9 +194,10 @@ static void testLeereTabelle() {
   checkEq(t.pages(), 1, "leere Tabelle: die Seite wurde gesehen");
 }
 
-// A payload that stops in the middle of an entry. Half an entry is not an
-// entry - the five words are the unit, and the last one before the break is
-// complete enough to keep.
+// A payload that stops in the middle of an entry. This is the case rctclient
+// warns about: the device can be interrupted while preparing a large answer and
+// still attach a checksum that matches the truncated bytes. Reject the whole
+// page, keep the retry pending, and do not publish half an entry.
 static void testAbgeschnitteneNutzlast() {
   rctevents::Table t;
   uint8_t pl[PL_MAX];
@@ -204,9 +211,56 @@ static void testAbgeschnitteneNutzlast() {
   }
   const size_t voll = buildPayload(pl, 7777, e, 3, true);
   const size_t halb = buildPayload(pl, 7777, e, 3, true, voll - 28);
-  checkEq(t.decode(pl, halb), 2, "abgeschnitten: zwei ganze Eintraege");
-  checkEq(t.size(), 2, "abgeschnitten: Groesse");
-  checkEq(t.at(0).startUnix, 1001, "abgeschnitten: der dritte ist nicht da");
+  checkEq(t.decode(pl, halb), 0, "abgeschnitten: nichts aufgenommen");
+  check(!t.valid(), "abgeschnitten: Nutzlast abgelehnt");
+  checkEq(t.size(), 0, "abgeschnitten: Groesse bleibt null");
+  checkEq(t.pages(), 0, "abgeschnitten: keine Seite gezaehlt");
+  checkEq(t.queryUnix(), 0, "abgeschnitten: Abfragezeit unveraendert");
+}
+
+// A complete payload without the zero terminator is still 4 + n*20 bytes.
+// python-rctclient accepts exactly this shape; the app's terminator is a
+// convenience for the decoder, not a second length rule.
+static void testOhneTerminator() {
+  rctevents::Table t;
+  uint8_t pl[PL_MAX];
+  rctevents::Entry e[2];
+  for (int i = 0; i < 2; i++) {
+    e[i].type = 0x76;
+    e[i].startUnix = (uint32_t)(2000 + i);
+    e[i].endUnix = 0;
+    e[i].value1 = 0;
+    e[i].value2 = 0;
+  }
+  const size_t len = buildPayload(pl, 4242, e, 2, false);
+  checkEq(t.decode(pl, len), 2, "ohne Terminator: zwei Eintraege");
+  check(t.valid(), "ohne Terminator: Nutzlast gueltig");
+  checkEq(t.size(), 2, "ohne Terminator: Groesse");
+  checkEq(t.queryUnix(), 4242, "ohne Terminator: Abfragezeit");
+}
+
+// A rejected answer must not disturb a table that was already accepted. The
+// driver keeps s_eventPending in this case and asks again; the snapshot stays
+// at the last good page while it waits.
+static void testAbgelehnteSeiteAendertNichts() {
+  rctevents::Table t;
+  uint8_t pl[PL_MAX];
+  rctevents::Entry e[1];
+  e[0].type = 0x76;
+  e[0].startUnix = 5000;
+  e[0].endUnix = 5060;
+  e[0].value1 = 0;
+  e[0].value2 = 0;
+
+  const size_t gut = buildPayload(pl, 9999, e, 1, true);
+  checkEq(t.decode(pl, gut), 1, "abgelehnt: erste Seite angenommen");
+  const size_t schlecht = buildPayload(pl, 9999, e, 1, true, 25);
+  checkEq(t.decode(pl, schlecht), 0, "abgelehnt: zweite Seite verworfen");
+  check(!t.valid(), "abgelehnt: Nutzlast abgelehnt");
+  checkEq(t.size(), 1, "abgelehnt: alte Groesse bleibt");
+  checkEq(t.pages(), 1, "abgelehnt: alte Seitenzahl bleibt");
+  checkEq(t.queryUnix(), 9999, "abgelehnt: alte Abfragezeit bleibt");
+  checkEq(t.at(0).startUnix, 5000, "abgelehnt: alter Eintrag bleibt");
 }
 
 // Shorter than the echoed query timestamp: not a table at all.
@@ -214,8 +268,11 @@ static void testZuKurz() {
   rctevents::Table t;
   uint8_t pl[8] = {0x2b, 0x2b, 0x2b, 0};
   checkEq(t.decode(pl, 3), 0, "zu kurz: nichts aufgenommen");
+  check(!t.valid(), "zu kurz: Nutzlast abgelehnt");
   checkEq(t.decode(pl, 0), 0, "leer: nichts aufgenommen");
+  check(!t.valid(), "leer: Nutzlast abgelehnt");
   checkEq(t.size(), 0, "zu kurz: bleibt leer");
+  checkEq(t.pages(), 0, "zu kurz: keine Seite gezaehlt");
 }
 
 // More entries than the panel keeps: the oldest go, the newest stay, and the
@@ -351,6 +408,8 @@ int main() {
   testZweiteSeite();
   testLeereTabelle();
   testAbgeschnitteneNutzlast();
+  testOhneTerminator();
+  testAbgelehnteSeiteAendertNichts();
   testZuKurz();
   testUeberlauf();
   testUnbekannterTyp();

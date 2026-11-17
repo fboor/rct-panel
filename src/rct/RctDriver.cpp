@@ -3,21 +3,30 @@
 // Direct port of the RctParser from the Energy2Shelly_ESP project -
 // Apache License 2.0. See NOTICE for details and copyright.
 //
-// Protocol behaviour (quoted from the ported source):
+// Protocol behaviour:
 //   The device behaves like a shared bus: every connected client also sees the
 //   frames of every other client. Frame order is therefore arbitrary. We treat
 //   the connection as a stream:
-//    - send a READ for every value we track each poll,
-//    - consume the stream, accepting RESPONSE frames for any tracked OID and
-//      ignoring everything else (CRC-damaged frames, WRITEs, other clients'
-//      strings and responses),
+//    - send a batch of READs, consume the stream, accept RESPONSE frames for any
+//      tracked OID and ignore everything else (CRC-damaged frames, WRITEs, other
+//      clients' strings and responses),
 //    - never drop the connection because a frame does not match,
-//    - drop it only when the socket died, and reconnect on the next poll,
-//    - per-slot: keep the last good value, so a partially responsive device
-//      still feeds the panel instead of dropping it to zero.
+//    - close the socket after the batch, on a failed write, on a dead socket, on
+//      Wi-Fi loss and when the configuration changes. The HA integration opens
+//      one connection per update batch and closes it in a finally block;
+//      Tinkerforge keeps a connection but explicitly shuts it down on teardown
+//      and allows only one outstanding transaction. Both avoid the half-open
+//      sockets that used to pile up here.
+//    - the batch is split by cadence. HA's integration (0.14.2) reads 20 OIDs
+//      every 30 s, 36 every 3 min and 13 every hour; this driver's old 60 OIDs
+//      every 10 s were about six times that frequent rate. Live values stay in
+//      the fast group, counters and device info keep their last good value.
 //
 // SPDX-License-Identifier: Apache-2.0
 #include <WiFi.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
 #include "../Diag.h"
@@ -34,7 +43,10 @@
 // called done. The device answers a burst of reads and then nothing, so this is
 // the pause that ends a poll - not a deadline it has to meet.
 #define RCT_QUIET_MS 300
-#define RCT_INFO_POLL_MS 10000 // device info group poll cadence
+// HA's INFREQUENT and STATIC defaults, used for counters and device info. The
+// fast group stays on RCT_POLL_MS (10 s) for the overview and the relay rules.
+#define RCT_SLOW_POLL_MS (3 * 60 * 1000)
+#define RCT_STATIC_POLL_MS (60 * 60 * 1000)
 // Bounded connect() so an unreachable host can not freeze the UI task for
 // long; offline reconnects are throttled independently of the poll cadence.
 #define RCT_CONNECT_TIMEOUT_MS 400  // hard ceiling for one frozen frame
@@ -78,6 +90,14 @@
 // be a wiring bug rather than a runtime condition.
 static DeviceTransport *s_link = nullptr;
 static DeviceConfig s_cfg;
+// Zero means "not asked yet", so the first poll fetches every group even when
+// millis() is still below the 3 min / 60 min interval.
+static uint32_t s_lastConnectAtt = 0;
+static uint32_t s_lastSlowPoll = 0;
+static uint32_t s_lastStaticPoll = 0;
+static uint64_t s_seenMask = 0;   // slots answered since begin()
+static bool s_energyLogged = false;
+static bool s_infoLogged = false;
 
 // ---------------------------------------------------------------------------
 // Protocol helpers
@@ -192,13 +212,12 @@ static bool rctEventWaiting() {
   return s_eventPending && (int32_t)(millis() - s_eventWaitUntil) < 0;
 }
 
-// Hook into the wait loop. Collecting a cycle means sitting in rctReceiveFrame()
-// while the device answers, and LVGL runs in the same FreeRTOS task as this file -
-// without a way to render in between, the panel stands still for as long as the
-// wait lasts. main.cpp installs displayLooper()+lv_tick_inc here, which is the
-// only safe place: it is the same task, so dev is still only ever touched
-// from one context.
-static void (*rctYieldHook)() = nullptr;
+// Collecting a cycle means sitting in rctReceiveFrame() while the device
+// answers, and LVGL runs in the same FreeRTOS task as this file - without a way
+// to render in between, the panel stands still for as long as the wait lasts.
+// Call deviceYieldHook() directly: Device.cpp's hook already checks whether
+// anything is installed. A second, private pointer here stayed null forever
+// and made the loop take delay(1) instead of rendering.
 
 enum RCT_RX : int { RCT_RX_OK = 0, RCT_RX_TIMEOUT, RCT_RX_CRC };
 
@@ -254,11 +273,8 @@ static int rctReceiveFrame(uint8_t &command, uint32_t &oid,
       rctRx.reset();
       return RCT_RX_TIMEOUT;
     }
-    if (rctYieldHook) {
-      deviceYieldHook(); // keep the panel rendering while we wait for the frame
-    } else {
-      delay(1);
-    }
+    deviceYieldHook(); // keep the panel rendering while we wait for the frame
+    delay(1);          // and do not spin at 100% when the hook is cheap
   }
 
   if (!rctRx.complete()) {
@@ -521,6 +537,33 @@ static int rctSlotForOid(uint32_t oid) {
   return -1;
 }
 
+// Which cadence a slot belongs to. HA's split is the reference: powers, phases,
+// day counters, fault words and the island flag are live; month/year/lifetime
+// counters and battery metadata are INFREQUENT; name and version are STATIC.
+enum RctPollGroup : uint8_t { RCT_GROUP_FAST, RCT_GROUP_SLOW, RCT_GROUP_STATIC };
+
+static RctPollGroup rctGroupOf(int slot) {
+  if (slot == RCT_SLOT_DEVNAME || slot == RCT_SLOT_SVN) {
+    return RCT_GROUP_STATIC;
+  }
+  if ((slot >= RCT_SLOT_P0 && slot <= RCT_SLOT_PGRIDSUM) ||
+      (slot >= RCT_SLOT_V0 && slot <= RCT_SLOT_EGRIDLOADDAY) ||
+      (slot >= RCT_SLOT_BATSTATUS && slot <= RCT_SLOT_FLT3) ||
+      slot == RCT_SLOT_ISLAND) {
+    return RCT_GROUP_FAST;
+  }
+  return RCT_GROUP_SLOW;
+}
+
+// Every counter the "Energie" page prints. Used only for the one-time bring-up
+// log, which has to prove that all of them answered once before it claims the
+// page's numbers are real.
+static bool rctIsEnergySlot(int slot) {
+  return slot == RCT_SLOT_EFEED || slot == RCT_SLOT_ELOAD ||
+         (slot >= RCT_SLOT_DC0 && slot <= RCT_SLOT_EGRIDLOADDAY) ||
+         (slot >= RCT_SLOT_DCMONTH0 && slot <= RCT_SLOT_EXTMONP);
+}
+
 // How each tracked object is decoded. The first RCT_SLOT_DEVNAME slots are
 // all plain FLOAT grid/phase values; the slow device-info group is a mix.
 enum RCT_DTYPE : uint8_t { RCT_DT_FLOAT = 0, RCT_DT_INT, RCT_DT_STRING };
@@ -584,10 +627,24 @@ static void rctDrain(uint32_t ms) {
   }
 }
 
-static void rctSendExtension() {
+static bool rctSendExtension() {
+  // Three bytes, no CRC: tools/crc_test keeps the vector that says so.
   static const uint8_t ext[] = {0x2b, 0x3c, 0xe1};
-  s_link->write(ext, sizeof(ext));
+  if (s_link->write(ext, sizeof(ext)) != sizeof(ext)) {
+    return false;
+  }
   rctDrain(300);
+  return true;
+}
+
+// Every exit from a collection run goes through this: a batch is a transaction,
+// not a permanent lease on the device's single listening socket. HA closes in
+// a finally block, Tinkerforge shuts down and closes on teardown. A close on a
+// link that is already gone is harmless.
+static void rctDropLink() {
+  if (s_link != nullptr) {
+    s_link->close();
+  }
 }
 
 // The driver's own handle on the state. Everything outside src/rct/ reads it
@@ -631,6 +688,10 @@ static void rctPoll(uint32_t budgetMs) {
     // No link: skip the attempt so the UI (same task) is never frozen by a
     // blocking connect. "not connected" is signaled through dev.
     if (WiFi.status() != WL_CONNECTED) {
+      // A Wi-Fi drop is not a device timeout: the TCP socket is already dead,
+      // and holding it only leaves a stale entry in the device's connection
+      // table until the next successful connect.
+      rctDropLink();
       dev.connected = false;
       return;
     }
@@ -641,25 +702,32 @@ static void rctPoll(uint32_t budgetMs) {
     // well under 100 ms, so 400 ms costs nothing and turns a 2 s freeze into
     // a barely noticeable one. Recovery is cheap because the retry cadence,
     // not the timeout, governs how often we try.
-    static uint32_t lastAtt = 0;
     const uint32_t nowAtt = millis();
-    if ((int32_t)(nowAtt - lastAtt) >= (int32_t)RCT_CONNECT_RETRY_MS) {
-      lastAtt = nowAtt;
-      int port = atol(s_cfg.port);
-      if (port <= 0) {
-        port = 8899; // the RCT Power's standard port, if the field is empty
+    if ((int32_t)(nowAtt - s_lastConnectAtt) >= (int32_t)RCT_CONNECT_RETRY_MS) {
+      s_lastConnectAtt = nowAtt;
+      // The log and the socket must use the same number. Parsing here and
+      // handing the raw config string to open() logged 8899 for an empty
+      // field but connected to port 0. strtol also rejects "8899abc" and
+      // values above 65535, which would wrap in the transport's uint16_t.
+      char *portEnd = nullptr;
+      long parsedPort = strtol(s_cfg.port, &portEnd, 10);
+      if (portEnd == s_cfg.port || *portEnd != '\0' || parsedPort <= 0 ||
+          parsedPort > 65535) {
+        parsedPort = 8899; // the RCT Power's standard port
       }
-      Serial.printf("RCT: connecting to %s:%d ...\n", s_cfg.host, port);
+      char portText[8];
+      snprintf(portText, sizeof(portText), "%ld", parsedPort);
+      Serial.printf("RCT: connecting to %s:%ld ...\n", s_cfg.host, parsedPort);
       // connect() is the one blocking lwIP call the yield hook cannot get into,
       // so it gets its own phase name: a panel that wedges on a connect is a
       // different fault than one that wedges on a poll, and the two need
       // different fixes.
       diagPhase("rct.connect");
-      if (!s_link->open(s_cfg.host, s_cfg.port, RCT_CONNECT_TIMEOUT_MS)) {
+      if (!s_link->open(s_cfg.host, portText, RCT_CONNECT_TIMEOUT_MS)) {
         // A failed connect can leave the socket half-open; the observation on
         // the panel was 21 of them stacked up, which eventually exhausted the
         // peer's listen backlog and made every later connect fail too.
-        s_link->close();
+        rctDropLink();
         Serial.println("RCT: connect failed");
         dev.connected = false;
         return;
@@ -667,28 +735,52 @@ static void rctPoll(uint32_t budgetMs) {
       dev.connected = true;
       deviceYieldHook();
       delay(20);
-      rctSendExtension();
+      if (!rctSendExtension()) {
+        Serial.println("RCT: Extension nicht gesendet, Verbindung verworfen");
+        rctDropLink();
+        dev.connected = false;
+        return;
+      }
     } else {
       dev.connected = false;
       return;
     }
   }
 
-  // Ask for every value we track. The device-info group runs on its own
-  // cadence (RCT_INFO_POLL_MS) so the two groups can be tuned independently
-  // without changing the fast group's bus share.
-  static uint32_t lastInfoPoll = 0;
+  // Ask only the groups that are due. The first poll asks all three: zero is
+  // "never", not "50 days ago", so a boot does not wait three minutes for the
+  // device name. Groups that are not due keep their last good values.
   const uint32_t nowMs = millis();
-  const bool pollInfo = (int32_t)(nowMs - lastInfoPoll) >=
-                        (int32_t)RCT_INFO_POLL_MS;
+  const bool pollSlow = s_lastSlowPoll == 0 ||
+                        (int32_t)(nowMs - s_lastSlowPoll) >=
+                            (int32_t)RCT_SLOW_POLL_MS;
+  const bool pollStatic = s_lastStaticPoll == 0 ||
+                          (int32_t)(nowMs - s_lastStaticPoll) >=
+                              (int32_t)RCT_STATIC_POLL_MS;
+  uint64_t dueMask = 0; // every slot whose READ went out in this batch
   for (int i = 0; i < RCT_NUM_SLOTS; i++) {
-    if (i >= RCT_SLOT_DEVNAME && !pollInfo) {
+    const RctPollGroup group = rctGroupOf(i);
+    if ((group == RCT_GROUP_SLOW && !pollSlow) ||
+        (group == RCT_GROUP_STATIC && !pollStatic)) {
       continue;
     }
-    rctSendRead(rctOids[i]);
+    if (!rctSendRead(rctOids[i])) {
+      // A short write leaves a half frame on the wire. Everything received
+      // after it belongs to a frame whose header the device never got.
+      Serial.printf("RCT: Schreiben von OID 0x%08X fehlgeschlagen, "
+                    "Verbindung verworfen\n",
+                    (unsigned)rctOids[i]);
+      rctDropLink();
+      dev.connected = false;
+      return;
+    }
+    dueMask |= (1ull << i);
   }
-  if (pollInfo) {
-    lastInfoPoll = nowMs;
+  if (pollSlow) {
+    s_lastSlowPoll = nowMs;
+  }
+  if (pollStatic) {
+    s_lastStaticPoll = nowMs;
   }
 
   // A request from the web page's button: write the query window, then read it
@@ -714,8 +806,14 @@ static void rctPoll(uint32_t budgetMs) {
         (int32_t)RCT_EVENT_REQ_TTL_MS) {
       const time_t jetzt = time(nullptr);
       if (jetzt > (time_t)eventtime::kPlausibleFrom) {
-        rctSendWrite(rctevents::kTableOid, (uint32_t)jetzt);
-        rctSendRead(rctevents::kTableOid);
+        if (!rctSendWrite(rctevents::kTableOid, (uint32_t)jetzt) ||
+            !rctSendRead(rctevents::kTableOid)) {
+          Serial.println(F("RCT: Ereignisabruf nicht gesendet, Verbindung "
+                           "verworfen"));
+          rctDropLink();
+          dev.connected = false;
+          return;
+        }
         s_eventPending = true;
         s_eventWaitUntil = millis() + RCT_EVENT_WAIT_MS;
         s_eventAsks++;
@@ -732,40 +830,40 @@ static void rctPoll(uint32_t budgetMs) {
     }
   }
 
-  // Consume the stream for this poll; keep last-good values per slot. The
-  // fast group gates the receive window; info responses are consumed
-  // opportunistically whenever they arrive during the same window.
+  // Consume the stream for this poll; keep last-good values per slot. The batch
+  // gates the window: a slot that was not sent must not keep it open, and an
+  // answer that arrives late is still decoded by OID.
   //
-  // This is the phase that blocks: every OID the device does not answer costs
-  // the full RCT_RX_TIMEOUT_MS. With 60 slots now polled and the real device
-  // answering 45 of them, that is the single longest stretch in the whole loop.
+  // This is the phase that blocks: silence after the last answered frame ends
+  // the run. Waiting for every OID that never answers used to hold the panel
+  // for the full receive window on each of them.
   diagPhase("rct.poll");
   static float rctCur[RCT_NUM_SLOTS];
   static uint32_t rctRaw[RCT_NUM_SLOTS]; // exact ints (calib ts, island ...)
-  static uint32_t infoSeen = 0;          // slow slots that answered once
-  static bool infoLogged = false;        // one-time bring-up log
-  // 64-bit: the fast group has grown past 32 slots, so a 32-bit mask (and the
-  // 1u << 32 shift that built its "all answered" mask) no longer works.
-  uint64_t freshMask = 0;
-  const uint32_t fastSlots = (uint32_t)RCT_SLOT_DEVNAME;
-  const uint64_t allFast =
-      (fastSlots >= 64) ? ~0ull : ((1ull << fastSlots) - 1ull);
-  // The accumulated-energy block, for the one-time bring-up log below.
-  // Contiguous energy block: month/year/lifetime accumulators plus the external
-  // (S0) counters. The whole block has to answer before the one-time energy log
-  // fires, so that log proves every value the "Energie" page shows for that
-  // period - not just the ones that happen to have arrived first.
-  const uint64_t energySlotsMask =
-      ((1ull << (RCT_SLOT_EXTTOTAL - RCT_SLOT_DCMONTH0 + 1)) - 1ull)
-      << RCT_SLOT_DCMONTH0;
+  uint64_t freshMask = 0;                // fast slots answered this poll
+  uint64_t answeredMask = 0;             // every tracked slot answered here
+  uint64_t energySlotsMask = 0;
+  int fastCount = 0;
+  for (int i = 0; i < RCT_NUM_SLOTS; i++) {
+    if (rctGroupOf(i) == RCT_GROUP_FAST) {
+      fastCount++;
+    }
+    if (rctIsEnergySlot(i)) {
+      energySlotsMask |= (1ull << i);
+    }
+  }
+  const uint64_t infoSlotsMask =
+      ((1ull << (RCT_SLOT_ISLAND - RCT_SLOT_DEVNAME + 1)) - 1ull)
+      << RCT_SLOT_DEVNAME;
   unsigned long deadline = millis() + budgetMs;
   bool streamQuiet = false;
   bool gotFrame = false;
-  // The fast group gates the window, but a pending event-table answer keeps it
-  // open past it: the table is not one of the fast slots and arrives ~0.36 s
+  // The batch gates the window, not a fixed group: only the slots whose READ
+  // actually went out have to answer. A pending event-table answer keeps it open
+  // past that: the table is not one of the tracked slots and arrives ~0.36 s
   // after the request, by which time a quick device may already have answered
-  // everything else.
-  while ((freshMask != allFast || rctEventWaiting()) && !streamQuiet &&
+  // everything else. freshMask is kept only for the S0 integrator and the log.
+  while ((answeredMask != dueMask || rctEventWaiting()) && !streamQuiet &&
          (int32_t)(millis() - deadline) < 0) {
     uint8_t command = 0;
     // Points into rctRxBuf and is only good until the next call, which is
@@ -788,7 +886,7 @@ static void rctPoll(uint32_t budgetMs) {
     }
     if (rc == RCT_RX_TIMEOUT) {
       if (!s_link->peerOpen()) {
-        s_link->close();
+        rctDropLink();
         dev.connected = false;
       }
       streamQuiet = true;
@@ -821,9 +919,9 @@ static void rctPoll(uint32_t budgetMs) {
           dev.haveBattery = true; // SOC only answers on battery devices
         }
         dev.lastUpdateMs = millis();
-        if (slot >= RCT_SLOT_DEVNAME) {
-          infoSeen |= (1u << (slot - RCT_SLOT_DEVNAME));
-        } else {
+        s_seenMask |= (1ull << slot);
+        answeredMask |= (1ull << slot);
+        if (rctGroupOf(slot) == RCT_GROUP_FAST) {
           freshMask |= (1ull << slot);
         }
       }
@@ -836,9 +934,19 @@ static void rctPoll(uint32_t budgetMs) {
     if (command == rctframe::kCmdLongResponse &&
         respOid == rctevents::kTableOid) {
       const size_t neu = rctEventLog.decode(payload, payloadLen);
-      rctPublishEvents();
-      rctLogEvents(neu, payloadLen);
-      s_eventPending = false; // the answer to our request, or a passive one
+      if (!rctEventLog.valid()) {
+        // The CRC was right but the length was not 4 + n*20 - the device was
+        // interrupted while it prepared the table (documented by rctclient).
+        // Keep s_eventPending so the retry below asks again; do not publish a
+        // half-parsed answer into the snapshot.
+        Serial.printf("RCT: Ereignislog verworfen - %u Byte passen nicht zu "
+                      "4 + n*20 Byte\n",
+                      (unsigned)payloadLen);
+      } else {
+        rctPublishEvents();
+        rctLogEvents(neu, payloadLen);
+        s_eventPending = false; // the answer to our request, or a passive one
+      }
     }
   }
 
@@ -849,9 +957,10 @@ static void rctPoll(uint32_t budgetMs) {
   // roughly half the cases (see RCT_EVENT_MAX_ASKS) - so the same press asks
   // again, with the next poll and a fresh timestamp. s_eventAsks ends the
   // chain after RCT_EVENT_MAX_ASKS tries, and the age check in the send block
-  // ends it earlier when the device has been unreachable the whole time. An
-  // answer that arrives later, from another client's request, is decoded
-  // anyway (it always was) and counts: it clears s_eventPending here too.
+  // ends it earlier when the device has been unreachable the whole time. A
+  // structurally valid answer that arrives later, from another client's
+  // request, is decoded anyway (it always was) and counts: it clears
+  // s_eventPending here too. A CRC-ok but truncated answer does not.
   if (s_eventPending && s_eventAsks < RCT_EVENT_MAX_ASKS) {
     s_eventRequest = true;
     Serial.printf("RCT: Ereignislog ohne Antwort, frage erneut (naechste "
@@ -863,6 +972,7 @@ static void rctPoll(uint32_t budgetMs) {
   if (!dev.haveData) {
     Serial.println(F("RCT: no data yet (device unresponsive or only answers "
                      "while the app is connected)"));
+    rctDropLink();
     return;
   }
 
@@ -1011,7 +1121,7 @@ static void rctPoll(uint32_t budgetMs) {
   // islandKnown distinguishes "the device said 0" from "the device has not
   // answered this OID yet" - both read as 0 in rctRaw, and the Service page
   // would otherwise claim "nein" before the first answer arrived.
-  if (infoSeen & (1u << (RCT_SLOT_ISLAND - RCT_SLOT_DEVNAME))) {
+  if (s_seenMask & (1ull << RCT_SLOT_ISLAND)) {
     dev.islandKnown = true;
     dev.islandMode = (rctRaw[RCT_SLOT_ISLAND] & 1u) != 0;
   }
@@ -1019,9 +1129,9 @@ static void rctPoll(uint32_t budgetMs) {
   // One-time bring-up log for the "Energie" page: proves the 13 accumulated
   // OIDs answer and that the units are kWh. Every meter prints in the period
   // order the page offers: Tag / Monat / Jahr / Gesamt.
-  static bool energyLogged = false;
-  if (!energyLogged && (freshMask & energySlotsMask) == energySlotsMask) {
-    energyLogged = true;
+  if (!s_energyLogged &&
+      (s_seenMask & energySlotsMask) == energySlotsMask) {
+    s_energyLogged = true;
     Serial.printf("RCT energy [kWh Tag/Monat/Jahr/Gesamt] PV %.1f/%.1f/%.1f/"
                   "%.1f | Verbrauch %.1f/%.1f/%.1f/%.1f | Einspeisung "
                   "%.1f/%.1f/%.1f/%.1f | Bezug %.1f/%.1f/%.1f/%.1f"
@@ -1042,10 +1152,9 @@ static void rctPoll(uint32_t budgetMs) {
                   dev.yearExtWh / 1000.0f, dev.totalExtWh / 1000.0f);
   }
 
-  // One-time bring-up log once the whole slow group has answered.
-  if (!infoLogged && infoSeen ==
-                         ((1u << (RCT_NUM_SLOTS - RCT_SLOT_DEVNAME)) - 1u)) {
-    infoLogged = true;
+  // One-time bring-up log once the whole info group has answered.
+  if (!s_infoLogged && (s_seenMask & infoSlotsMask) == infoSlotsMask) {
+    s_infoLogged = true;
     // The raw island and bat_status values are printed alongside the decoded
     // ones: both are polarity questions that only the real device can settle,
     // and the decode is only trustworthy if the raw value is visible next to it.
@@ -1090,7 +1199,12 @@ static void rctPoll(uint32_t budgetMs) {
                 // Our own integration of extW, since boot. Independent of
                 // the device: it must track the day counter's rise. A growing
                 // gap means the counter is not what its name says.
-                dev.extEnergyWh / 1000.0f, freshCount, RCT_NUM_SLOTS);
+                dev.extEnergyWh / 1000.0f, freshCount, fastCount);
+
+  // A batch is done. Close it even when it succeeded: the next poll reconnects
+  // with its own extension frame. The device never sees two of our sessions,
+  // and a half-open session cannot survive a Wi-Fi or configuration change.
+  rctDropLink();
 }
 
 // ---------------------------------------------------------------------------
@@ -1100,6 +1214,21 @@ static void rctPoll(uint32_t budgetMs) {
 void RctDriver::setTransport(DeviceTransport *link) { s_link = link; }
 
 void RctDriver::begin(const DeviceConfig &cfg) {
+  // The settings page re-begins the driver after a save. A changed address
+  // makes the current socket meaningless, and keeping it would leave the new
+  // host's listen slot occupied while the panel talks to the old one.
+  const bool addressChanged = strcmp(s_cfg.host, cfg.host) != 0 ||
+                              strcmp(s_cfg.port, cfg.port) != 0;
+  if (addressChanged) {
+    rctDropLink();
+    // New device: fetch every group again and print its bring-up lines.
+    s_lastConnectAtt = 0;
+    s_lastSlowPoll = 0;
+    s_lastStaticPoll = 0;
+    s_seenMask = 0;
+    s_energyLogged = false;
+    s_infoLogged = false;
+  }
   s_cfg = cfg;
 
   // What this family can report. Stated here rather than derived from what

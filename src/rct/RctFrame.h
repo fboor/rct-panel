@@ -9,9 +9,14 @@
 //
 // There are TWO shapes, and the difference is the reason this file exists:
 //
-//   command 0x01 0x02 0x05    one length byte
-//   command 0x03 0x04 0x06    TWO length bytes, so a frame can carry a
-//                             kilobyte of payload
+//   command 0x01 0x02 0x05 0x08    one length byte
+//   command 0x03 0x06              TWO length bytes, so a frame can carry a
+//                                  kilobyte of payload
+//
+// 0x04 is reserved. READ_PERIODICALLY is 0x08 and has a ONE-byte length: rctclient's
+// protocol overview lists it that way, and its Command.is_long() names only
+// 0x03, 0x06 and their plant variants. Treating 0x08 as long shifted the object id
+// and the checksum of every periodic frame by one byte.
 //
 // The driver this was taken from knew only the first shape and read the length
 // field as one byte whatever the command said. Against the small values that
@@ -52,9 +57,10 @@ const uint8_t kEscape = 0x2d; // in front of a start token or an escape
 const uint8_t kCmdRead = 0x01;
 const uint8_t kCmdWrite = 0x02;
 const uint8_t kCmdLongWrite = 0x03;
-const uint8_t kCmdReadPeriodically = 0x04;
+// 0x04 is reserved (rctclient protocol overview).
 const uint8_t kCmdResponse = 0x05;
 const uint8_t kCmdLongResponse = 0x06;
+const uint8_t kCmdReadPeriodically = 0x08;
 
 // Bit 6 of the command: addressed to another component on the bus.
 const uint8_t kCmdPlantBit = 0x40;
@@ -204,8 +210,7 @@ public:
   size_t frameLen() const { return mTotal; }
 
   static bool isLong(uint8_t cmd) {
-    return cmd == kCmdLongWrite || cmd == kCmdReadPeriodically ||
-           cmd == kCmdLongResponse;
+    return cmd == kCmdLongWrite || cmd == kCmdLongResponse;
   }
 
 private:

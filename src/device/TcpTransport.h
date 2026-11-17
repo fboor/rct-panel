@@ -19,7 +19,20 @@ public:
   }
 
   size_t write(const uint8_t *buf, size_t n) override {
-    return m_client.write(buf, n);
+    // WiFiClient::write() may return a short count. The driver's contract says
+    // all n bytes or none, and a frame with a missing byte is worse than no
+    // frame: the receiver then reads a checksum that belongs to the next frame.
+    // Tinkerforge's TCP client does the same bounded loop; HA's asyncio writer
+    // buffers the whole frame before drain(). Ten tries is that client's limit.
+    size_t done = 0;
+    for (int tries = 0; tries < 10 && done < n; ++tries) {
+      const size_t now = m_client.write(buf + done, n - done);
+      if (now == 0) {
+        break;
+      }
+      done += now;
+    }
+    return done;
   }
 
   int available() override { return m_client.available(); }
