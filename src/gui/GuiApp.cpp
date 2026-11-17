@@ -651,6 +651,60 @@ static uint32_t s_apTestUntil = 0; // boot test deadline (ms), 0 = none
 //
 // The sign rule from NumFmt.h applies here too: a value that rounds to zero is
 // shown without its minus.
+
+// Write a label only when the text actually differs.
+//
+// lv_label_set_text() frees the old string, allocates and formats the new one,
+// lays the text out again and ends in lv_obj_invalidate() - even when the new
+// text is the one the label already shows. The refresh callback runs every
+// second while the device reports every ten, so nine of ten writes would repaint
+// the same text and churn the heap for nothing. The formatters below therefore
+// compare first; a direct lv_label_set_text() is only for text that is set once.
+static void setLabelText(lv_obj_t *label, const char *text) {
+  if (label == nullptr) {
+    return;
+  }
+  const char *current = lv_label_get_text(label);
+  if (current != nullptr && strcmp(current, text) == 0) {
+    return;
+  }
+  lv_label_set_text(label, text);
+}
+
+// The same for the three style properties the refresh writes. A style write goes
+// through lv_obj_refresh_style(), which invalidates the object whatever the value
+// was - on the flow page that is the bounding box of a whole ring sector per
+// write. Compare what the object resolves and write only a real change.
+static void setTextColor(lv_obj_t *obj, lv_color_t color) {
+  if (obj == nullptr) {
+    return;
+  }
+  if (lv_color_eq(lv_obj_get_style_text_color(obj, LV_PART_MAIN), color)) {
+    return;
+  }
+  lv_obj_set_style_text_color(obj, color, LV_PART_MAIN);
+}
+
+static void setLineColor(lv_obj_t *obj, lv_color_t color) {
+  if (obj == nullptr) {
+    return;
+  }
+  if (lv_color_eq(lv_obj_get_style_line_color(obj, LV_PART_MAIN), color)) {
+    return;
+  }
+  lv_obj_set_style_line_color(obj, color, LV_PART_MAIN);
+}
+
+static void setBgColor(lv_obj_t *obj, lv_color_t color) {
+  if (obj == nullptr) {
+    return;
+  }
+  if (lv_color_eq(lv_obj_get_style_bg_color(obj, LV_PART_MAIN), color)) {
+    return;
+  }
+  lv_obj_set_style_bg_color(obj, color, LV_PART_MAIN);
+}
+
 // A power on the display: whole watts below 1 kW, kilowatts above it, and the
 // decimal point of the language this firmware was built for. The four values of
 // the overview went through setText() until now, which put a dot in a German
@@ -658,7 +712,7 @@ static uint32_t s_apTestUntil = 0; // boot test deadline (ms), 0 = none
 static void setPower(lv_obj_t *label, float watts) {
   char buf[48];
   fmtPower(buf, sizeof(buf), watts);
-  lv_label_set_text(label, buf);
+  setLabelText(label, buf);
 }
 
 static void setText(lv_obj_t *label, const char *fmt, ...) {
@@ -668,7 +722,7 @@ static void setText(lv_obj_t *label, const char *fmt, ...) {
   vsnprintf(buf, sizeof(buf), fmt, ap);
   va_end(ap);
   numDropNegZero(buf);
-  lv_label_set_text(label, buf);
+  setLabelText(label, buf);
 }
 
 // Same, but for rows that print numbers: the decimal separator is a comma, as
@@ -687,7 +741,7 @@ static void setNum(lv_obj_t *label, const char *fmt, ...) {
     }
   }
   numDropNegZero(buf);
-  lv_label_set_text(label, buf);
+  setLabelText(label, buf);
 }
 
 static lv_obj_t *makeLabel(lv_obj_t *parent, const char *text,
@@ -790,6 +844,13 @@ struct KeilLinie {
   // the array it is handed.
   lv_obj_t *pfeil;
   lv_point_precise_t sp[3];
+  // Whether sp[] already holds the points of the direction now on screen. The
+  // refresh calls this once per sector per second and the direction only changes
+  // when a flow turns, so rewriting the same three points would invalidate the
+  // mark for nothing. applyFlowLayout() hides the marks when the geometry moves,
+  // which clears this with them.
+  bool pfeilAn;
+  bool pfeilAuf;
 };
 static KeilLinie s_keil[3]; // 0 = PV -> Netz, 1 = PV -> Akku, 2 = Akku <-> Netz
 
@@ -883,16 +944,17 @@ static void keilSetzen(int k, bool fliesst) {
   // fliesst, not aktiv: the i18n check reads the sources with the comments stripped
   // and refuses a German UI text appearing in an identifier, and "aktiv" is the text
   // of T_D_BADGE_LIVE. The panel already calls this fliesst everywhere else.
-  lv_obj_set_style_line_color(s_keil[k].ln, fliesst ? FLOW_RED : FLOW_LINE, 0);
+  setLineColor(s_keil[k].ln, fliesst ? FLOW_RED : FLOW_LINE);
 }
 
 // The arrowhead on the sector. Where it stands, which way it points and how far its two
 // barbs reach is flowKeilPfeil()'s work and is host-tested there; this hands the three
 // points to LVGL and shows or hides the object.
 //
-// The points are written again on every call, because they depend on the direction and
-// the direction is a run-time thing: the lower right sector can be lit either way round.
-// There is no rotation and no font involved: the mark is three points of a 2 px line, so
+// The points are rewritten only when the direction differs from the one already
+// drawn, because they depend on the direction and the direction is a run-time
+// thing: the lower right sector can be lit either way round. There is no
+// rotation and no font involved: the mark is three points of a 2 px line, so
 // nothing here can be off by a label box.
 static void keilPfeilSetzen(int k, bool fliesst, bool laeuftAuf) {
   lv_obj_t *pfeil = s_keil[k].pfeil;
@@ -900,18 +962,23 @@ static void keilPfeilSetzen(int k, bool fliesst, bool laeuftAuf) {
     return;
   }
   if (!fliesst) {
+    s_keil[k].pfeilAn = false;
     lv_obj_add_flag(pfeil, LV_OBJ_FLAG_HIDDEN);
     return;
   }
-  const FlowPfeil fp = flowKeilPfeil(ui().flow, s_keil[k].pfeilGrad, laeuftAuf);
-  s_keil[k].sp[0].x = fp.armX[0];
-  s_keil[k].sp[0].y = fp.armY[0];
-  s_keil[k].sp[1].x = fp.spitzeX;
-  s_keil[k].sp[1].y = fp.spitzeY;
-  s_keil[k].sp[2].x = fp.armX[1];
-  s_keil[k].sp[2].y = fp.armY[1];
-  lv_line_set_points(pfeil, s_keil[k].sp, 3);
-  lv_obj_set_style_line_color(pfeil, FLOW_RED, 0);
+  if (!s_keil[k].pfeilAn || s_keil[k].pfeilAuf != laeuftAuf) {
+    const FlowPfeil fp = flowKeilPfeil(ui().flow, s_keil[k].pfeilGrad, laeuftAuf);
+    s_keil[k].sp[0].x = fp.armX[0];
+    s_keil[k].sp[0].y = fp.armY[0];
+    s_keil[k].sp[1].x = fp.spitzeX;
+    s_keil[k].sp[1].y = fp.spitzeY;
+    s_keil[k].sp[2].x = fp.armX[1];
+    s_keil[k].sp[2].y = fp.armY[1];
+    lv_line_set_points(pfeil, s_keil[k].sp, 3);
+    setLineColor(pfeil, FLOW_RED);
+    s_keil[k].pfeilAn = true;
+    s_keil[k].pfeilAuf = laeuftAuf;
+  }
   lv_obj_remove_flag(pfeil, LV_OBJ_FLAG_HIDDEN);
 }
 
@@ -966,7 +1033,7 @@ static void setEnergyValue(lv_obj_t *label, float wh) {
   } else {
     fmtNumComma(buf, sizeof(buf), "%.2f MWh", (double)(wh / 1000000.0f));
   }
-  lv_label_set_text(label, buf);
+  setLabelText(label, buf);
 }
 
 // The meter values of the selected period, in Wh, in the panel's terms.
@@ -1624,7 +1691,7 @@ static void ovSetState(int i, lv_color_t farbe, const char *wort) {
   if (s_ovBtn[i] == nullptr) {
     return;
   }
-  lv_obj_set_style_bg_color(s_ovBtn[i], farbe, LV_PART_MAIN);
+  setBgColor(s_ovBtn[i], farbe);
   setText(s_pages[PAGE_OVERVIEW].labels[s_ovLabel[i]], "%s", wort);
 }
 
@@ -2027,7 +2094,7 @@ static void serviceRelayState() {
   // the settings are still there, and the pin may yet be found.
   if (!BOARD_RELAY_PRESENT) {
     setText(st, "%s", tr(T_D_OUT_NO_OUTPUT));
-    lv_obj_set_style_text_color(st, COL_MUTED, 0);
+    setTextColor(st, COL_MUTED);
     return;
   }
   // "AN" / "AUS" in beiden Zeilen darunter: der Test und die Funktion zeigen
@@ -2038,7 +2105,7 @@ static void serviceRelayState() {
     // While the test runs, what it is doing is the point: "AN" and "AUS" every
     // 5 s, not the mode it is temporarily overriding.
     setText(st, tr(T_D_OUT_TEST), relayIsOn() ? on : off);
-    lv_obj_set_style_text_color(st, relayIsOn() ? uiOk() : COL_MUTED, 0);
+    setTextColor(st, relayIsOn() ? uiOk() : COL_MUTED);
     return;
   }
   // Only the two threshold modes show a number, and only they can say how old
@@ -2056,10 +2123,7 @@ static void serviceRelayState() {
   // Stale and therefore no news: dimmed, whatever the contact is doing. The
   // rule may well be acting on this number for several more minutes
   // (DATA_MAX_AGE_MS in Relay.cpp), so saying so is not decoration.
-  lv_obj_set_style_text_color(st,
-                              stale ? COL_MUTED
-                                    : (relayIsOn() ? uiOk() : COL_MUTED),
-                              0);
+  setTextColor(st, stale ? COL_MUTED : (relayIsOn() ? uiOk() : COL_MUTED));
 }
 
 void guiRelayStateChanged() {
@@ -2970,8 +3034,8 @@ static void refreshCb(lv_timer_t *t) {
     badgeCol = uiOk();
     break;
   }
-  lv_label_set_text(s_statusLabel, badge);
-  lv_obj_set_style_text_color(s_statusLabel, badgeCol, 0);
+  setLabelText(s_statusLabel, badge);
+  setTextColor(s_statusLabel, badgeCol);
 
   AppPage &ov = s_pages[PAGE_OVERVIEW];
   if (ov.labels[OV_GRID_VAL]) {
@@ -3100,12 +3164,12 @@ static void refreshCb(lv_timer_t *t) {
       const bool netzTraegt = fliesst || exportGrid || pvAnsNetz || akkuAnNetz || netzAnAkku;
       if (fabsf(pTot) >= kFlowGridActiveW && netzTraegt) {
         setPower(ov.labels[OV_GRID_VAL], pTot);
-        lv_obj_set_style_text_color(ov.labels[OV_GRID_VAL], FLOW_RED, 0);
+        setTextColor(ov.labels[OV_GRID_VAL], FLOW_RED);
       } else {
-        lv_label_set_text(ov.labels[OV_GRID_VAL], blank);
-        lv_obj_set_style_text_color(ov.labels[OV_GRID_VAL], FLOW_WHITE, 0);
+        setLabelText(ov.labels[OV_GRID_VAL], blank);
+        setTextColor(ov.labels[OV_GRID_VAL], FLOW_WHITE);
       }
-      lv_obj_set_style_line_color(s_lineGrid, (fliesst || exportGrid) ? FLOW_RED : FLOW_LINE, 0);
+      setLineColor(s_lineGrid, (fliesst || exportGrid) ? FLOW_RED : FLOW_LINE);
       // The arrow follows the direction the power runs. On an import it points
       // into the house (the stored hub -> node direction); while the household
       // exports it points the other way, out of the hub and into the meter.
@@ -3143,9 +3207,9 @@ static void refreshCb(lv_timer_t *t) {
       }
       speerPfeilSetzen(1, s_layout.linkGrid.visible, fliesst || exportGrid);
     } else {
-      lv_label_set_text(ov.labels[OV_GRID_VAL], dash);
-      lv_obj_set_style_text_color(ov.labels[OV_GRID_VAL], FLOW_WHITE, 0);
-      lv_obj_set_style_line_color(s_lineGrid, FLOW_LINE, 0);
+      setLabelText(ov.labels[OV_GRID_VAL], dash);
+      setTextColor(ov.labels[OV_GRID_VAL], FLOW_WHITE);
+      setLineColor(s_lineGrid, FLOW_LINE);
       speerPfeilSetzen(1, s_layout.linkGrid.visible, false);
     }
 
@@ -3169,16 +3233,16 @@ static void refreshCb(lv_timer_t *t) {
     const bool pvTraegt = pvFliesst || pvAnsNetz || pvAnsAkku || pvIstDieGanzeseite;
     if (has && pvProduziert && pvTraegt) {
       setPower(ov.labels[OV_PV_VAL], pvTotal);
-      lv_obj_set_style_text_color(ov.labels[OV_PV_VAL],
-                                  pvArbeitet ? FLOW_RED : FLOW_WHITE, 0);
+      setTextColor(ov.labels[OV_PV_VAL],
+                   pvArbeitet ? FLOW_RED : FLOW_WHITE);
     } else {
-      lv_label_set_text(ov.labels[OV_PV_VAL], has ? blank : dash);
-      lv_obj_set_style_text_color(ov.labels[OV_PV_VAL], FLOW_WHITE, 0);
+      setLabelText(ov.labels[OV_PV_VAL], has ? blank : dash);
+      setTextColor(ov.labels[OV_PV_VAL], FLOW_WHITE);
     }
     if (pvFliesst) {
-      lv_obj_set_style_line_color(s_linePv, FLOW_RED, 0);
+      setLineColor(s_linePv, FLOW_RED);
     } else {
-      lv_obj_set_style_line_color(s_linePv, FLOW_LINE, 0);
+      setLineColor(s_linePv, FLOW_LINE);
     }
     // Outside the if, because "there is flow" is not the same question as "the
     // arrow is wanted": on a device whose diagram has one node there is no
@@ -3198,13 +3262,13 @@ static void refreshCb(lv_timer_t *t) {
         const bool akkuTraegt = fliesstBatt || pvAnsAkku || netzAnAkku;
         if (fabsf(pBat) >= kFlowActiveW && akkuTraegt) {
           setPower(ov.labels[OV_BAT_VAL], pBat);
-          lv_obj_set_style_text_color(ov.labels[OV_BAT_VAL], FLOW_RED, 0);
+          setTextColor(ov.labels[OV_BAT_VAL], FLOW_RED);
         } else {
-          lv_label_set_text(ov.labels[OV_BAT_VAL], has ? blank : dash);
-          lv_obj_set_style_text_color(ov.labels[OV_BAT_VAL], FLOW_WHITE, 0);
+          setLabelText(ov.labels[OV_BAT_VAL], has ? blank : dash);
+          setTextColor(ov.labels[OV_BAT_VAL], FLOW_WHITE);
         }
         const bool fliesst = fliesstBatt;
-        lv_obj_set_style_line_color(s_lineBat, fliesst ? FLOW_RED : FLOW_LINE, 0);
+        setLineColor(s_lineBat, fliesst ? FLOW_RED : FLOW_LINE);
         // The house exports into the battery: the arrow has to point the other way.
         // The link is stored hub -> node (house at the top, battery below), so the
         // swap is a plain exchange of the two ends - and it is redone every tick
@@ -3248,9 +3312,9 @@ static void refreshCb(lv_timer_t *t) {
         }
         speerPfeilSetzen(2, s_layout.linkBattery.visible, fliesst);
     } else {
-      lv_label_set_text(ov.labels[OV_BAT_VAL], dash);
-      lv_obj_set_style_text_color(ov.labels[OV_BAT_VAL], FLOW_WHITE, 0);
-      lv_obj_set_style_line_color(s_lineBat, FLOW_LINE, 0);
+      setLabelText(ov.labels[OV_BAT_VAL], dash);
+      setTextColor(ov.labels[OV_BAT_VAL], FLOW_WHITE);
+      setLineColor(s_lineBat, FLOW_LINE);
       speerPfeilSetzen(2, s_layout.linkBattery.visible, false);
     }
 
@@ -3272,10 +3336,10 @@ static void refreshCb(lv_timer_t *t) {
                     akkuLaedtGezeichnet, akkuEntlaedtGezeichnet);
     if (has && house >= kFlowActiveW && hausTraegt) {
       setPower(ov.labels[OV_HOUSE_VAL], house);
-      lv_obj_set_style_text_color(ov.labels[OV_HOUSE_VAL], FLOW_RED, 0);
+      setTextColor(ov.labels[OV_HOUSE_VAL], FLOW_RED);
     } else {
-      lv_label_set_text(ov.labels[OV_HOUSE_VAL], has ? blank : dash);
-      lv_obj_set_style_text_color(ov.labels[OV_HOUSE_VAL], FLOW_LINE, 0);
+      setLabelText(ov.labels[OV_HOUSE_VAL], has ? blank : dash);
+      setTextColor(ov.labels[OV_HOUSE_VAL], FLOW_LINE);
     }
 
     // --- The ring: the three ways that do not pass the house ---
@@ -3403,7 +3467,7 @@ static void refreshCb(lv_timer_t *t) {
       if (s.haveData && known[i]) {
         setEnergyValue(eb.labels[i], v[i]);
       } else {
-        lv_label_set_text(eb.labels[i], "--");
+        setLabelText(eb.labels[i], "--");
       }
     }
   }
@@ -3483,7 +3547,7 @@ static void refreshCb(lv_timer_t *t) {
     } else {
       // Before the first frame of data every value shows "--".
       for (int i = EN_GEN_VAL; i <= EN_EVB_VAL; i += 2) {
-        lv_label_set_text(en.labels[i], "--");
+        setLabelText(en.labels[i], "--");
       }
     }
   }
@@ -3568,9 +3632,9 @@ static void refreshCb(lv_timer_t *t) {
   AppPage &sv = s_pages[PAGE_SERVICE];
   if (sv.labels[SV_BAT_STATUS]) {
     if (!s.haveBattery) {
-      lv_label_set_text(sv.labels[SV_BAT_STATUS], tr(T_D_TEND_NOBAT));
+      setLabelText(sv.labels[SV_BAT_STATUS], tr(T_D_TEND_NOBAT));
     } else if (!s.haveData) {
-      lv_label_set_text(sv.labels[SV_BAT_STATUS], "--");
+      setLabelText(sv.labels[SV_BAT_STATUS], "--");
     } else {
       // Decoded state and raw register value on one line: "Unterspannung
       // (0x00000200)". The hex is what makes an unexplained state readable -
@@ -3583,20 +3647,18 @@ static void refreshCb(lv_timer_t *t) {
     }
 
     if (!s.haveData) {
-      lv_label_set_text(sv.labels[SV_FLT_LIST], "--");
+      setLabelText(sv.labels[SV_FLT_LIST], "--");
     } else {
       char tmp[512];
       int nFlt = serviceFaultText(s.faultBits, tmp, sizeof(tmp));
-      lv_label_set_text(sv.labels[SV_FLT_LIST],
-                        nFlt > 0 ? tmp : tr(T_D_NO_FAULTS));
-      lv_obj_set_style_text_color(sv.labels[SV_FLT_LIST],
-                                  nFlt > 0 ? uiText() : uiOk(), 0);
+      setLabelText(sv.labels[SV_FLT_LIST], nFlt > 0 ? tmp : tr(T_D_NO_FAULTS));
+      setTextColor(sv.labels[SV_FLT_LIST], nFlt > 0 ? uiText() : uiOk());
     }
   }
 
   // SD card log status (1 Hz refresh; the writer module keeps it fresh).
   if (sv.labels[SV_SD]) {
-    lv_label_set_text(sv.labels[SV_SD], sdStatusText());
+    setLabelText(sv.labels[SV_SD], sdStatusText());
   }
 
   // Screenshot countdown. Runs here rather than in the button's own callback
@@ -3623,9 +3685,8 @@ static void refreshCb(lv_timer_t *t) {
       // "fehlgeschlagen" only when the worker says the file did not make it onto
       // the card whole: an incomplete BMP is deleted rather than kept, so there is
       // nothing to point at, and the log line next to it says how far it got.
-      lv_label_set_text(sv.labels[SV_SHOT],
-                        sdShotOk() ? tr(T_D_SHOT_SAVED)
-                                   : tr(T_D_SHOT_FAILED));
+      setLabelText(sv.labels[SV_SHOT], sdShotOk() ? tr(T_D_SHOT_SAVED)
+                                                 : tr(T_D_SHOT_FAILED));
     }
   }
 
