@@ -496,8 +496,12 @@
  *  - 254: round up */
 #define LV_COLOR_MIX_ROUND_OFS  0
 
-/** Add 2 x 32-bit variables to each `lv_obj_t` to speed up getting style properties */
-#define LV_OBJ_STYLE_CACHE      0
+/** Add 2 x 32-bit variables to each `lv_obj_t` to speed up getting style properties.
+ *  The UI asks for style values on every refresh - each of the cached colour
+ *  helpers resolves the current value before writing - and the cache turns that
+ *  into a local compare instead of a walk through the style lists. Costs 8 bytes
+ *  per object, which this board has room for. */
+#define LV_OBJ_STYLE_CACHE      1
 
 /** Add `id` field to `lv_obj_t` */
 #define LV_USE_OBJ_ID           0
