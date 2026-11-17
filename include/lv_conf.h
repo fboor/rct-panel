@@ -100,8 +100,14 @@
    HAL SETTINGS
  *====================*/
 
-/** Default display refresh, input device read and animation step period. */
-#define LV_DEF_REFR_PERIOD  33      /**< [ms] */
+/** Default display refresh, input device read and animation step period.
+ *  20 ms instead of the default 33: in LVGL 9.3 this value is the period of both
+ *  the display refresh timer and the touch read timer, so a redraw that the 1 Hz
+ *  tick has invalidated reaches the panel up to 13 ms sooner, and a touch is
+ *  sampled 50 times a second instead of 30. The Guition panel needs 23.7 ms per
+ *  frame anyway (518 lines at a 12 MHz pixel clock), so 20 ms asks for nothing
+ *  the driver cannot deliver; the refresh timer re-arms from the measured time. */
+#define LV_DEF_REFR_PERIOD  20      /**< [ms] */
 
 /** Default Dots Per Inch. Used to initialize default sizes such as widgets sized, style paddings.
  * (Not so important, you can adjust it to modify default sizes and spaces.) */
