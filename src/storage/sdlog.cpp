@@ -1729,10 +1729,11 @@ void sdInit() {
     Serial.println(F("SD: no listing cache, /daten and /bilder disabled"));
   }
   buildStatus();
-  // Priority 1, the same as the Arduino loop task: the card work then shares
-  // the CPU with LVGL instead of pre-empting it, and the worker sleeps 10 ms
-  // between passes so a long card operation cannot monopolise the core.
-  xTaskCreate(sdTask, "sd", 4096, nullptr, 1, nullptr);
+  // Priority 1, the same as the Arduino loop task, but pinned to core 0: LVGL
+  // runs in loop() on core 1, and card work must not compete with the core that
+  // draws. The worker sleeps 10 ms between passes so a long card operation
+  // cannot monopolise the other core either.
+  xTaskCreatePinnedToCore(sdTask, "sd", 4096, nullptr, 1, nullptr, 0);
 }
 
 void sdTick() {
