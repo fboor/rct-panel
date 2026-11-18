@@ -3,40 +3,39 @@
 > **Not affiliated with RCT Power GmbH.** Independent project, no connection to,
 > endorsement by or support from RCT Power GmbH.
 
-Energy panel for an **RCT Power** inverter, on a **Guition ESP32-S3 4848S040**
-wall display (480 × 480, capacitive touch). Live values read over TCP, the
-energy flow, 24 hours of history on an SD card, and a web interface in the local
-network — in German or English, one per build.
+Energy status panel for a **RCT Power** inverter, on a **Guition ESP32-S3 4848S040**
+or **Waveshare ESP32-S3-Touch-LCD-7** display. It displays energy flow and status 
+information and stores data to SD card, and a offers a web interface in the local
+network. Basically its a small local version of the portal application.
 
 ![The overview page: household in the middle, PV, battery and grid around it, three pills below](screenshots/screenshot-s1-d.png)
 
-- **Seven pages**, reached with the three buttons at the bottom: energy flow,
-  daily/monthly/yearly totals, the 24 h graph, device information, the
-  switching output, and the service page.
-- **Live data** re-read from the device every 10 s: grid, household load, PV
+- **Local Display**: Easy to set up and use information display. Very low power and 
+                     all information displayed and saved locally.
+- **Live data**: Quick updated data about grid, household load, PV
   (two strings plus the S0 meter), battery power/current/voltage/SOC,
   temperatures, cycles, SOH, island mode and the device's lifetime counters.
-- **24 h history** from an SD card: one row every five minutes, 288 points, and
+- **24 h history** from an SD card: one row every five minutes and
   the chart is filled again after a restart. The CSV keeps the month, with the
   rows in plain text (23 columns, see `docs/sd-history.md`).
 - **Web interface** at the panel's address: the same values, the energy bars of
   one period, the history as charts (24 h live from the panel, day, week and
   month computed in the browser from the recorded CSV), the CSV and the
-  screenshots as downloads, firmware update over the air. The panel sends
-  numbers; the browser draws them — no chart library and nothing from the
-  internet.
-- **The switching output** (1-Way port) puts 3.3 V on one header pin and drives
+  screenshots as downloads, firmware update over the air. The panel has the
+  data; the browser renders it — locally.
+- **The switching output (Guition only)** (1-Way port) puts 3.3 V on one header pin and drives
   the coil of an external relay from it; the relay's contact then switches the
   consumer. It can follow grid draw, surplus (energy being fed into the grid), a
   fault word or island mode, never runs on data older than ten minutes and says
   so (`docs/relay.md`).
-- **The backlight** dims after three minutes without a touch and switches off
-  after five.
+- **Low power**: Based on a low power ESP32 microcontroller and automatically 
+  dimmed display.
 
 ## Installer
 
-Blank panel: flash it in the browser — no tool, but a USB cable and Chrome, Edge or
+Easy to install directly from the browser — just a USB cable and Chrome, Edge or
 Firefox (it is ESP Web Tools over Web Serial, so the panel needs the cable).
+Updates can be installed through the local web interface easily.
 
 **<https://fboor.github.io/rct-panel/install/>**
 
