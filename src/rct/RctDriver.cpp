@@ -7,12 +7,12 @@
 //   The device behaves like a shared bus: every connected client also sees the
 //   frames of every other client. Frame order is therefore arbitrary. We treat
 //   the connection as a stream:
-//    - send a small window of READs, consume its responses, then send the next
-//      window; accept RESPONSE frames for any tracked OID and ignore everything
-//      else (CRC-damaged frames, WRITEs, other clients' strings and responses).
-//      HA sends one READ and waits for that exact answer, Tinkerforge has one
-//      pending transaction; six at a time keeps the poll short without putting
-//      the old 31-READ burst onto the device,
+//    - send one READ, consume its response, then send the next; accept RESPONSE
+//      frames for any tracked OID and ignore everything else (CRC-damaged
+//      frames, WRITEs, other clients' strings and responses). HA sends one READ
+//      and waits for that exact answer, Tinkerforge has one pending
+//      transaction; at most one request stays at the device, including while
+//      it is silent,
 //    - stop sending windows when one comes back silent. A device that has
 //      stopped answering in a phase does not need the remaining READs repeated
 //      into it,
@@ -53,9 +53,9 @@
 // the same call.
 #define RCT_QUIET_MS 150
 // How many READs go out before the driver stops writing and reads the answers.
-// HA uses one, Tinkerforge one pending transaction; six is the compromise that
-// keeps a 21-slot group to four windows instead of one 21-READ burst.
-#define RCT_READ_WINDOW 6
+// HA uses one, Tinkerforge one pending transaction. One keeps that same limit
+// here, even when HA and the other client are active on the shared bus.
+#define RCT_READ_WINDOW 1
 // Ceiling for one window's receive phase. A window whose READs are not answered
 // ends here even if no byte ever arrived; the overall budget still applies.
 #define RCT_WINDOW_WAIT_MS 800
@@ -257,6 +257,7 @@ static bool s_rxDropReported = false;
 static void rctResetRxClock() {
   s_lastRxByteMs = 0;
   s_rxDropReported = false;
+  rctRx.reset(); // no frame spans two windows
 }
 
 // Wait for and validate one response frame. Returns RCT_RX_OK on success,
@@ -654,36 +655,11 @@ static void rctDecodeString(const uint8_t *p, size_t n, char *dst) {
   dst[c] = '\0';
 }
 
-// The official RCT Power app sends this frame once after connecting to switch
-// the device into request/response ("COM") mode:
-//   0x2b 0x3c 0xe1 = start token, EXTENSION command, single payload byte.
-// Most devices work without it, but some firmware stays silent for plain
-// READs until it was received. No response is expected; any bytes the device
-// sends back are drained so the following READ frames line up.
-// Drain window after the extension frame. This runs on every reconnect, and a
-// plain delay(1) here froze the GUI for the full 300 ms - not a long stall, but
-// it lands right where the user is most likely to be switching pages.
-static void rctDrain(uint32_t ms) {
-  const unsigned long startMillisHere = millis();
-  diagPhase("rct.drain");
-  while (millis() - startMillisHere < ms) {
-    while (s_link->available()) {
-      s_link->read();
-    }
-    deviceYieldHook(); // see rctReceiveFrame(): the panel must keep drawing
-    delay(1);
-  }
-}
-
-static bool rctSendExtension() {
-  // Three bytes, no CRC: tools/crc_test keeps the vector that says so.
-  static const uint8_t ext[] = {0x2b, 0x3c, 0xe1};
-  if (s_link->write(ext, sizeof(ext)) != sizeof(ext)) {
-    return false;
-  }
-  rctDrain(300);
-  return true;
-}
+// No EXTENSION frame (0x2b 0x3c 0xe1) and no drain after connect. HA and
+// Tinkerforge talk to this device with plain READs and work; during a
+// three-minute silent phase the panel was the only client still sending that
+// extra frame and six READs at once. The receiver is reset at each window, so
+// bytes from another client cannot line up with our next READ.
 
 // Every exit from a collection run goes through this: a batch is a transaction,
 // not a permanent lease on the device's single listening socket. HA closes in
@@ -776,7 +752,6 @@ static void rctConsumeFrame(uint8_t command, uint32_t respOid,
 static void rctPollBody(uint32_t budgetMs) {
   const uint32_t pollStartMs = millis();
   uint32_t connectMs = 0;
-  uint32_t extMs = 0;
   uint32_t sendMs = 0;
   uint32_t receiveMs = 0;
 
@@ -854,16 +829,6 @@ static void rctPollBody(uint32_t budgetMs) {
       }
       connectMs = millis() - pollStartMs;
       dev.connected = true;
-      deviceYieldHook();
-      delay(20);
-      const uint32_t extStartMs = millis();
-      if (!rctSendExtension()) {
-        Serial.println("RCT: Extension nicht gesendet, Verbindung verworfen");
-        rctDropLink();
-        dev.connected = false;
-        return;
-      }
-      extMs = millis() - extStartMs;
     } else {
       dev.connected = false;
       return;
@@ -906,12 +871,11 @@ static void rctPollBody(uint32_t budgetMs) {
     s_lastStaticPoll = nowMs;
   }
 
-  // Send a small window, read its answers, then send the next. HA sends one
-  // READ and waits for that exact answer, Tinkerforge allows one pending
-  // transaction; six frames keeps a 21-slot group to four exchanges instead of
-  // one 21-READ burst. A window that comes back silent stops the poll: the
-  // device is in one of its quiet phases and the remaining READs would only be
-  // repeated into it on the next poll.
+  // Send one READ, read its answer, then send the next. HA waits for that exact
+  // answer and Tinkerforge allows one pending transaction; with other clients
+  // active on the bus, one is the only request count that cannot pile up at the
+  // device. A READ that comes back silent stops the poll: the device is in one
+  // of its quiet phases and the remaining READs would only be repeated into it.
   diagPhase("rct.poll");
   uint64_t freshMask = 0;    // fast slots answered this poll
   uint64_t answeredMask = 0; // every tracked slot answered here
@@ -1093,10 +1057,10 @@ static void rctPollBody(uint32_t budgetMs) {
   for (uint64_t m = freshMask; m; m &= m - 1) {
     freshCount++;
   }
-  Serial.printf("RCT poll %u ms | connect %u, ext %u, send %u, rx %u | "
+  Serial.printf("RCT poll %u ms | connect %u, send %u, rx %u | "
                 "%u/%u answered, %u/%u fresh, %u/%u windows%s\n",
                 (unsigned)(millis() - pollStartMs), (unsigned)connectMs,
-                (unsigned)extMs, (unsigned)sendMs, (unsigned)receiveMs,
+                (unsigned)sendMs, (unsigned)receiveMs,
                 (unsigned)answeredCount, (unsigned)dueCount,
                 (unsigned)freshCount, (unsigned)fastCount,
                 (unsigned)windows, (unsigned)windowTotal,
@@ -1350,8 +1314,8 @@ static void rctPollBody(uint32_t budgetMs) {
                 dev.extEnergyWh / 1000.0f, freshCount, fastCount);
 
   // A batch is done. Close it even when it succeeded: the next poll reconnects
-  // with its own extension frame. The device never sees two of our sessions,
-  // and a half-open session cannot survive a Wi-Fi or configuration change.
+  // with plain READs. The device never sees two of our sessions, and a
+  // half-open session cannot survive a Wi-Fi or configuration change.
   rctDropLink();
 }
 
